@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "PowerShell(gh auth status 2>&1; Write-Host \"Exit: $LASTEXITCODE\")",
+      "PowerShell(winget install --id GitHub.cli --silent 2>&1)"
+    ]
+  }
+}
