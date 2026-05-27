@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sales-dashboard",
+      "runtimeExecutable": "C:\\Users\\Lenovo\\Desktop\\My Projects\\Sales Dashboard\\start-dev.cmd",
+      "runtimeArgs": [],
+      "port": 5173
+    }
+  ]
+}

@@ -3,7 +3,19 @@
     "allow": [
       "Bash(gh auth *)",
       "PowerShell(gh auth status 2>&1; Write-Host \"Exit: $LASTEXITCODE\")",
-      "PowerShell(winget install --id GitHub.cli --silent 2>&1)"
+      "PowerShell(winget install --id GitHub.cli --silent 2>&1)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\", \"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\", \"User\"\\); cd \"C:\\\\Users\\\\Lenovo\\\\Desktop\\\\My Projects\\\\Sales Dashboard\"; npm create vite@latest . -- --template react 2>&1)",
+      "mcp__Claude_Preview__preview_start",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); \\(Get-Command npm\\).Source)",
+      "WebSearch",
+      "WebFetch(domain:support.youcanbook.me)",
+      "WebFetch(domain:apitracker.io)",
+      "WebFetch(domain:api.youcanbook.me)",
+      "PowerShell($accountId = \"bd78f8c7-d81e-4f64-9273-f7c26c9db840\"; $apiKey = \"ak_YPy9NKVTP2gXTtLQmgJMZxVbkQ7kgTjPGtTWZYpx87i7gSeYc4\"; $pair = \"$accountId`:$apiKey\"; $b64 = [System.Convert]::ToBase64String\\([System.Text.Encoding]::ASCII.GetBytes\\($pair\\)\\); $r = Invoke-RestMethod \"https://api.youcanbook.me/v1/$accountId/bookings\" -Headers @{Authorization=\"Basic $b64\"; Accept=\"application/json\"}; Write-Host \"Total bookings from API: $\\($r.Count\\)\"; Write-Host \"`nNames from API \\(parsed from title\\):\"; $r | ForEach-Object { $name = \\($_.title -split ' and '\\)[0]; $time = \\(Get-Date $_.startsAt\\).ToString\\('h:mm tt'\\); Write-Host \"  - $name @ $time \\($\\($_.startsAt\\)\\)\" })",
+      "WebFetch(domain:signups.lakbayhub.com)",
+      "PowerShell($key = \"sb_publishable_qSaCgnoJpQcBEq3Vd4zMZA_VfVQsqwT\"; $base = \"https://qvufabzpwcbafutaalbw.supabase.co/rest/v1\"; $h = @{ apikey = $key; Authorization = \"Bearer $key\"; Accept = \"application/json\" }; Write-Host \"=== Root \\(list tables\\) ===\"; try { \\(Invoke-RestMethod \"$base/\" -Headers $h\\) | ConvertTo-Json -Depth 4 | Select-Object -First 100 } catch { Write-Host \"ERR $\\($_.Exception.Response.StatusCode.value__\\): $\\($_.Exception.Message\\)\"; if \\($_.Exception.Response\\) { $reader = New-Object System.IO.StreamReader\\($_.Exception.Response.GetResponseStream\\(\\)\\); Write-Host $reader.ReadToEnd\\(\\) } })",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;\" + $env:PATH; cd \"C:\\\\Users\\\\Lenovo\\\\Desktop\\\\My Projects\\\\Sales Dashboard\"; node scripts/generate-seed-sql.mjs)",
+      "PowerShell(Write-Host \"=== DNS resolve ===\"; try { Resolve-DnsName signups.lakbayhub.com -Type A -DnsOnly | Format-Table } catch { Write-Host \"DNS ERR: $\\($_.Exception.Message\\)\" }; Write-Host \"`n=== HTTP GET via .NET HttpClient ===\"; Add-Type -AssemblyName System.Net.Http; $client = New-Object System.Net.Http.HttpClient; $client.Timeout = [System.TimeSpan]::FromSeconds\\(15\\); $client.DefaultRequestHeaders.Add\\('User-Agent', 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\)'\\); try { $r = $client.GetAsync\\('https://signups.lakbayhub.com/'\\).Result; Write-Host \"Status: $\\($r.StatusCode\\)\"; Write-Host \"Content-Type: $\\($r.Content.Headers.ContentType\\)\"; Write-Host \"Length: $\\($r.Content.Headers.ContentLength\\)\"; $body = $r.Content.ReadAsStringAsync\\(\\).Result; Write-Host \"`n--- Body \\(first 3000 chars\\) ---`n$\\($body.Substring\\(0, [Math]::Min\\(3000, $body.Length\\)\\)\\)\" } catch { Write-Host \"ERR: $\\($_.Exception.InnerException.Message\\)\" })"
     ]
   }
 }
