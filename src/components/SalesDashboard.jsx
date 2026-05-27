@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Calendar, Clock, CheckCircle2, XCircle, AlertCircle,
   DollarSign, TrendingUp, TrendingDown, Users, ChevronRight,
-  Minus,
+  Minus, Activity, ArrowRight,
 } from 'lucide-react'
 import { attendanceStats, getStatus, subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords, formatPHP, formatPHPCompact, parseDate } from '../api/lakbay'
@@ -204,14 +204,29 @@ export default function SalesDashboard({ bookings = [] }) {
     const roas  = spend > 0   ? +(salesAmount / spend).toFixed(2): null
     const arPct = salesAmount > 0 ? Math.round((spend / salesAmount) * 100) : null
 
+    // Additional funnel percentages
+    const totalBookingsInclCancelled = dayBookings.length + dayCancelled.length
+    const cancellationPct = totalBookingsInclCancelled > 0
+      ? Math.round((dayCancelled.length / totalBookingsInclCancelled) * 100) : null
+    const leadToBookPct = leads > 0 ? Math.round((dayBookings.length / leads) * 100) : null
+    const showUpPct  = attendance.tracked > 0 ? attendance.showUpRate : null
+    const noShowPct  = attendance.tracked > 0 ? Math.round((attendance.noShow / attendance.tracked) * 100) : null
+    const bookToSalePct = dayBookings.length > 0 ? Math.round((salesCount / dayBookings.length) * 100) : null
+    const showToSalePct = attendance.showed > 0 ? Math.round((salesCount / attendance.showed) * 100) : null
+    const avgOrderValue = salesCount > 0 ? Math.round(salesAmount / salesCount) : null
+
     return {
       day, key,
       totalBookings:  dayBookings.length,
       cancelled:      dayCancelled.length,
+      cancellationPct,
       showed:         attendance.showed,
       noShow:         attendance.noShow,
       unset:          attendance.unset,
       showUpRate:     attendance.showUpRate,
+      showUpPct, noShowPct,
+      leadToBookPct, bookToSalePct, showToSalePct,
+      avgOrderValue,
       salesAmount,
       salesCount,
       conversion,
@@ -271,12 +286,22 @@ export default function SalesDashboard({ bookings = [] }) {
     leads:      pct(totals.leads,      prior.leads),
   }
 
-  const overallShowUpRate = (totals.showed + totals.noShow) > 0
-    ? Math.round((totals.showed / (totals.showed + totals.noShow)) * 100)
+  const totalAttendance = totals.showed + totals.noShow
+  const overallShowUpRate = totalAttendance > 0
+    ? Math.round((totals.showed / totalAttendance) * 100)
     : null
-  const overallConversion = totals.showed > 0
-    ? Math.round((totals.salesCount / totals.showed) * 100)
-    : totals.bookings > 0 ? Math.round((totals.salesCount / totals.bookings) * 100) : 0
+  const overallNoShowRate = totalAttendance > 0
+    ? Math.round((totals.noShow / totalAttendance) * 100)
+    : null
+  const overallBookToSale = totals.bookings > 0
+    ? Math.round((totals.salesCount / totals.bookings) * 100) : 0
+  const overallShowToSale = totals.showed > 0
+    ? Math.round((totals.salesCount / totals.showed) * 100) : null
+  const overallLeadToBook = totals.leads > 0
+    ? Math.round((totals.bookings / totals.leads) * 100) : null
+  const overallCancellationRate = (totals.bookings + totals.cancelled) > 0
+    ? Math.round((totals.cancelled / (totals.bookings + totals.cancelled)) * 100) : 0
+  const overallConversion = overallShowUpRate !== null ? overallShowToSale : overallBookToSale
 
   return (
     <div className="flex flex-col gap-5 pb-24 sm:pb-6">
@@ -304,20 +329,55 @@ export default function SalesDashboard({ bookings = [] }) {
         </div>
       </div>
 
-      {/* High-level KPI strip across the window with period-over-period delta */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-        <KpiCard icon={Calendar}      label="Total Bookings"  value={String(totals.bookings)}   accent="#E8F4F4" delta={delta.bookings} compareLabel={period.compareLabel} />
-        <KpiCard icon={CheckCircle2}  label="Showed Up"       value={String(totals.showed)}     accent="#dcfce7" />
-        <KpiCard icon={XCircle}       label="No-Show"         value={String(totals.noShow)}     accent="#fee2e2" />
-        <KpiCard icon={AlertCircle}   label="Cancelled"       value={String(totals.cancelled)}  accent="#fef3c7" />
-        <KpiCard icon={TrendingUp}    label="Show-Up Rate"
-                 value={overallShowUpRate === null ? '—' : `${overallShowUpRate}%`}
-                 sub={overallShowUpRate === null ? 'mark bookings to track' : `${totals.showed}/${totals.showed + totals.noShow}`} />
-        <KpiCard icon={DollarSign}    label="Revenue (sales)" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} delta={delta.sales} compareLabel={period.compareLabel} />
-        <KpiCard icon={Users}         label="Conversion Rate"
-                 value={`${overallConversion}%`}
-                 sub="sales / show-ups" />
+      {/* Section 1: Marketing Funnel KPIs (combined Meta + YCBM + Attendance) */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="w-1.5 h-5 rounded-full" style={{ backgroundColor: PRIMARY }} />
+          <h2 className="text-sm font-semibold text-gray-700">Marketing Funnel · Leads → Bookings → Attendance</h2>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          <KpiCard icon={Users}        label="Leads (Meta)"  value={String(totals.leads)}     accent="#dbeafe" delta={delta.leads}    compareLabel={period.compareLabel} />
+          <KpiCard icon={Calendar}     label="Bookings"      value={String(totals.bookings)}  accent="#E8F4F4" delta={delta.bookings} compareLabel={period.compareLabel}
+                   sub={overallLeadToBook === null ? '' : `Lead→Book ${overallLeadToBook}%`} />
+          <KpiCard icon={CheckCircle2} label="Showed Up"     value={String(totals.showed)}    accent="#dcfce7"
+                   sub={overallShowUpRate === null ? 'untracked' : `${overallShowUpRate}% show-up`} />
+          <KpiCard icon={XCircle}      label="No-Show"       value={String(totals.noShow)}    accent="#fee2e2"
+                   sub={overallNoShowRate === null ? '' : `${overallNoShowRate}% no-show`} />
+          <KpiCard icon={AlertCircle}  label="Cancelled"     value={String(totals.cancelled)} accent="#fef3c7"
+                   sub={`${overallCancellationRate}% cancellation`} />
+          <KpiCard icon={TrendingUp}   label="Show-Up Rate"
+                   value={overallShowUpRate === null ? '—' : `${overallShowUpRate}%`}
+                   sub={overallShowUpRate === null ? 'mark in Bookings tab' : `${totals.showed} / ${totalAttendance}`} />
+          <KpiCard icon={Activity}     label="Unmarked"
+                   value={String(totals.bookings - totalAttendance)}
+                   sub="need attendance status" />
+        </div>
       </div>
+
+      {/* Section 2: Sales KPIs (LakbayHub only, separate) */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="w-1.5 h-5 rounded-full" style={{ backgroundColor: '#F5A623' }} />
+          <h2 className="text-sm font-semibold text-gray-700">Sales · LakbayHub Revenue & Conversion</h2>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={period.compareLabel} />
+          <KpiCard icon={Users}      label="# of Sales"    value={String(totals.salesCount)} accent="#FFF4E0" delta={delta.salesCount} compareLabel={period.compareLabel} />
+          <KpiCard icon={TrendingUp} label="Book → Sale %" value={`${overallBookToSale}%`} sub="bookings → sales" />
+          <KpiCard icon={TrendingUp} label="Show → Sale %" value={overallShowToSale === null ? '—' : `${overallShowToSale}%`} sub="showed-up → sales" />
+          <KpiCard icon={DollarSign} label="Avg Order"     value={totals.salesCount === 0 ? '—' : formatPHPCompact(totals.sales / totals.salesCount)} sub="per sale" />
+        </div>
+      </div>
+
+      {/* Visual funnel: Leads → Bookings → Showed → Sales */}
+      <FunnelVisualization
+        leads={totals.leads}
+        bookings={totals.bookings}
+        showed={totals.showed}
+        unmarked={totals.bookings - totalAttendance}
+        salesCount={totals.salesCount}
+        revenue={totals.sales}
+      />
 
       {/* The spreadsheet-style matrix */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -348,41 +408,67 @@ export default function SalesDashboard({ bookings = [] }) {
               </tr>
             </thead>
             <tbody>
-              <SectionHeaderRow label="BOOKINGS" span={days.length + 1} color="#1B4F4F" />
-              <MetricRow label="Total Bookings"     values={perDay.map(d => d.totalBookings)} bold />
-              <MetricRow label="Cancelled"          values={perDay.map(d => d.cancelled)}     accent />
-              <MetricRow label="Showed Up"          values={perDay.map(d => d.showed)}        accent />
-              <MetricRow label="No-Show"            values={perDay.map(d => d.noShow)}        accent />
+              {/* MARKETING FUNNEL — combined Meta + YCBM + attendance */}
+              <SectionHeaderRow label="MARKETING FUNNEL · Leads → Bookings → Attendance" span={days.length + 1} color="#1B4F4F" />
+              <MetricRow label="Leads (Meta)"
+                values={perDay.map(d => d.leads)}
+                formatter={v => v === 0 ? '—' : String(v)} bold />
+              <MetricRow label="Bookings (YCBM)"
+                values={perDay.map(d => d.totalBookings)} bold />
+              <MetricRow label="Lead → Book %"
+                values={perDay.map(d => d.leadToBookPct)}
+                formatter={v => v === null ? '—' : `${v}%`} accent />
+              <MetricRow label="Showed Up ✓"
+                values={perDay.map(d => d.showed)} />
+              <MetricRow label="No-Show ✕"
+                values={perDay.map(d => d.noShow)} />
               <MetricRow label="Show-Up Rate"
-                values={perDay.map(d => d.showUpRate)}
+                values={perDay.map(d => d.showUpPct)}
                 formatter={v => v === null ? '—' : `${v}%`}
-                bold />
-
-              <SectionHeaderRow label="SALES (LakbayHub)" span={days.length + 1} color="#F5A623" />
-              <MetricRow label="# of Sales"        values={perDay.map(d => d.salesCount)} bold />
-              <MetricRow label="Gross Revenue"     values={perDay.map(d => d.salesAmount)} formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
-              <MetricRow label="Conversion Rate"
-                values={perDay.map(d => d.conversion)}
+                accent bold />
+              <MetricRow label="No-Show Rate"
+                values={perDay.map(d => d.noShowPct)}
+                formatter={v => v === null ? '—' : `${v}%`}
+                accent />
+              <MetricRow label="Cancelled"
+                values={perDay.map(d => d.cancelled)} />
+              <MetricRow label="Cancellation %"
+                values={perDay.map(d => d.cancellationPct)}
                 formatter={v => v === null ? '—' : `${v}%`}
                 accent />
 
-              <SectionHeaderRow label="SPEND & EFFICIENCY (Meta Ads)" span={days.length + 1} color="#3B82F6" />
+              {/* SALES — LakbayHub only, with conversion rates */}
+              <SectionHeaderRow label="SALES · LakbayHub Conversions" span={days.length + 1} color="#F5A623" />
+              <MetricRow label="# of Sales"
+                values={perDay.map(d => d.salesCount)} bold />
+              <MetricRow label="Gross Revenue"
+                values={perDay.map(d => d.salesAmount)}
+                formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
+              <MetricRow label="Booking → Sale %"
+                values={perDay.map(d => d.bookToSalePct)}
+                formatter={v => v === null ? '—' : `${v}%`} accent />
+              <MetricRow label="Show-Up → Sale %"
+                values={perDay.map(d => d.showToSalePct)}
+                formatter={v => v === null ? '—' : `${v}%`} accent />
+              <MetricRow label="Avg Order Value"
+                values={perDay.map(d => d.avgOrderValue)}
+                formatter={v => v === null ? '—' : formatPHPCompact(v)} />
+
+              {/* AD SPEND — Meta financial metrics */}
+              <SectionHeaderRow label="AD SPEND · Meta Ads Efficiency" span={days.length + 1} color="#3B82F6" />
               <MetricRow label="Ads Spent"
                 values={perDay.map(d => d.spend)}
                 formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
-              <MetricRow label="Leads"
-                values={perDay.map(d => d.leads)}
-                formatter={v => v === 0 ? '—' : String(v)} />
-              <MetricRow label="CPL"
+              <MetricRow label="CPL (Cost per Lead)"
                 values={perDay.map(d => d.cpl)}
                 formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
-              <MetricRow label="CAC"
+              <MetricRow label="CAC (Cost per Sale)"
                 values={perDay.map(d => d.cac)}
                 formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
               <MetricRow label="ROAS"
                 values={perDay.map(d => d.roas)}
                 formatter={v => v === null ? '—' : `${v}x`} bold />
-              <MetricRow label="AR%"
+              <MetricRow label="AR% (cost / revenue)"
                 values={perDay.map(d => d.arPct)}
                 formatter={v => v === null ? '—' : `${v}%`} accent />
 
@@ -406,12 +492,39 @@ export default function SalesDashboard({ bookings = [] }) {
         </div>
       </section>
 
-      {/* Meta Ads window summary */}
+      {/* Sales summary — LakbayHub only, focused on revenue + conversion */}
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-5 rounded-full" style={{ backgroundColor: '#F5A623' }} />
+            <div>
+              <h2 className="font-semibold text-gray-900">Sales Summary · {period.label}</h2>
+              <p className="text-[11px] text-gray-500 mt-0.5">LakbayHub closed sign-ups · independent from ad spend</p>
+            </div>
+          </div>
+          <span className="text-[11px] px-2 py-1 rounded-md bg-amber-50 text-amber-700 font-semibold flex items-center gap-1">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75 animate-ping" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-500" />
+            </span>
+            LakbayHub live
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 p-4">
+          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} closed sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={period.compareLabel} />
+          <KpiCard icon={Users}      label="# of Sales"    value={String(totals.salesCount)}     accent="#FFF4E0" delta={delta.salesCount} compareLabel={period.compareLabel} />
+          <KpiCard icon={TrendingUp} label="Book → Sale"   value={`${overallBookToSale}%`}       sub={`${totals.salesCount} sales of ${totals.bookings} bookings`} />
+          <KpiCard icon={TrendingUp} label="Show → Sale"   value={overallShowToSale === null ? '—' : `${overallShowToSale}%`} sub={overallShowToSale === null ? 'mark show-ups first' : `${totals.salesCount} sales of ${totals.showed} attendees`} />
+          <KpiCard icon={DollarSign} label="Avg Order"     value={totals.salesCount === 0 ? '—' : formatPHPCompact(totals.sales / totals.salesCount)} sub="per closed sale" />
+        </div>
+      </section>
+
+      {/* Meta Ads efficiency summary — ad cost metrics only */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h2 className="font-semibold text-gray-900">Spend & Efficiency · {period.label}</h2>
-            <p className="text-[11px] text-gray-500 mt-0.5">Meta Ads × LakbayHub sales</p>
+            <h2 className="font-semibold text-gray-900">Ad Efficiency · {period.label}</h2>
+            <p className="text-[11px] text-gray-500 mt-0.5">Meta Ads spend metrics (combined with LakbayHub revenue for ROAS & CAC)</p>
           </div>
           {metaError ? (
             <span className="text-[11px] px-2 py-1 rounded-md bg-red-50 text-red-700 font-semibold" title={metaError.message}>
@@ -438,6 +551,71 @@ export default function SalesDashboard({ bookings = [] }) {
         </div>
       </section>
     </div>
+  )
+}
+
+// Visual funnel — horizontal bars showing progression
+function FunnelVisualization({ leads, bookings, showed, unmarked, salesCount, revenue }) {
+  // Use leads as 100% baseline if available, otherwise bookings
+  const baseline = leads > 0 ? leads : bookings
+  if (baseline === 0) {
+    return (
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center text-gray-400">
+        No funnel data yet for this period.
+      </section>
+    )
+  }
+
+  const stages = [
+    { label: 'Leads',     count: leads,      color: '#3B82F6', desc: 'from Meta Ads' },
+    { label: 'Bookings',  count: bookings,   color: '#1B4F4F', desc: 'YCBM (excl. cancelled)' },
+    { label: 'Showed Up', count: showed,     color: '#10B981', desc: unmarked > 0 ? `${unmarked} unmarked` : 'attended sessions' },
+    { label: 'Sales',     count: salesCount, color: '#F5A623', desc: 'LakbayHub closed' },
+  ].filter(s => s.count >= 0)
+
+  return (
+    <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+          <Activity size={16} style={{ color: PRIMARY }} />
+          Conversion Funnel
+        </h2>
+        <span className="text-[11px] text-gray-500">
+          Total revenue from this funnel: <span className="font-bold text-gray-900">{formatPHP(revenue)}</span>
+        </span>
+      </div>
+      <div className="flex flex-col gap-2">
+        {stages.map((s, i) => {
+          const pct = baseline > 0 ? (s.count / baseline) * 100 : 0
+          const prev = i > 0 ? stages[i - 1].count : null
+          const stageConvPct = prev !== null && prev > 0 ? Math.round((s.count / prev) * 100) : null
+          return (
+            <div key={s.label}>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                  <span className="font-semibold text-gray-900">{s.label}</span>
+                  <span className="text-gray-400 text-[10px]">· {s.desc}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="font-bold text-gray-900">{s.count.toLocaleString()}</span>
+                  <span className="text-gray-400 text-[10px]">({Math.round(pct)}%)</span>
+                  {stageConvPct !== null && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-700">
+                      {stageConvPct}% from prev
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="relative h-5 bg-gray-50 rounded-md overflow-hidden">
+                <div className="h-full rounded-md transition-all duration-500"
+                     style={{ width: `${Math.max(pct, 1)}%`, backgroundColor: s.color, opacity: 0.85 }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
