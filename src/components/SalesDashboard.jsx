@@ -14,6 +14,7 @@ import {
 import { attendanceStats, getStatus, subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords, formatPHP, formatPHPCompact, parseDate } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
+import OpsAlerts from './sales/OpsAlerts'
 
 const PRIMARY = '#1B4F4F'
 const TIME_SLOTS = [10, 15, 19, 20, 21] // 10AM, 3PM, 7PM, 8PM, 9PM (typical POTB session times)
@@ -203,7 +204,8 @@ export default function SalesDashboard({ bookings = [] }) {
     const leads = meta?.leads || 0
     const cpl   = (spend > 0 && leads > 0)        ? Math.round(spend / leads)            : null
     const cac   = (spend > 0 && salesCount > 0)   ? Math.round(spend / salesCount)       : null
-    const roas  = (spend > 0)                     ? +(salesAmount / spend).toFixed(2)    : null
+    // ROAS in percentage form (3.54x → 354%) per user preference
+    const roas  = (spend > 0)                     ? Math.round((salesAmount / spend) * 100) : null
     const arPct = (spend > 0 && salesAmount > 0)  ? Math.round((spend / salesAmount) * 100) : null
 
     // Additional funnel percentages
@@ -257,7 +259,7 @@ export default function SalesDashboard({ bookings = [] }) {
     leads:      acc.leads      + (d.leads || 0),
   }), { bookings: 0, cancelled: 0, showed: 0, noShow: 0, sales: 0, salesCount: 0, spend: 0, leads: 0 })
 
-  const totalROAS = totals.spend > 0 ? +(totals.sales / totals.spend).toFixed(2) : null
+  const totalROAS = totals.spend > 0 ? Math.round((totals.sales / totals.spend) * 100) : null
   const totalARPct = totals.sales > 0 ? Math.round((totals.spend / totals.sales) * 100) : null
   const totalCPL = totals.leads > 0 ? Math.round(totals.spend / totals.leads) : null
   const totalCAC = totals.salesCount > 0 ? Math.round(totals.spend / totals.salesCount) : null
@@ -381,6 +383,18 @@ export default function SalesDashboard({ bookings = [] }) {
         revenue={totals.sales}
       />
 
+      {/* Smart alerts — surface anything urgent */}
+      <OpsAlerts
+        totals={totals}
+        perDay={perDay}
+        delta={delta}
+        period={period}
+        metaError={metaError}
+        overallShowUpRate={overallShowUpRate}
+        overallBookToSale={overallBookToSale}
+        totalAttendance={totalAttendance}
+      />
+
       {/* The spreadsheet-style matrix */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
@@ -470,7 +484,7 @@ export default function SalesDashboard({ bookings = [] }) {
                 formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
               <MetricRow label="ROAS"
                 values={perDay.map(d => d.roas)}
-                formatter={v => v === null ? '—' : `${v}x`} bold />
+                formatter={v => v === null ? '—' : `${v}%`} bold />
               <MetricRow label="AR% (cost / revenue)"
                 values={perDay.map(d => d.arPct)}
                 formatter={v => v === null ? '—' : `${v}%`} accent />
@@ -546,7 +560,7 @@ export default function SalesDashboard({ bookings = [] }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-4">
           <KpiCard icon={DollarSign} label="Total Ads Spent"  value={formatPHPCompact(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={period.compareLabel} />
           <KpiCard icon={DollarSign} label="Gross Revenue"    value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={period.compareLabel} />
-          <KpiCard icon={TrendingUp} label="ROAS"             value={totalROAS === null ? '—' : `${totalROAS}x`} sub="revenue / spend" accent="#fef3c7" />
+          <KpiCard icon={TrendingUp} label="ROAS"             value={totalROAS === null ? '—' : `${totalROAS}%`} sub="revenue / spend" accent="#fef3c7" />
           <KpiCard icon={TrendingUp} label="AR%"              value={totalARPct === null ? '—' : `${totalARPct}%`} sub="ad cost / revenue" />
           <KpiCard icon={Users}      label="Total Leads"      value={String(totals.leads)} sub="from Meta" delta={delta.leads} compareLabel={period.compareLabel} />
           <KpiCard icon={Users}      label="CPL"              value={totalCPL === null ? '—' : formatPHPCompact(totalCPL)} sub="cost per lead" />

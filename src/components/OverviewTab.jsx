@@ -396,7 +396,7 @@ export default function OverviewTab({ bookings = [], userName = 'MJ' }) {
   // Conversion rates
   const todayConv  = todayBookings.length > 0 ? Math.round((todayRecs.length / todayBookings.length) * 100) : null
   const weekConv   = weekBookings.length  > 0 ? Math.round((weekRecs.length  / weekBookings.length)  * 100) : null
-  const roasMonth  = metaMonth.spend > 0 ? +(sum(mthRecs, 'sales_amount') / metaMonth.spend).toFixed(2) : null
+  const roasMonth  = metaMonth.spend > 0 ? Math.round((sum(mthRecs, 'sales_amount') / metaMonth.spend) * 100) : null
 
   const alerts = useMemo(
     () => buildAlerts({ records, target: monthlyTarget, bookings, metaByDate }),
@@ -445,7 +445,7 @@ export default function OverviewTab({ bookings = [], userName = 'MJ' }) {
                      sub={`${mthRecs.length} sign-ups`}
                      tone="#dcfce7" />
           <GlanceCol icon={TrendingUp} tag="ROAS · MTD"
-                     value={roasMonth === null ? '—' : `${roasMonth}x`}
+                     value={roasMonth === null ? '—' : `${roasMonth}%`}
                      sub={`${formatPHPCompact(metaMonth.spend)} ad spend MTD`}
                      tone="#dbeafe" />
         </div>
