@@ -22,7 +22,7 @@ const BROWSER_FIELDS = [
 // Travel Biz benchmark. Edit in Settings → Business → Monthly Target.
 const DEFAULT_MONTHLY_TARGET = 1_000_000 // ₱1,000,000
 const DEFAULT_USER_NAME      = 'MJ'
-const DEFAULT_USER_ROLE      = 'General Manager'
+const DEFAULT_USER_ROLE      = 'Sales Skills Development Manager'
 const DEFAULT_DASHBOARD_TITLE = 'Operations Console'
 const DEFAULT_ORG_NAME       = 'POTB · Pinoy Online Travel Biz'
 
