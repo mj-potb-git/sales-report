@@ -182,8 +182,24 @@ export default function SalesDashboard({ bookings = [] }) {
   useEffect(() => subscribeAttendance(() => bumpAttendance(n => n + 1)), [])
 
   const bookingsByDate = useMemo(() => {
-    // Use ALL bookings (past + future) so we can show the matrix
+    // Bookings grouped by SCHEDULE date (startsAt) — when the session happens
     return groupByDate(bookings)
+  }, [bookings])
+
+  // Bookings grouped by CREATED date (raw.createdAt) — when the lead booked.
+  // This is how MJ's spreadsheet defines "Leads (Booking Made)".
+  const bookingsCreatedByDate = useMemo(() => {
+    const map = new Map()
+    for (const b of bookings) {
+      const created = b.raw?.createdAt
+      if (!created) continue
+      // YCBM createdAt is ISO with timezone; convert to local YYYY-MM-DD
+      const d = new Date(created)
+      const key = formatDateISO(d)
+      if (!map.has(key)) map.set(key, [])
+      map.get(key).push(b)
+    }
+    return map
   }, [bookings])
 
   // Per-day computed metrics for the table
@@ -191,6 +207,8 @@ export default function SalesDashboard({ bookings = [] }) {
     const key = formatDateISO(day)
     const dayBookings = (bookingsByDate.get(key) || []).filter(b => !b.raw?.cancelled)
     const dayCancelled = (bookingsByDate.get(key) || []).filter(b => b.raw?.cancelled)
+    // Bookings created on this day (= "Leads (Booking Made)" per spreadsheet)
+    const dayLeadsBooked = (bookingsCreatedByDate.get(key) || []).filter(b => !b.raw?.cancelled).length
     const attendance = attendanceStats(dayBookings)
     const daySales = salesByDate.get(key) || []
     const salesAmount = daySales.reduce((a, r) => a + (r.sales_amount || 0), 0)
@@ -201,12 +219,16 @@ export default function SalesDashboard({ bookings = [] }) {
     const conversion = denom > 0 ? Math.round((salesCount / denom) * 100) : null
     // Ads-side metrics — return null when the input is missing so the UI shows "—"
     const spend = meta?.spend || 0
-    const leads = meta?.leads || 0
+    // "Leads (Booking Made)" per spreadsheet definition = YCBM bookings created on the day.
+    // We track Meta-API leads separately as `metaLeads` for cross-checking.
+    const metaLeads = meta?.leads || 0
+    const leads     = dayLeadsBooked
     const cpl   = (spend > 0 && leads > 0)        ? Math.round(spend / leads)            : null
     const cac   = (spend > 0 && salesCount > 0)   ? Math.round(spend / salesCount)       : null
     // ROAS in percentage form (3.54x → 354%) per user preference
     const roas  = (spend > 0)                     ? Math.round((salesAmount / spend) * 100) : null
     const arPct = (spend > 0 && salesAmount > 0)  ? Math.round((spend / salesAmount) * 100) : null
+    const profit = salesAmount - spend // Total Gross Revenue − Total Ads Spent
 
     // Additional funnel percentages
     const totalBookingsInclCancelled = dayBookings.length + dayCancelled.length
@@ -236,8 +258,9 @@ export default function SalesDashboard({ bookings = [] }) {
       conversion,
       // Meta Ads metrics
       spend,
-      leads,
-      cpl, cac, roas, arPct,
+      leads,           // YCBM bookings made on that day = "Leads (Booking Made)"
+      metaLeads,       // Meta Ads platform lead actions (for cross-reference)
+      cpl, cac, roas, arPct, profit,
       // time-slot breakdown
       bySlot: TIME_SLOTS.map(h => {
         const slotBookings = dayBookings.filter(b => new Date(b.startsAt).getHours() === h)
@@ -249,15 +272,17 @@ export default function SalesDashboard({ bookings = [] }) {
 
   // Totals across the visible window
   const totals = perDay.reduce((acc, d) => ({
-    bookings:   acc.bookings   + d.totalBookings,
-    cancelled:  acc.cancelled  + d.cancelled,
-    showed:     acc.showed     + d.showed,
-    noShow:     acc.noShow     + d.noShow,
-    sales:      acc.sales      + d.salesAmount,
-    salesCount: acc.salesCount + d.salesCount,
-    spend:      acc.spend      + (d.spend || 0),
-    leads:      acc.leads      + (d.leads || 0),
-  }), { bookings: 0, cancelled: 0, showed: 0, noShow: 0, sales: 0, salesCount: 0, spend: 0, leads: 0 })
+    bookings:    acc.bookings    + d.totalBookings,   // scheduled on the day
+    cancelled:   acc.cancelled   + d.cancelled,
+    showed:      acc.showed      + d.showed,
+    noShow:      acc.noShow      + d.noShow,
+    sales:       acc.sales       + d.salesAmount,
+    salesCount:  acc.salesCount  + d.salesCount,
+    spend:       acc.spend       + (d.spend || 0),
+    leads:       acc.leads       + (d.leads || 0),       // bookings created on the day
+    metaLeads:   acc.metaLeads   + (d.metaLeads || 0),
+    profit:      acc.profit      + (d.profit || 0),
+  }), { bookings: 0, cancelled: 0, showed: 0, noShow: 0, sales: 0, salesCount: 0, spend: 0, leads: 0, metaLeads: 0, profit: 0 })
 
   const totalROAS = totals.spend > 0 ? Math.round((totals.sales / totals.spend) * 100) : null
   const totalARPct = totals.sales > 0 ? Math.round((totals.spend / totals.sales) * 100) : null
@@ -425,69 +450,58 @@ export default function SalesDashboard({ bookings = [] }) {
               </tr>
             </thead>
             <tbody>
-              {/* MARKETING FUNNEL — combined Meta + YCBM + attendance */}
-              <SectionHeaderRow label="MARKETING FUNNEL · Leads → Bookings → Attendance" span={days.length + 1} color="#1B4F4F" />
-              <MetricRow label="Leads (Meta)"
-                values={perDay.map(d => d.leads)}
-                formatter={v => v === 0 ? '—' : String(v)} bold />
-              <MetricRow label="Bookings (YCBM)"
-                values={perDay.map(d => d.totalBookings)} bold />
-              <MetricRow label="Lead → Book %"
-                values={perDay.map(d => d.leadToBookPct)}
-                formatter={v => v === null ? '—' : `${v}%`} accent />
-              <MetricRow label="Showed Up ✓"
-                values={perDay.map(d => d.showed)} />
-              <MetricRow label="No-Show ✕"
-                values={perDay.map(d => d.noShow)} />
-              <MetricRow label="Show-Up Rate"
-                values={perDay.map(d => d.showUpPct)}
-                formatter={v => v === null ? '—' : `${v}%`}
-                accent bold />
-              <MetricRow label="No-Show Rate"
-                values={perDay.map(d => d.noShowPct)}
-                formatter={v => v === null ? '—' : `${v}%`}
-                accent />
-              <MetricRow label="Cancelled"
-                values={perDay.map(d => d.cancelled)} />
-              <MetricRow label="Cancellation %"
-                values={perDay.map(d => d.cancellationPct)}
-                formatter={v => v === null ? '—' : `${v}%`}
-                accent />
-
-              {/* SALES — LakbayHub only, with conversion rates */}
-              <SectionHeaderRow label="SALES · LakbayHub Conversions" span={days.length + 1} color="#F5A623" />
-              <MetricRow label="# of Sales"
-                values={perDay.map(d => d.salesCount)} bold />
-              <MetricRow label="Gross Revenue"
-                values={perDay.map(d => d.salesAmount)}
-                formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
-              <MetricRow label="Booking → Sale %"
-                values={perDay.map(d => d.bookToSalePct)}
-                formatter={v => v === null ? '—' : `${v}%`} accent />
-              <MetricRow label="Show-Up → Sale %"
-                values={perDay.map(d => d.showToSalePct)}
-                formatter={v => v === null ? '—' : `${v}%`} accent />
-              <MetricRow label="Avg Order Value"
-                values={perDay.map(d => d.avgOrderValue)}
-                formatter={v => v === null ? '—' : formatPHPCompact(v)} />
-
-              {/* AD SPEND — Meta financial metrics */}
-              <SectionHeaderRow label="AD SPEND · Meta Ads Efficiency" span={days.length + 1} color="#3B82F6" />
-              <MetricRow label="Ads Spent"
+              {/* SPEND & REVENUE — Meta Ads × LakbayHub revenue */}
+              <SectionHeaderRow label="SPEND & REVENUE" span={days.length + 1} color="#3B82F6" />
+              <MetricRow label="Total Ads Spent"
                 values={perDay.map(d => d.spend)}
                 formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
-              <MetricRow label="CPL (Cost per Lead)"
-                values={perDay.map(d => d.cpl)}
-                formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
-              <MetricRow label="CAC (Cost per Sale)"
-                values={perDay.map(d => d.cac)}
-                formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
-              <MetricRow label="ROAS"
+              <MetricRow label="Total Gross Revenue"
+                values={perDay.map(d => d.salesAmount)}
+                formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
+              <MetricRow label="Return On Ads Spent"
                 values={perDay.map(d => d.roas)}
                 formatter={v => v === null ? '—' : `${v}%`} bold />
-              <MetricRow label="AR% (cost / revenue)"
+              <MetricRow label="AR% (Ads/Revenue)"
                 values={perDay.map(d => d.arPct)}
                 formatter={v => v === null ? '—' : `${v}%`} accent />
+              <MetricRow label="Total # of Leads (Booking Made)"
+                values={perDay.map(d => d.leads)}
+                formatter={v => v === 0 ? '—' : String(v)} bold />
+              <MetricRow label="Average CPL (Cost Per Lead)"
+                values={perDay.map(d => d.cpl)}
+                formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
+              <MetricRow label="Profit"
+                values={perDay.map(d => d.profit)}
+                formatter={v => v === 0 ? '—' : (v >= 0 ? formatPHPCompact(v) : `−${formatPHPCompact(-v)}`)}
+                bold />
+
+              {/* # OF LEADS — appointment funnel */}
+              <SectionHeaderRow label="# OF LEADS" span={days.length + 1} color="#1B4F4F" />
+              <MetricRow label="Total # of Book an appointment"
+                values={perDay.map(d => d.leads)}
+                formatter={v => v === 0 ? '—' : String(v)} bold />
+              <MetricRow label="Total # of YCBM booking (On the day Schedule)"
+                values={perDay.map(d => d.totalBookings)} bold />
+              <MetricRow label="Total # of Show Up"
+                values={perDay.map(d => d.showed)} accent />
+              <MetricRow label="Total # of No-Show"
+                values={perDay.map(d => d.noShow)} accent />
+              <MetricRow label="Total # of Cancelled"
+                values={perDay.map(d => d.cancelled)} accent />
+              <MetricRow label="Total # of Sales"
+                values={perDay.map(d => d.salesCount)} bold />
+
+              {/* EFFICIENCY — derived rates */}
+              <SectionHeaderRow label="EFFICIENCY" span={days.length + 1} color="#F5A623" />
+              <MetricRow label="Actual CAC (Customer Acquisition Cost)"
+                values={perDay.map(d => d.cac)}
+                formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
+              <MetricRow label="Actual SUR (Show Up Rate)"
+                values={perDay.map(d => d.showUpPct)}
+                formatter={v => v === null ? '—' : `${v}%`} bold />
+              <MetricRow label="Actual CVR (Conversion Rate)"
+                values={perDay.map(d => d.bookToSalePct)}
+                formatter={v => v === null ? '—' : `${v}%`} bold />
 
               <SectionHeaderRow label="TIME SLOTS (attendees / bookings)" span={days.length + 1} color="#4ECDC4" />
               {TIME_SLOTS.map((h, slotIdx) => (
@@ -558,13 +572,13 @@ export default function SalesDashboard({ bookings = [] }) {
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-4">
-          <KpiCard icon={DollarSign} label="Total Ads Spent"  value={formatPHPCompact(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={period.compareLabel} />
-          <KpiCard icon={DollarSign} label="Gross Revenue"    value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={period.compareLabel} />
-          <KpiCard icon={TrendingUp} label="ROAS"             value={totalROAS === null ? '—' : `${totalROAS}%`} sub="revenue / spend" accent="#fef3c7" />
-          <KpiCard icon={TrendingUp} label="AR%"              value={totalARPct === null ? '—' : `${totalARPct}%`} sub="ad cost / revenue" />
-          <KpiCard icon={Users}      label="Total Leads"      value={String(totals.leads)} sub="from Meta" delta={delta.leads} compareLabel={period.compareLabel} />
-          <KpiCard icon={Users}      label="CPL"              value={totalCPL === null ? '—' : formatPHPCompact(totalCPL)} sub="cost per lead" />
-          <KpiCard icon={Users}      label="CAC"              value={totalCAC === null ? '—' : formatPHPCompact(totalCAC)} sub="cost per sale" />
+          <KpiCard icon={DollarSign} label="Total Ads Spent"    value={formatPHPCompact(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={period.compareLabel} />
+          <KpiCard icon={DollarSign} label="Total Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={period.compareLabel} />
+          <KpiCard icon={TrendingUp} label="Return On Ads Spent" value={totalROAS === null ? '—' : `${totalROAS}%`} sub="revenue / spend" accent="#fef3c7" />
+          <KpiCard icon={TrendingUp} label="AR% (Ads/Revenue)"   value={totalARPct === null ? '—' : `${totalARPct}%`} sub="ad cost / revenue" />
+          <KpiCard icon={Users}      label="Total Leads"         value={String(totals.leads)} sub="bookings made" delta={delta.leads} compareLabel={period.compareLabel} />
+          <KpiCard icon={DollarSign} label="Average CPL"         value={totalCPL === null ? '—' : formatPHPCompact(totalCPL)} sub="cost per lead" />
+          <KpiCard icon={DollarSign} label="Profit"              value={totals.profit === 0 ? '—' : (totals.profit >= 0 ? formatPHPCompact(totals.profit) : `−${formatPHPCompact(-totals.profit)}`)} sub="revenue − spend" accent={totals.profit >= 0 ? '#dcfce7' : '#fee2e2'} />
         </div>
       </section>
     </div>
