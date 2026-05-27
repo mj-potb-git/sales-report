@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { getSettings, saveSettings, resetOverrides } from '../lib/settings'
 import { getSupabase } from '../api/supabase'
+import MetaConnectionStatus from './sales/MetaConnectionStatus'
 
 const PRIMARY = '#1B4F4F'
 
@@ -329,6 +330,9 @@ export default function SettingsTab() {
           </div>
         )}
       </section>
+
+      {/* Meta Ads connection status */}
+      <MetaConnectionStatus />
 
       {/* YouCanBook.me section */}
       <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col gap-4">
