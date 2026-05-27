@@ -198,13 +198,13 @@ export default function SalesDashboard({ bookings = [] }) {
     // Conversion = sales / show-ups (or sales / bookings if no attendance tracked)
     const denom = attendance.tracked > 0 ? attendance.showed : dayBookings.length
     const conversion = denom > 0 ? Math.round((salesCount / denom) * 100) : null
-    // Ads-side metrics
+    // Ads-side metrics — return null when the input is missing so the UI shows "—"
     const spend = meta?.spend || 0
     const leads = meta?.leads || 0
-    const cpl   = leads > 0   ? Math.round(spend / leads)        : null  // ₱ per lead
-    const cac   = salesCount > 0 ? Math.round(spend / salesCount) : null  // ₱ per sale
-    const roas  = spend > 0   ? +(salesAmount / spend).toFixed(2): null
-    const arPct = salesAmount > 0 ? Math.round((spend / salesAmount) * 100) : null
+    const cpl   = (spend > 0 && leads > 0)        ? Math.round(spend / leads)            : null
+    const cac   = (spend > 0 && salesCount > 0)   ? Math.round(spend / salesCount)       : null
+    const roas  = (spend > 0)                     ? +(salesAmount / spend).toFixed(2)    : null
+    const arPct = (spend > 0 && salesAmount > 0)  ? Math.round((spend / salesAmount) * 100) : null
 
     // Additional funnel percentages
     const totalBookingsInclCancelled = dayBookings.length + dayCancelled.length

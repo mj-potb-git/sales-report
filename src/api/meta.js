@@ -20,10 +20,27 @@ export function fetchMetaAccount() {
   return get('?fields=name,account_status,currency,timezone_name,amount_spent,balance')
 }
 
+// Meta only accepts specific date_preset values: last_3d, 7d, 14d, 28d, 30d, 90d.
+// For arbitrary day counts (e.g. 60) we use an explicit time_range instead.
+
+const SUPPORTED_PRESETS = new Set([3, 7, 14, 28, 30, 90])
+
+function rangeFor(days) {
+  const now = new Date()
+  const since = new Date(now.getTime() - (days - 1) * 86400000)
+  const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { since: ymd(since), until: ymd(now) }
+}
+
+function dateRangeQuery(days) {
+  if (SUPPORTED_PRESETS.has(days)) return `date_preset=last_${days}d`
+  const { since, until } = rangeFor(days)
+  return `time_range=${encodeURIComponent(JSON.stringify({ since, until }))}`
+}
+
 // Daily insights for the last N days (default 14). time_increment=1 means
 // one row per day. Each row carries spend + actions array.
 export function fetchMetaInsights({ days = 14 } = {}) {
-  const datePreset = `last_${days}d`
   const fields = [
     'spend',
     'impressions',
@@ -37,14 +54,14 @@ export function fetchMetaInsights({ days = 14 } = {}) {
     'date_start',
     'date_stop',
   ].join(',')
-  return get(`/insights?fields=${fields}&date_preset=${datePreset}&time_increment=1&limit=500`).then(j => j.data || [])
+  return get(`/insights?fields=${fields}&${dateRangeQuery(days)}&time_increment=1&limit=500`)
+    .then(j => j.data || [])
 }
 
 // Lifetime insights across the whole account (single row, no breakdown)
 export function fetchMetaSummary({ days = 14 } = {}) {
-  const datePreset = `last_${days}d`
   const fields = ['spend', 'impressions', 'clicks', 'actions', 'cost_per_action_type', 'cpm', 'ctr'].join(',')
-  return get(`/insights?fields=${fields}&date_preset=${datePreset}`).then(j => (j.data?.[0] ?? null))
+  return get(`/insights?fields=${fields}&${dateRangeQuery(days)}`).then(j => (j.data?.[0] ?? null))
 }
 
 // ---------------------------------------------------------------------------
