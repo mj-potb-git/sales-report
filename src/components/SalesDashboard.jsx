@@ -175,8 +175,8 @@ export default function SalesDashboard({ bookings = [] }) {
   }, [])
 
   // Re-render when attendance markings change (toggles in Bookings tab)
-  const [, forceRerender] = useState(0)
-  useEffect(() => subscribeAttendance(() => forceRerender(n => n + 1)), [])
+  const [attendanceTick, bumpAttendance] = useState(0)
+  useEffect(() => subscribeAttendance(() => bumpAttendance(n => n + 1)), [])
 
   const bookingsByDate = useMemo(() => {
     // Use ALL bookings (past + future) so we can show the matrix
@@ -385,7 +385,8 @@ export default function SalesDashboard({ bookings = [] }) {
           <div>
             <h2 className="font-semibold text-gray-900">Daily Performance Matrix</h2>
             <p className="text-[11px] text-gray-500 mt-0.5">
-              Each column = one day. Click <span className="inline-flex items-center gap-1 px-1 py-0.5 bg-gray-100 rounded font-mono">Mark</span> on a booking (in Bookings tab) to log show-up/no-show.
+              Each column = one day · attendance: <span className="font-bold">{totals.showed}</span> showed, <span className="font-bold">{totals.noShow}</span> no-show, <span className="font-bold">{totals.bookings - totalAttendance}</span> unmarked
+              {totalAttendance === 0 && <> · go to <b>Bookings → Auto-fill</b> to populate</>}
             </p>
           </div>
           <span className="text-[11px] text-gray-500">
