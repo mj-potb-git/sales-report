@@ -8,15 +8,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Calendar, Clock, CheckCircle2, XCircle, AlertCircle,
-  DollarSign, TrendingUp, Users, ChevronRight,
+  DollarSign, TrendingUp, TrendingDown, Users, ChevronRight,
+  Minus,
 } from 'lucide-react'
 import { attendanceStats, getStatus, subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords, formatPHP, formatPHPCompact, parseDate } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 
 const PRIMARY = '#1B4F4F'
-const DAYS_BACK = 14
 const TIME_SLOTS = [10, 15, 19, 20, 21] // 10AM, 3PM, 7PM, 8PM, 9PM (typical POTB session times)
+
+const PERIODS = [
+  { id: 'today',   label: 'Today',     days: 1,  compareLabel: 'vs yesterday' },
+  { id: 'weekly',  label: 'This Week', days: 7,  compareLabel: 'vs last week' },
+  { id: 'biweek',  label: '14 Days',   days: 14, compareLabel: 'vs prior 14d' },
+  { id: 'monthly', label: 'This Month',days: 30, compareLabel: 'vs last month' },
+]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -122,8 +129,19 @@ function HeatCell({ attendees, bookings }) {
 // ---------------------------------------------------------------------------
 
 export default function SalesDashboard({ bookings = [] }) {
-  const days = useMemo(() => lastNDays(DAYS_BACK), [])
-  const dayKeys = days.map(formatDateISO)
+  const [periodId, setPeriodId] = useState('biweek')
+  const period = PERIODS.find(p => p.id === periodId) ?? PERIODS[2]
+  const DAYS_BACK = period.days
+
+  const days = useMemo(() => lastNDays(DAYS_BACK), [DAYS_BACK])
+  // Previous period (same length, immediately before current window) for comparison
+  const priorDays = useMemo(() => {
+    const today = startOfDay(new Date())
+    return Array.from({ length: DAYS_BACK }, (_, i) =>
+      new Date(today.getTime() - (DAYS_BACK + DAYS_BACK - 1 - i) * 86400000))
+  }, [DAYS_BACK])
+  const dayKeys      = days.map(formatDateISO)
+  const priorDayKeys = priorDays.map(formatDateISO)
 
   // Pull LakbayHub sales for cross-source correlation
   const [salesByDate, setSalesByDate] = useState(new Map())
@@ -141,13 +159,14 @@ export default function SalesDashboard({ bookings = [] }) {
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
-  // Pull Meta Ads daily insights (last 14 days)
+  // Pull Meta Ads daily insights — always fetch 60 days to cover both current
+  // and previous comparison windows in one call. Sliced per period when used.
   const [metaByDate, setMetaByDate] = useState(new Map())
   const [metaError, setMetaError] = useState(null)
   useEffect(() => {
     let cancelled = false
     const load = () =>
-      fetchMetaDailyMap({ days: DAYS_BACK })
+      fetchMetaDailyMap({ days: 60 })
         .then(m => { if (!cancelled) { setMetaByDate(m); setMetaError(null) } })
         .catch(e => { if (!cancelled) setMetaError(e) })
     load()
@@ -227,6 +246,31 @@ export default function SalesDashboard({ bookings = [] }) {
   const totalCAC = totals.salesCount > 0 ? Math.round(totals.spend / totals.salesCount) : null
   const totalCVR = totals.leads > 0 ? Math.round((totals.salesCount / totals.leads) * 100) : null
 
+  // --- Prior-period totals for comparison ---
+  const prior = priorDays.reduce((acc, day) => {
+    const key = formatDateISO(day)
+    const dayBookings = (bookingsByDate.get(key) || []).filter(b => !b.raw?.cancelled)
+    const daySales = salesByDate.get(key) || []
+    const m = metaByDate.get(key)
+    return {
+      bookings:   acc.bookings   + dayBookings.length,
+      sales:      acc.sales      + daySales.reduce((a, r) => a + (r.sales_amount || 0), 0),
+      salesCount: acc.salesCount + daySales.length,
+      spend:      acc.spend      + (m?.spend || 0),
+      leads:      acc.leads      + (m?.leads || 0),
+    }
+  }, { bookings: 0, sales: 0, salesCount: 0, spend: 0, leads: 0 })
+
+  // Percent change current vs prior, treating 0-prior as 100% positive
+  const pct = (cur, pri) => pri === 0 ? (cur > 0 ? 100 : 0) : Math.round(((cur - pri) / pri) * 100)
+  const delta = {
+    bookings:   pct(totals.bookings,   prior.bookings),
+    sales:      pct(totals.sales,      prior.sales),
+    salesCount: pct(totals.salesCount, prior.salesCount),
+    spend:      pct(totals.spend,      prior.spend),
+    leads:      pct(totals.leads,      prior.leads),
+  }
+
   const overallShowUpRate = (totals.showed + totals.noShow) > 0
     ? Math.round((totals.showed / (totals.showed + totals.noShow)) * 100)
     : null
@@ -236,23 +280,40 @@ export default function SalesDashboard({ bookings = [] }) {
 
   return (
     <div className="flex flex-col gap-5 pb-24 sm:pb-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Operations Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          POTB Daily Ops · last {DAYS_BACK} days · YCBM bookings × LakbayHub sales × manual attendance
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Operations Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            POTB · {period.label} ({DAYS_BACK === 1 ? 'today' : `last ${DAYS_BACK} days`}) · YCBM × LakbayHub × Meta Ads × Attendance
+          </p>
+        </div>
+        <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+          {PERIODS.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setPeriodId(p.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                periodId === p.id
+                  ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* High-level KPI strip across the window */}
+      {/* High-level KPI strip across the window with period-over-period delta */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-        <KpiCard icon={Calendar}      label="Total Bookings"     value={String(totals.bookings)} accent="#E8F4F4" />
-        <KpiCard icon={CheckCircle2}  label="Showed Up"          value={String(totals.showed)}   accent="#dcfce7" />
-        <KpiCard icon={XCircle}       label="No-Show"            value={String(totals.noShow)}   accent="#fee2e2" />
-        <KpiCard icon={AlertCircle}   label="Cancelled"          value={String(totals.cancelled)} accent="#fef3c7" />
+        <KpiCard icon={Calendar}      label="Total Bookings"  value={String(totals.bookings)}   accent="#E8F4F4" delta={delta.bookings} compareLabel={period.compareLabel} />
+        <KpiCard icon={CheckCircle2}  label="Showed Up"       value={String(totals.showed)}     accent="#dcfce7" />
+        <KpiCard icon={XCircle}       label="No-Show"         value={String(totals.noShow)}     accent="#fee2e2" />
+        <KpiCard icon={AlertCircle}   label="Cancelled"       value={String(totals.cancelled)}  accent="#fef3c7" />
         <KpiCard icon={TrendingUp}    label="Show-Up Rate"
                  value={overallShowUpRate === null ? '—' : `${overallShowUpRate}%`}
                  sub={overallShowUpRate === null ? 'mark bookings to track' : `${totals.showed}/${totals.showed + totals.noShow}`} />
-        <KpiCard icon={DollarSign}    label="Revenue (sales)"    value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} />
+        <KpiCard icon={DollarSign}    label="Revenue (sales)" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} delta={delta.sales} compareLabel={period.compareLabel} />
         <KpiCard icon={Users}         label="Conversion Rate"
                  value={`${overallConversion}%`}
                  sub="sales / show-ups" />
@@ -349,7 +410,7 @@ export default function SalesDashboard({ bookings = [] }) {
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h2 className="font-semibold text-gray-900">Spend & Efficiency · Last {DAYS_BACK} Days</h2>
+            <h2 className="font-semibold text-gray-900">Spend & Efficiency · {period.label}</h2>
             <p className="text-[11px] text-gray-500 mt-0.5">Meta Ads × LakbayHub sales</p>
           </div>
           {metaError ? (
@@ -367,11 +428,11 @@ export default function SalesDashboard({ bookings = [] }) {
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-4">
-          <KpiCard icon={DollarSign} label="Total Ads Spent"  value={formatPHPCompact(totals.spend)} accent="#dbeafe" />
-          <KpiCard icon={DollarSign} label="Gross Revenue"    value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" />
+          <KpiCard icon={DollarSign} label="Total Ads Spent"  value={formatPHPCompact(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={period.compareLabel} />
+          <KpiCard icon={DollarSign} label="Gross Revenue"    value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={period.compareLabel} />
           <KpiCard icon={TrendingUp} label="ROAS"             value={totalROAS === null ? '—' : `${totalROAS}x`} sub="revenue / spend" accent="#fef3c7" />
           <KpiCard icon={TrendingUp} label="AR%"              value={totalARPct === null ? '—' : `${totalARPct}%`} sub="ad cost / revenue" />
-          <KpiCard icon={Users}      label="Total Leads"      value={String(totals.leads)} sub="from Meta" />
+          <KpiCard icon={Users}      label="Total Leads"      value={String(totals.leads)} sub="from Meta" delta={delta.leads} compareLabel={period.compareLabel} />
           <KpiCard icon={Users}      label="CPL"              value={totalCPL === null ? '—' : formatPHPCompact(totalCPL)} sub="cost per lead" />
           <KpiCard icon={Users}      label="CAC"              value={totalCAC === null ? '—' : formatPHPCompact(totalCAC)} sub="cost per sale" />
         </div>
@@ -380,12 +441,27 @@ export default function SalesDashboard({ bookings = [] }) {
   )
 }
 
-function KpiCard({ icon: Icon, label, value, sub, accent }) {
+function KpiCard({ icon: Icon, label, value, sub, accent, delta, compareLabel }) {
+  const showDelta = delta !== undefined && delta !== null && !Number.isNaN(delta)
+  const DeltaIcon = !showDelta ? null : delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus
+  const deltaTone = !showDelta ? '' :
+    delta > 0 ? 'text-emerald-600 bg-emerald-50' :
+    delta < 0 ? 'text-red-600 bg-red-50' :
+                'text-gray-500 bg-gray-50'
   return (
     <div className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex flex-col gap-1">
-      <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-           style={{ backgroundColor: accent || '#E8F4F4' }}>
-        <Icon size={15} style={{ color: PRIMARY }} />
+      <div className="flex items-start justify-between gap-1">
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+             style={{ backgroundColor: accent || '#E8F4F4' }}>
+          <Icon size={15} style={{ color: PRIMARY }} />
+        </div>
+        {showDelta && (
+          <span className={`inline-flex items-center gap-0.5 rounded-md font-semibold text-[10px] px-1.5 py-0.5 ${deltaTone}`}
+                title={compareLabel}>
+            <DeltaIcon size={10} />
+            {Math.abs(delta)}%
+          </span>
+        )}
       </div>
       <p className="text-lg font-bold text-gray-900 truncate" title={value}>{value}</p>
       <p className="text-[11px] text-gray-500 leading-tight">{label}</p>
