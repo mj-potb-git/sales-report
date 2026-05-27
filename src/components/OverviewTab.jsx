@@ -324,7 +324,7 @@ export default function OverviewTab({ bookings = [], userName = 'MJ' }) {
     const load = () => fetchSalesRecords()
       .then(r => { if (!cancelled) setRecords(r) }).catch(() => {})
     load()
-    const id = setInterval(load, 10_000)
+    const id = setInterval(load, 30_000)
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 

@@ -6,27 +6,62 @@
 //   3. Local mock data (development fallback)
 //
 // Each step falls back to the next on failure or empty response.
+//
+// Shared cache + in-flight dedup so multiple components calling
+// fetchSalesRecords() concurrently only hit LakbayHub once. This prevents
+// rate limiting when Overview, Sales, and Dashboard tabs are all open.
 
 import { supabase, getSupabase } from './supabase'
 import { mockSalesRecords } from '../data/mockSalesData'
 import { fetchSignupsReport, mapLakbayHubRecord } from './lakbayhub'
 
-export async function fetchSalesRecords() {
+const CACHE_TTL_MS         = 20_000   // serve cached data for 20s
+const RATE_LIMIT_BACKOFF_MS = 120_000  // after a 429/rate-limit, wait 2 min before retrying live
+
+let cachedData   = null
+let cachedAt     = 0
+let inFlight     = null      // shared promise so concurrent callers reuse one fetch
+let rateLimitedUntil = 0
+
+// In-memory shadow of the last successful LakbayHub fetch — survives the
+// rate-limit window so the UI keeps showing real data instead of mock seed.
+let lastRealData = null
+let lastRealAt   = 0
+
+async function fetchFresh() {
   // 1. Live LakbayHub API ----------------------------------------------------
-  try {
-    const raw = await fetchSignupsReport()
-    if (Array.isArray(raw) && raw.length > 0) {
-      const mapped = raw
-        .map((r, i) => mapLakbayHubRecord(r, i))
-        .filter(r => r.date) // drop records with no payment date
-      if (mapped.length > 0) {
-        console.info(`[lakbay] Loaded ${mapped.length} records from LakbayHub API`)
-        return mapped
+  if (Date.now() < rateLimitedUntil) {
+    console.warn('[lakbay] LakbayHub rate-limited; using last known real data if available')
+    if (lastRealData) return lastRealData
+  } else {
+    try {
+      const raw = await fetchSignupsReport()
+      if (Array.isArray(raw) && raw.length > 0) {
+        const mapped = raw
+          .map((r, i) => mapLakbayHubRecord(r, i))
+          .filter(r => r.date)
+        if (mapped.length > 0) {
+          console.info(`[lakbay] Loaded ${mapped.length} records from LakbayHub API`)
+          lastRealData = mapped
+          lastRealAt = Date.now()
+          return mapped
+        }
+      }
+      console.warn('[lakbay] LakbayHub API returned no records, trying Supabase')
+    } catch (err) {
+      // Detect rate limit and back off
+      if (/too many requests|rate limit|429/i.test(err.message)) {
+        rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
+        console.warn(`[lakbay] LakbayHub rate-limited; backing off ${RATE_LIMIT_BACKOFF_MS / 1000}s`)
+        if (lastRealData) {
+          console.info(`[lakbay] Serving last-known ${lastRealData.length} real records`)
+          return lastRealData
+        }
+      } else {
+        console.warn('[lakbay] LakbayHub API failed:', err.message)
+        if (lastRealData) return lastRealData
       }
     }
-    console.warn('[lakbay] LakbayHub API returned no records, trying Supabase')
-  } catch (err) {
-    console.warn('[lakbay] LakbayHub API failed, trying Supabase:', err.message)
   }
 
   // 2. Supabase cache --------------------------------------------------------
@@ -49,6 +84,35 @@ export async function fetchSalesRecords() {
   // 3. Mock fallback ---------------------------------------------------------
   console.info(`[lakbay] Loaded ${mockSalesRecords.length} mock records`)
   return mockSalesRecords
+}
+
+/**
+ * Public API. Returns cached data when fresh; otherwise triggers a single
+ * background fetch even if many components call this concurrently.
+ */
+export async function fetchSalesRecords({ force = false } = {}) {
+  const now = Date.now()
+  if (!force && cachedData && (now - cachedAt) < CACHE_TTL_MS) {
+    return cachedData
+  }
+  if (inFlight) return inFlight
+
+  inFlight = fetchFresh()
+    .then(data => {
+      cachedData = data
+      cachedAt = Date.now()
+      return data
+    })
+    .finally(() => { inFlight = null })
+
+  return inFlight
+}
+
+/** Force-clear the cache (for manual refresh buttons) */
+export function invalidateSalesCache() {
+  cachedData = null
+  cachedAt = 0
+  rateLimitedUntil = 0
 }
 
 // --- Date helpers -----------------------------------------------------------

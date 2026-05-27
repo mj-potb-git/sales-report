@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import usePolling from './usePolling'
 import { fetchSalesRecords } from '../api/lakbay'
 
-const POLL_INTERVAL_MS = 5_000 // 5s — aggressive real-time for ops monitoring
+const POLL_INTERVAL_MS = 30_000 // 30s — LakbayHub API rate-limits beyond ~10 RPM
 
 export default function useSalesData() {
   const fetcher = useCallback(() => fetchSalesRecords(), [])
