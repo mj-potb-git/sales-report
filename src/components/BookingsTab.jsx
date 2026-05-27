@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
-import { Filter, Download, ChevronLeft, ChevronRight, MoreVertical } from 'lucide-react'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { Filter, Download, ChevronLeft, ChevronRight, MoreVertical, Sparkles, Wand2, Check, X, RotateCcw } from 'lucide-react'
 import BookingCard from './BookingCard'
 import StatusBadge from './StatusBadge'
 import AttendanceToggle from './AttendanceToggle'
-import { getStatus } from '../lib/attendance'
+import { getStatus, bulkSet, clearAll, inferAttendance } from '../lib/attendance'
+import { fetchSalesRecords } from '../api/lakbay'
 
 function downloadCSV(filename, rows) {
   const csv = rows.map(row => row.map(cell => {
@@ -27,6 +28,48 @@ export default function BookingsTab({ bookings = [] }) {
   const [activeFilter, setActiveFilter] = useState('Upcoming')
   const [page, setPage] = useState(1)
   const [openMenu, setOpenMenu] = useState(null)
+  const [autoFillOpen, setAutoFillOpen] = useState(false)
+  const [flash, setFlash] = useState(null) // { type: 'ok'|'warn', text }
+  const autoFillRef = useRef(null)
+
+  // Close auto-fill dropdown on outside click
+  useEffect(() => {
+    if (!autoFillOpen) return
+    const handler = (e) => {
+      if (autoFillRef.current && !autoFillRef.current.contains(e.target)) setAutoFillOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [autoFillOpen])
+
+  function flashMsg(type, text) {
+    setFlash({ type, text })
+    setTimeout(() => setFlash(null), 4000)
+  }
+
+  async function runAutoFill(strategy) {
+    setAutoFillOpen(false)
+    if (strategy === 'clear') {
+      if (!confirm('Clear ALL attendance markings? This cannot be undone.')) return
+      clearAll()
+      flashMsg('ok', 'All attendance markings cleared.')
+      return
+    }
+    try {
+      const sales = await fetchSalesRecords()
+      const updates = inferAttendance(bookings, sales, strategy)
+      if (updates.length === 0) {
+        flashMsg('warn', 'No past bookings to mark.')
+        return
+      }
+      bulkSet(updates)
+      const showed  = updates.filter(u => u.status === 'showed').length
+      const noShow  = updates.filter(u => u.status === 'no_show').length
+      flashMsg('ok', `Marked ${updates.length} bookings: ${showed} showed up, ${noShow} no-show.`)
+    } catch (err) {
+      flashMsg('warn', `Failed: ${err.message}`)
+    }
+  }
 
   const filtered = useMemo(() => {
     const now = Date.now()
@@ -48,6 +91,16 @@ export default function BookingsTab({ bookings = [] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {flash && (
+        <div className={`px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 ${
+          flash.type === 'ok' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+        }`}>
+          {flash.type === 'ok' ? <Check size={14} /> : <X size={14} />}
+          {flash.text}
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold text-gray-900">
           {activeFilter === 'Past' ? 'Past Bookings' : 'Upcoming Bookings'}
@@ -76,6 +129,78 @@ export default function BookingsTab({ bookings = [] }) {
           >
             <Filter size={16} className="text-gray-600" />
           </button>
+
+          {/* Auto-fill attendance dropdown */}
+          <div className="relative" ref={autoFillRef}>
+            <button
+              onClick={() => setAutoFillOpen(o => !o)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
+              title="Auto-fill attendance markings"
+            >
+              <Wand2 size={13} className="text-[#1B4F4F]" />
+              <span className="hidden sm:inline">Auto-fill</span>
+            </button>
+            {autoFillOpen && (
+              <div className="absolute right-0 top-12 z-30 bg-white border border-gray-100 rounded-2xl shadow-xl min-w-[300px] py-1.5">
+                <div className="px-3 py-2 border-b border-gray-100">
+                  <p className="text-xs font-bold text-gray-900">Auto-fill Attendance</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">Past bookings only · skips cancelled & future</p>
+                </div>
+                <button
+                  onClick={() => runAutoFill('sales_then_no_show')}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors flex items-start gap-2"
+                >
+                  <Sparkles size={13} className="mt-0.5 text-amber-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-gray-900">Smart Match (Recommended)</p>
+                    <p className="text-[10px] text-gray-500">Matched to LakbayHub sale → showed; else → no-show</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => runAutoFill('sales_then_unset')}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors flex items-start gap-2"
+                >
+                  <Sparkles size={13} className="mt-0.5 text-amber-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-gray-900">Conservative Match</p>
+                    <p className="text-[10px] text-gray-500">Matched → showed; unmatched stay unset (you decide later)</p>
+                  </div>
+                </button>
+                <div className="border-t border-gray-100 my-1" />
+                <button
+                  onClick={() => runAutoFill('all_showed')}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors flex items-start gap-2"
+                >
+                  <Check size={13} className="mt-0.5 text-emerald-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-gray-900">Mark all past as Showed</p>
+                    <p className="text-[10px] text-gray-500">Bulk-set every past booking to showed up</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => runAutoFill('all_no_show')}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors flex items-start gap-2"
+                >
+                  <X size={13} className="mt-0.5 text-red-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-gray-900">Mark all past as No-Show</p>
+                    <p className="text-[10px] text-gray-500">Bulk-set every past booking to no-show</p>
+                  </div>
+                </button>
+                <div className="border-t border-gray-100 my-1" />
+                <button
+                  onClick={() => runAutoFill('clear')}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors flex items-start gap-2"
+                >
+                  <RotateCcw size={13} className="mt-0.5 text-gray-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-gray-900">Clear all markings</p>
+                    <p className="text-[10px] text-gray-500">Reset every booking to unset</p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             aria-label="Export to CSV"
