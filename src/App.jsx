@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import TabNav from './components/TabNav'
+import OverviewTab from './components/OverviewTab'
 import BookingsTab from './components/BookingsTab'
 import SalesDashboard from './components/SalesDashboard'
 import SalesAgentsTab from './components/SalesAgentsTab'
@@ -7,6 +8,7 @@ import ReportsTab from './components/ReportsTab'
 import SettingsTab from './components/SettingsTab'
 import LiveIndicator from './components/LiveIndicator'
 import useYcbmData from './hooks/useYcbmData'
+import { getSettings, subscribeSettings } from './lib/settings'
 
 function SkeletonLoader() {
   return (
@@ -35,37 +37,60 @@ function ErrorState({ error }) {
   )
 }
 
+function UserBadge({ userName, userRole }) {
+  const initials = userName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  return (
+    <div className="flex items-center gap-2.5 pl-3 ml-2 border-l border-gray-200">
+      <div className="w-8 h-8 rounded-full text-white text-xs font-bold flex items-center justify-center"
+           style={{ backgroundColor: '#1B4F4F' }}>
+        {initials}
+      </div>
+      <div className="hidden sm:flex flex-col leading-tight">
+        <span className="text-xs font-semibold text-gray-900">{userName}</span>
+        <span className="text-[10px] text-gray-500">{userRole}</span>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('bookings')
+  const [activeTab, setActiveTab] = useState('overview')
   const { bookings, loading, refreshing, error, lastFetched, refresh } = useYcbmData()
+
+  // Re-read settings on change so header updates live
+  const [settings, setSettings] = useState(getSettings())
+  useEffect(() => subscribeSettings(setSettings), [])
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8FAFA' }}>
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
-          <div className="flex flex-col">
-            <span className="text-xs text-gray-400 font-medium tracking-wide uppercase">
-              Angel of Pinoy Online Travel Biz
-            </span>
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-lg font-bold" style={{ color: '#1B4F4F' }}>
-                Travel Dashboard
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] text-gray-400 font-semibold tracking-widest uppercase truncate">
+                {settings.organizationName}
               </span>
-              {(activeTab === 'bookings' || activeTab === 'dashboard') && (
-                <LiveIndicator
-                  lastFetched={lastFetched}
-                  refreshing={refreshing}
-                  onRefresh={refresh}
-                  label="YCBM"
-                />
-              )}
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-lg font-bold truncate" style={{ color: '#1B4F4F' }}>
+                  {settings.dashboardTitle}
+                </span>
+                {(activeTab === 'overview' || activeTab === 'bookings' || activeTab === 'dashboard') && (
+                  <LiveIndicator
+                    lastFetched={lastFetched}
+                    refreshing={refreshing}
+                    onRefresh={refresh}
+                    label="YCBM"
+                  />
+                )}
+              </div>
             </div>
+            <UserBadge userName={settings.userName} userRole={settings.userRole} />
           </div>
           <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 py-5">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5">
         {/* Settings is always reachable — even mid-load or during an error —
             so users can fix bad credentials without being locked out */}
         {activeTab === 'settings' ? (
@@ -76,6 +101,7 @@ export default function App() {
           <ErrorState error={error} />
         ) : (
           <div key={activeTab} className="tab-content">
+            {activeTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} />}
             {activeTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
             {activeTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
             {activeTab === 'sales'     && <SalesAgentsTab />}

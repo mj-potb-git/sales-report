@@ -76,14 +76,21 @@ export default function SettingsTab() {
   const [testResult, setTestResult] = useState({ supabase: null }) // null | 'testing' | {ok, msg}
 
   useEffect(() => {
-    setDirty({ supabaseUrl: '', supabaseKey: '', monthlyTarget: '' })
+    setDirty({
+      supabaseUrl: '', supabaseKey: '', monthlyTarget: '',
+      userName: '', userRole: '', dashboardTitle: '', organizationName: '',
+    })
     setHasChanges(false)
   }, [settings])
 
   const effective = {
-    supabaseUrl:   dirty.supabaseUrl   || settings.supabaseUrl,
-    supabaseKey:   dirty.supabaseKey   || settings.supabaseKey,
-    monthlyTarget: dirty.monthlyTarget || String(settings.monthlyTarget),
+    supabaseUrl:      dirty.supabaseUrl   || settings.supabaseUrl,
+    supabaseKey:      dirty.supabaseKey   || settings.supabaseKey,
+    monthlyTarget:    dirty.monthlyTarget || String(settings.monthlyTarget),
+    userName:         dirty.userName      || settings.userName,
+    userRole:         dirty.userRole      || settings.userRole,
+    dashboardTitle:   dirty.dashboardTitle || settings.dashboardTitle,
+    organizationName: dirty.organizationName || settings.organizationName,
   }
 
   function field(key, value) {
@@ -146,6 +153,73 @@ export default function SettingsTab() {
           Manage API credentials. Browser-safe values can be edited here; server-side values live in <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">.env</code>.
         </p>
       </div>
+
+      {/* Personalization section */}
+      <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col gap-4">
+        <div>
+          <h2 className="font-semibold text-gray-900">Personalization</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Header, greeting, and branding — yours.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">Your name</label>
+              <OriginBadge origin={settings._origin.userName} />
+            </div>
+            <input
+              type="text" value={effective.userName} onChange={e => field('userName', e.target.value)}
+              placeholder="MJ"
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1B4F4F]" />
+            <p className="text-[11px] text-gray-500">Shown sa header and greeting ("Magandang umaga, MJ").</p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">Your role</label>
+              <OriginBadge origin={settings._origin.userRole} />
+            </div>
+            <input
+              type="text" value={effective.userRole} onChange={e => field('userRole', e.target.value)}
+              placeholder="General Manager"
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1B4F4F]" />
+            <p className="text-[11px] text-gray-500">e.g. Sales Manager, GM, Founder</p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">Dashboard title</label>
+              <OriginBadge origin={settings._origin.dashboardTitle} />
+            </div>
+            <input
+              type="text" value={effective.dashboardTitle} onChange={e => field('dashboardTitle', e.target.value)}
+              placeholder="Operations Console"
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1B4F4F]" />
+            <p className="text-[11px] text-gray-500">Main heading sa top.</p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">Organization label</label>
+              <OriginBadge origin={settings._origin.organizationName} />
+            </div>
+            <input
+              type="text" value={effective.organizationName} onChange={e => field('organizationName', e.target.value)}
+              placeholder="POTB · Pinoy Online Travel Biz"
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#1B4F4F]" />
+            <p className="text-[11px] text-gray-500">Small uppercase line above the title.</p>
+          </div>
+        </div>
+
+        <button
+          onClick={save}
+          disabled={!hasChanges}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed self-start"
+          style={{ backgroundColor: PRIMARY }}
+        >
+          {savedFlash ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+        </button>
+      </section>
 
       {/* Business section — monthly target etc. */}
       <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col gap-4">

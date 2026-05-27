@@ -13,11 +13,18 @@
 const STORAGE_KEY = 'salesDashboard.settings.v1'
 
 // What the user can override at runtime (browser-safe only):
-const BROWSER_FIELDS = ['supabaseUrl', 'supabaseKey', 'monthlyTarget']
+const BROWSER_FIELDS = [
+  'supabaseUrl', 'supabaseKey', 'monthlyTarget',
+  'userName', 'userRole', 'dashboardTitle', 'organizationName',
+]
 
 // Default monthly sales target — placeholder for an Angel of Pinoy
 // Travel Biz benchmark. Edit in Settings → Business → Monthly Target.
 const DEFAULT_MONTHLY_TARGET = 1_000_000 // ₱1,000,000
+const DEFAULT_USER_NAME      = 'MJ'
+const DEFAULT_USER_ROLE      = 'General Manager'
+const DEFAULT_DASHBOARD_TITLE = 'Operations Console'
+const DEFAULT_ORG_NAME       = 'POTB · Pinoy Online Travel Biz'
 
 function readStored() {
   try {
@@ -38,14 +45,22 @@ export function getSettings() {
   const stored = readStored()
   const env    = envFallback()
   return {
-    supabaseUrl:    stored.supabaseUrl || env.supabaseUrl,
-    supabaseKey:    stored.supabaseKey || env.supabaseKey,
-    monthlyTarget:  Number(stored.monthlyTarget) || DEFAULT_MONTHLY_TARGET,
+    supabaseUrl:      stored.supabaseUrl    || env.supabaseUrl,
+    supabaseKey:      stored.supabaseKey    || env.supabaseKey,
+    monthlyTarget:    Number(stored.monthlyTarget) || DEFAULT_MONTHLY_TARGET,
+    userName:         stored.userName       || DEFAULT_USER_NAME,
+    userRole:         stored.userRole       || DEFAULT_USER_ROLE,
+    dashboardTitle:   stored.dashboardTitle || DEFAULT_DASHBOARD_TITLE,
+    organizationName: stored.organizationName || DEFAULT_ORG_NAME,
     // origin tracking so the UI can show "from .env" vs "from settings"
     _origin: {
-      supabaseUrl:   stored.supabaseUrl   ? 'override' : (env.supabaseUrl ? 'env' : 'empty'),
-      supabaseKey:   stored.supabaseKey   ? 'override' : (env.supabaseKey ? 'env' : 'empty'),
-      monthlyTarget: stored.monthlyTarget ? 'override' : 'default',
+      supabaseUrl:      stored.supabaseUrl   ? 'override' : (env.supabaseUrl ? 'env' : 'empty'),
+      supabaseKey:      stored.supabaseKey   ? 'override' : (env.supabaseKey ? 'env' : 'empty'),
+      monthlyTarget:    stored.monthlyTarget ? 'override' : 'default',
+      userName:         stored.userName      ? 'override' : 'default',
+      userRole:         stored.userRole      ? 'override' : 'default',
+      dashboardTitle:   stored.dashboardTitle ? 'override' : 'default',
+      organizationName: stored.organizationName ? 'override' : 'default',
     },
   }
 }

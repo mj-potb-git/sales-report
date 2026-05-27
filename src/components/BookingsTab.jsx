@@ -3,6 +3,22 @@ import { Filter, Download, ChevronLeft, ChevronRight, MoreVertical } from 'lucid
 import BookingCard from './BookingCard'
 import StatusBadge from './StatusBadge'
 import AttendanceToggle from './AttendanceToggle'
+import { getStatus } from '../lib/attendance'
+
+function downloadCSV(filename, rows) {
+  const csv = rows.map(row => row.map(cell => {
+    if (cell == null) return ''
+    const s = String(cell)
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 const VIEW_FILTERS = ['Upcoming', 'Past', 'Date Range']
 const PER_PAGE = 10
@@ -62,12 +78,22 @@ export default function BookingsTab({ bookings = [] }) {
           </button>
 
           <button
-            aria-label="Export"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors"
+            aria-label="Export to CSV"
+            onClick={() => {
+              const today = new Date().toISOString().slice(0, 10)
+              const header = ['Date', 'Time', 'Duration (min)', 'Customer', 'Team', 'Appointment Type', 'Attendance', 'Booking ID', 'Time Zone']
+              const rows = [header, ...filtered.map(b => [
+                b.date, b.time, b.durationMinutes, b.name, b.team, b.appointmentType,
+                getStatus(b.id) || 'unset', b.id, b.timeZone,
+              ])]
+              downloadCSV(`bookings-${activeFilter.toLowerCase()}-${today}.csv`, rows)
+            }}
+            title={`Export ${filtered.length} ${activeFilter.toLowerCase()} bookings`}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors hover:opacity-90"
             style={{ backgroundColor: '#1B4F4F' }}
           >
             <Download size={15} />
-            <span className="hidden sm:inline">Export</span>
+            <span className="hidden sm:inline">Export CSV</span>
           </button>
         </div>
       </div>
