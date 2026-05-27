@@ -3,6 +3,7 @@ import TabNav from './components/TabNav'
 import BookingsTab from './components/BookingsTab'
 import SalesDashboard from './components/SalesDashboard'
 import SalesAgentsTab from './components/SalesAgentsTab'
+import ReportsTab from './components/ReportsTab'
 import SettingsTab from './components/SettingsTab'
 import LiveIndicator from './components/LiveIndicator'
 import useYcbmData from './hooks/useYcbmData'
@@ -78,6 +79,7 @@ export default function App() {
             {activeTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
             {activeTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
             {activeTab === 'sales'     && <SalesAgentsTab />}
+            {activeTab === 'reports'   && <ReportsTab />}
           </div>
         )}
       </main>
