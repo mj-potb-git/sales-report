@@ -112,6 +112,7 @@ function HeatCell({ attendees, bookings }) {
     return <td className="px-2 py-1.5 text-center text-gray-300 text-xs">—</td>
   }
   const ratio = attendees / bookings
+  const pct   = Math.round(ratio * 100)
   const tone =
     ratio >= 0.7 ? 'bg-emerald-100 text-emerald-800'
   : ratio >= 0.4 ? 'bg-amber-100 text-amber-800'
@@ -119,8 +120,9 @@ function HeatCell({ attendees, bookings }) {
   :                'bg-gray-100 text-gray-600'
   return (
     <td className="px-2 py-1.5 text-center">
-      <span className={`inline-block min-w-[60px] px-2 py-0.5 rounded-md text-[11px] font-semibold ${tone}`}>
-        {attendees}/{bookings}
+      <span className={`inline-flex flex-col items-center min-w-[60px] px-2 py-0.5 rounded-md font-semibold ${tone}`}>
+        <span className="text-[11px] leading-tight">{attendees}/{bookings}</span>
+        <span className="text-[9px] leading-tight opacity-80">{pct}%</span>
       </span>
     </td>
   )
