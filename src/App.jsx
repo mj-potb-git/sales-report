@@ -9,6 +9,10 @@ import SettingsTab from './components/SettingsTab'
 import LiveIndicator from './components/LiveIndicator'
 import useYcbmData from './hooks/useYcbmData'
 import { getSettings, subscribeSettings } from './lib/settings'
+import { startAttendancePoller } from './lib/attendance'
+
+// Boot attendance sync once on app load (idempotent)
+startAttendancePoller()
 
 function SkeletonLoader() {
   return (
