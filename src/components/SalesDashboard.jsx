@@ -24,6 +24,8 @@ const PERIODS = [
   { id: 'weekly',  label: 'This Week', days: 7,  compareLabel: 'vs last week' },
   { id: 'biweek',  label: '14 Days',   days: 14, compareLabel: 'vs prior 14d' },
   { id: 'monthly', label: 'This Month',days: 30, compareLabel: 'vs last month' },
+  { id: '60d',     label: '60 Days',   days: 60, compareLabel: 'vs prior 60d' },
+  { id: '90d',     label: '90 Days',   days: 90, compareLabel: 'vs prior 90d' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -169,7 +171,7 @@ export default function SalesDashboard({ bookings = [] }) {
   useEffect(() => {
     let cancelled = false
     const load = () =>
-      fetchMetaDailyMap({ days: 60 })
+      fetchMetaDailyMap({ days: 180 }) // pull 6 months for 60d/90d period views
         .then(m => { if (!cancelled) { setMetaByDate(m); setMetaError(null) } })
         .catch(e => { if (!cancelled) setMetaError(e) })
     load()
@@ -341,7 +343,7 @@ export default function SalesDashboard({ bookings = [] }) {
             POTB · {period.label} ({DAYS_BACK === 1 ? 'today' : `last ${DAYS_BACK} days`}) · YCBM × LakbayHub × Meta Ads × Attendance
           </p>
         </div>
-        <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+        <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto max-w-full">
           {PERIODS.map(p => (
             <button
               key={p.id}

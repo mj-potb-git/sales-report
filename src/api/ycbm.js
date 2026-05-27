@@ -13,10 +13,10 @@ async function get(path) {
 //
 // Default window: 30 days back to 60 days forward.
 
-const DEFAULT_FROM_DAYS_BACK    = 14    // smaller default = faster first load
+const DEFAULT_FROM_DAYS_BACK    = 90    // 3 months back — supports 90d period view
 const DEFAULT_TO_DAYS_FORWARD   = 30
-const MAX_PAGES                 = 200
-const PAGINATION_HARD_TIME_LIMIT = 60000 // ms
+const MAX_PAGES                 = 500
+const PAGINATION_HARD_TIME_LIMIT = 180000 // 3 minutes for the heavy initial fetch
 
 function toISO(date) {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
