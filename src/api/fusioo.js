@@ -32,20 +32,44 @@ export function fetchAppSchema(appId = BOOKING_TX_APP_ID) {
   return get(`/apps/${appId}`).then(j => j.data)
 }
 
+// Module-level cache + in-flight dedup so React Strict Mode + multiple
+// component mounts don't trigger N parallel paginated fetches (which hammers
+// Fusioo and never finishes).
+let _cache = null
+let _cacheAt = 0
+let _inFlight = null
+const CACHE_TTL_MS = 60_000
+
 /**
- * Fetch ALL booking transactions, paginated. Returns the raw Fusioo rows.
- * Paginates by 200 until a partial page is returned.
+ * Fetch booking transactions, paginated. Defaults to 5 pages (1000 most-recent
+ * records by transaction_date desc) — plenty for analytics, fast to load.
+ * Bump `maxPages` if you need deeper history.
  */
-export async function fetchAllBookingTransactions({ appId = BOOKING_TX_APP_ID, maxPages = 50 } = {}) {
-  const all = []
-  for (let i = 0; i < maxPages; i++) {
-    const offset = i * PAGE_SIZE
-    const j = await get(`/records/apps/${appId}?limit=${PAGE_SIZE}&offset=${offset}&sort_by=transaction_date&order=desc`)
-    const page = j.data || []
-    all.push(...page)
-    if (page.length < PAGE_SIZE) break
-  }
-  return all
+export async function fetchAllBookingTransactions({
+  appId = BOOKING_TX_APP_ID,
+  maxPages = 5,            // 5 × 200 = 1000 records — covers many months of POTB activity
+  force = false,
+} = {}) {
+  const now = Date.now()
+  if (!force && _cache && (now - _cacheAt) < CACHE_TTL_MS) return _cache
+  if (_inFlight) return _inFlight
+
+  _inFlight = (async () => {
+    const all = []
+    for (let i = 0; i < maxPages; i++) {
+      const offset = i * PAGE_SIZE
+      const j = await get(`/records/apps/${appId}?limit=${PAGE_SIZE}&offset=${offset}&sort_by=transaction_date&order=desc`)
+      const page = j.data || []
+      all.push(...page)
+      if (page.length < PAGE_SIZE) break
+    }
+    _cache = all
+    _cacheAt = Date.now()
+    _inFlight = null
+    return all
+  })()
+
+  return _inFlight
 }
 
 // --- Field name -> normalized agent/team helpers --------------------------

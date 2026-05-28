@@ -490,11 +490,9 @@ export default function AccountOfficersTab() {
   const priorAgents = totalsByAgent(priorRanged)
   const priorByName = Object.fromEntries(priorAgents.map(a => [a.name, a]))
 
-  // Available clusters for the dropdown filter
-  const clusterOptions = useMemo(
-    () => Array.from(new Set(allAgents.map(a => a.team))).filter(Boolean).sort(),
-    [allAgents]
-  )
+  // Available clusters for the dropdown filter (plain compute — not memoized
+  // because this component has early returns; hooks must be unconditional)
+  const clusterOptions = Array.from(new Set(allAgents.map(a => a.team))).filter(Boolean).sort()
 
   // Compute team avg first (needed for tier filter)
   const _realAgentsForAvg = allAgents.filter(a => a.name !== 'Unassigned')
