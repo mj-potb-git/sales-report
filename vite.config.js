@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
   const metaAdAccount = env.META_AD_ACCOUNT_ID || ''
   const metaToken     = env.META_ACCESS_TOKEN  || ''
 
+  const fusiooToken = env.FUSIOO_ACCESS_TOKEN || ''
+
   return {
     plugins: [react(), tailwindcss()],
     server: {
@@ -38,6 +40,20 @@ export default defineConfig(({ mode }) => {
             proxy.on('proxyReq', (proxyReq) => {
               proxyReq.setHeader('Accept', 'application/json')
               proxyReq.setHeader('Content-Type', 'application/json')
+            })
+          },
+        },
+        // Fusioo Booking Transactions — for Account Officer tracking.
+        // 10-year Bearer token from Credentials Grant lives in .env.
+        '/api/fusioo': {
+          target: 'https://api.fusioo.com',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => path.replace(/^\/api\/fusioo/, '/v3'),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              if (fusiooToken) proxyReq.setHeader('Authorization', `Bearer ${fusiooToken}`)
+              proxyReq.setHeader('Accept', 'application/json')
             })
           },
         },

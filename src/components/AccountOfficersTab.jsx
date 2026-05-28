@@ -5,7 +5,7 @@
 // Data source: LakbayHub today (via useSalesData). Fusioo BookingTransactions
 // will augment / replace once credentials are configured.
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -19,9 +19,10 @@ import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
 import {
   filterByRange, rangeFor, sameDayLastWeek, parseDate, sum,
-  totalsByAgent, totalsByTeam, dailyTrend,
+  totalsByAgent as totalsByAgentLBH, totalsByTeam as totalsByTeamLBH, dailyTrend,
   formatPHP, formatPHPCompact, timeAgo,
 } from '../api/lakbay'
+import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
 
 const PRIMARY = '#1B4F4F'
 const ACCENT  = '#F5A623'
@@ -212,15 +213,43 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
 // Main view
 
 export default function AccountOfficersTab() {
-  const { records, loading, refreshing, error, lastFetched, refresh } = useSalesData()
   const [periodId, setPeriodId] = useState('monthly')
   const [search, setSearch] = useState('')
   const [filterUnassigned, setFilterUnassigned] = useState(true)
   const [selectedAgent, setSelectedAgent] = useState(null)
 
+  // --- Fusioo data fetch (primary source for agent attribution) ---
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(null)
+  const [lastFetched, setLastFetched] = useState(null)
+
+  const load = async ({ background } = {}) => {
+    if (background) setRefreshing(true)
+    try {
+      const raw = await fetchAllBookingTransactions()
+      const mapped = raw.map(mapBookingTransaction).filter(r => r.date)
+      setRecords(mapped)
+      setError(null)
+      setLastFetched(new Date())
+    } catch (e) {
+      setError(e)
+    } finally {
+      if (background) setRefreshing(false)
+      else setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load({ background: false })
+    const id = setInterval(() => load({ background: true }), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   const period = PERIODS.find(p => p.id === periodId) ?? PERIODS[1]
 
-  if (loading) return <div className="text-center py-12 text-gray-400">Loading account officers data…</div>
+  if (loading) return <div className="text-center py-12 text-gray-400">Loading Booking Transactions from Fusioo…</div>
   if (error)   return <div className="text-center py-12 text-red-500">{error.message}</div>
 
   // Period filter
@@ -325,7 +354,7 @@ export default function AccountOfficersTab() {
           </h1>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
             <p className="text-sm text-gray-500">Sales Skills Development view · {filteredAgents.length} agent{filteredAgents.length === 1 ? '' : 's'}</p>
-            <LiveIndicator lastFetched={lastFetched} refreshing={refreshing} onRefresh={refresh} label="LakbayHub" />
+            <LiveIndicator lastFetched={lastFetched} refreshing={refreshing} onRefresh={() => load({ background: true })} label="Fusioo" />
           </div>
         </div>
         <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto">
@@ -478,15 +507,14 @@ export default function AccountOfficersTab() {
         </div>
       </section>
 
-      {/* Fusioo placeholder note */}
-      <section className="bg-blue-50 border border-blue-100 rounded-2xl p-4 flex items-start gap-2.5 text-sm text-blue-900">
-        <Lightbulb size={16} className="mt-0.5 flex-shrink-0" />
+      {/* Data source note */}
+      <section className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-start gap-2.5 text-sm text-emerald-900">
+        <Sparkles size={16} className="mt-0.5 flex-shrink-0" />
         <div className="min-w-0">
-          <p className="font-semibold">Data source · LakbayHub sign-ups (via <code className="px-1 bg-blue-100 rounded text-xs">sales_closer</code> field)</p>
-          <p className="text-xs mt-1 text-blue-800/90">
-            Once you finish registering the Fusioo app and add credentials to <code className="px-1 bg-blue-100 rounded">.env</code>,
-            we'll add a parallel data source from <span className="font-semibold">Fusioo BookingTransactions</span> with proper Account Officer attribution.
-            {unassignedPct > 0 && <> {unassignedPct}% of revenue is currently unassigned — Fusioo will fix that.</>}
+          <p className="font-semibold">Data source · Fusioo Booking Transactions ({records.length} records loaded)</p>
+          <p className="text-xs mt-1 text-emerald-800/90">
+            Each transaction has proper <code className="px-1 bg-emerald-100 rounded">agent_name</code> + <code className="px-1 bg-emerald-100 rounded">team_name</code> attribution.
+            Token valid until ~2036. Polls every 60s.
           </p>
         </div>
       </section>
