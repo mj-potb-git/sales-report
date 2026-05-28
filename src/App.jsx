@@ -4,6 +4,7 @@ import OverviewTab from './components/OverviewTab'
 import BookingsTab from './components/BookingsTab'
 import SalesDashboard from './components/SalesDashboard'
 import SalesAgentsTab from './components/SalesAgentsTab'
+import AccountOfficersTab from './components/AccountOfficersTab'
 import ReportsTab from './components/ReportsTab'
 import SettingsTab from './components/SettingsTab'
 import LiveIndicator from './components/LiveIndicator'
@@ -109,6 +110,7 @@ export default function App() {
             {activeTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
             {activeTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
             {activeTab === 'sales'     && <SalesAgentsTab />}
+            {activeTab === 'officers'  && <AccountOfficersTab />}
             {activeTab === 'reports'   && <ReportsTab />}
           </div>
         )}

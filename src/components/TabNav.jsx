@@ -1,10 +1,11 @@
-import { LayoutDashboard, CalendarDays, BarChart2, Users, FileText, Settings } from 'lucide-react'
+import { LayoutDashboard, CalendarDays, BarChart2, Users, Briefcase, FileText, Settings } from 'lucide-react'
 
 const tabs = [
   { id: 'overview',  label: 'Overview',  Icon: LayoutDashboard },
   { id: 'bookings',  label: 'Bookings',  Icon: CalendarDays },
   { id: 'dashboard', label: 'Operations',Icon: BarChart2 },
   { id: 'sales',     label: 'Sales',     Icon: Users },
+  { id: 'officers',  label: 'Officers',  Icon: Briefcase },
   { id: 'reports',   label: 'Reports',   Icon: FileText },
   { id: 'settings',  label: 'Settings',  Icon: Settings },
 ]

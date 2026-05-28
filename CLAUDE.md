@@ -33,14 +33,15 @@ server-side so the browser never sees the secrets.
 
 ---
 
-## The 6 tabs (in nav order)
+## The 7 tabs (in nav order)
 
 1. **Overview** — Daily hero, smart alerts, target progress, top clusters, live activity. The "morning coffee" view.
 2. **Bookings** — Full YCBM table + CSV export + **Auto-fill attendance** (matches YCBM bookings to LakbayHub sales by name).
 3. **Operations** (the main dashboard) — Spreadsheet-style daily matrix matching MJ's POTB Meta Ads spreadsheet. Has period selector (Today / Week / 14d / Month / 60d / 90d) + Smart Alerts + Funnel viz + Time Slots heatmap.
 4. **Sales** — Per-agent / per-team analytics, packages, smart insights.
-5. **Reports** — Raw LakbayHub sign-ups report with daily/weekly/monthly toggle + CSV export.
-6. **Settings** — Personalization + credential health + Meta connection test.
+5. **Officers** — Sales Skills Development view: company overview, performance leaderboard with tier badges (Top Performer / Strong / Average / Needs Coaching), coaching priorities, individual drill-down with trends + recent deals. **Currently sources from LakbayHub `sales_closer` field — but 100% of revenue is currently unassigned**. Will be fixed when Fusioo BookingTransactions is integrated (credentials pending).
+6. **Reports** — Raw LakbayHub sign-ups report with daily/weekly/monthly toggle + CSV export.
+7. **Settings** — Personalization + credential health + Meta connection test.
 
 ---
 
@@ -154,6 +155,7 @@ vite.config.js            — Three proxies: /api/ycbm, /api/lakbay, /api/meta
 
 ## What's pending / not done
 
+- [ ] **Fusioo integration** — MJ to register an app at https://app.fusioo.com/integrations (Credentials Grant), add `FUSIOO_CLIENT_ID`, `FUSIOO_CLIENT_SECRET`, `FUSIOO_APP_ID=b549c26f3ff64497b314a14d26d8cd2e` to .env. Then build a Vite proxy + client + integrate into Officers tab so Account Officer attribution actually works. Will give Sales Skills Development a real signal instead of 100% Unassigned.
 - [ ] Cache YCBM bookings in Supabase (eliminates the 2-3 min initial fetch)
 - [ ] Custom date range picker (currently only presets)
 - [ ] Trend charts of Profit/ROAS over time
