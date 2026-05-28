@@ -443,6 +443,7 @@ export default function AccountOfficersTab() {
   const [filterUnassigned, setFilterUnassigned] = useState(true)
   const [filterCluster, setFilterCluster] = useState('all') // cluster name or 'all'
   const [filterTier, setFilterTier] = useState('all')        // 'Top Performer' | 'Strong' | 'Average' | 'Needs Coaching' | 'all'
+  const [filterDivision, setFilterDivision] = useState('all') // 'all' | 'domestic' | 'international'
   const [selectedAgent, setSelectedAgent] = useState(null)
 
   // --- Fusioo data fetch (primary source for agent attribution) ---
@@ -482,8 +483,35 @@ export default function AccountOfficersTab() {
   // Period filter (calendar-aligned for weekly/monthly, rolling for the rest)
   const now = new Date()
   const { start, end, priorStart, priorEnd } = rangeForPeriod(period, now)
-  const ranged = filterByRange(records, start, end)
-  const priorRanged = (priorStart && priorEnd) ? filterByRange(records, priorStart, priorEnd) : []
+  const rangedRaw = filterByRange(records, start, end)
+  const priorRangedRaw = (priorStart && priorEnd) ? filterByRange(records, priorStart, priorEnd) : []
+
+  // Domestic vs International — derived from team name. "POTB International"
+  // = international; everything else (e.g. "POTB Domestic") = domestic.
+  const isInternational = (team) => /international/i.test(team || '')
+  const matchesDivision = (r) => {
+    if (filterDivision === 'all') return true
+    if (filterDivision === 'international') return isInternational(r.team)
+    return !isInternational(r.team) // domestic
+  }
+  const ranged = rangedRaw.filter(matchesDivision)
+  const priorRanged = priorRangedRaw.filter(matchesDivision)
+
+  // Compute Domestic + International breakdowns (always vs ALL, ignoring division filter)
+  const domesticRecs    = rangedRaw.filter(r => !isInternational(r.team))
+  const internationalRecs = rangedRaw.filter(r =>  isInternational(r.team))
+  const breakdown = {
+    domestic: {
+      revenue: domesticRecs.reduce((s, r) => s + (r.sales_amount || 0), 0),
+      deals:   domesticRecs.length,
+      agents:  new Set(domesticRecs.map(r => r.sales_agent)).size,
+    },
+    international: {
+      revenue: internationalRecs.reduce((s, r) => s + (r.sales_amount || 0), 0),
+      deals:   internationalRecs.length,
+      agents:  new Set(internationalRecs.map(r => r.sales_agent)).size,
+    },
+  }
 
   // Per-agent totals
   const allAgents = totalsByAgent(ranged)
@@ -591,15 +619,32 @@ export default function AccountOfficersTab() {
             <LiveIndicator lastFetched={lastFetched} refreshing={refreshing} onRefresh={() => load({ background: true })} label="Fusioo" />
           </div>
         </div>
-        <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto">
-          {PERIODS.map(p => (
-            <button key={p.id} onClick={() => setPeriodId(p.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                      periodId === p.id ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
-                    }`}>
-              {p.label}
-            </button>
-          ))}
+        <div className="flex flex-col gap-2 items-end">
+          <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto">
+            {PERIODS.map(p => (
+              <button key={p.id} onClick={() => setPeriodId(p.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                        periodId === p.id ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
+                      }`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {/* Division quick-filter (Domestic / International) */}
+          <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+            {[
+              { id: 'all',           label: 'All Divisions' },
+              { id: 'domestic',      label: '🇵🇭 Domestic' },
+              { id: 'international', label: '🌏 International' },
+            ].map(d => (
+              <button key={d.id} onClick={() => setFilterDivision(d.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                        filterDivision === d.id ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
+                      }`}>
+                {d.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -638,6 +683,73 @@ export default function AccountOfficersTab() {
                     value={`${unassignedPct}%`}
                     sub={`${formatPHPCompact(unassignedRevenue)} not yet attributed`}
                     accent={unassignedPct > 50 ? '#fee2e2' : '#fef3c7'} />
+        </div>
+      </section>
+
+      {/* Domestic vs International side-by-side breakdown */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+          <Users size={14} style={{ color: PRIMARY }} /> Sales by Division · {period.label}
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button type="button"
+                  onClick={() => setFilterDivision(filterDivision === 'domestic' ? 'all' : 'domestic')}
+                  className={`text-left bg-white rounded-2xl p-4 shadow-sm border-2 transition-all ${
+                    filterDivision === 'domestic' ? 'border-[#1B4F4F]' : 'border-gray-100 hover:border-[#1B4F4F]/30'
+                  }`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                🇵🇭 Domestic
+              </p>
+              {filterDivision === 'domestic' && <span className="text-[10px] font-bold text-[#1B4F4F]">FILTERED</span>}
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{formatPHP(breakdown.domestic.revenue)}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              <b>{breakdown.domestic.deals}</b> deals · <b>{breakdown.domestic.agents}</b> agent{breakdown.domestic.agents === 1 ? '' : 's'}
+              {breakdown.domestic.deals > 0 && <> · avg {formatPHPCompact(breakdown.domestic.revenue / breakdown.domestic.deals)}</>}
+            </p>
+            <div className="mt-3 h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full" style={{
+                width: `${(breakdown.domestic.revenue / Math.max(1, breakdown.domestic.revenue + breakdown.international.revenue)) * 100}%`,
+                backgroundColor: PRIMARY,
+              }} />
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {Math.round((breakdown.domestic.revenue / Math.max(1, breakdown.domestic.revenue + breakdown.international.revenue)) * 100)}% of company revenue
+            </p>
+            <p className="text-[10px] text-[#1B4F4F] mt-2 font-semibold">
+              {filterDivision === 'domestic' ? '← Click to clear filter' : 'Click to filter →'}
+            </p>
+          </button>
+          <button type="button"
+                  onClick={() => setFilterDivision(filterDivision === 'international' ? 'all' : 'international')}
+                  className={`text-left bg-white rounded-2xl p-4 shadow-sm border-2 transition-all ${
+                    filterDivision === 'international' ? 'border-[#F5A623]' : 'border-gray-100 hover:border-[#F5A623]/50'
+                  }`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                🌏 International
+              </p>
+              {filterDivision === 'international' && <span className="text-[10px] font-bold text-[#F5A623]">FILTERED</span>}
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{formatPHP(breakdown.international.revenue)}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              <b>{breakdown.international.deals}</b> deals · <b>{breakdown.international.agents}</b> agent{breakdown.international.agents === 1 ? '' : 's'}
+              {breakdown.international.deals > 0 && <> · avg {formatPHPCompact(breakdown.international.revenue / breakdown.international.deals)}</>}
+            </p>
+            <div className="mt-3 h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full" style={{
+                width: `${(breakdown.international.revenue / Math.max(1, breakdown.domestic.revenue + breakdown.international.revenue)) * 100}%`,
+                backgroundColor: ACCENT,
+              }} />
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              {Math.round((breakdown.international.revenue / Math.max(1, breakdown.domestic.revenue + breakdown.international.revenue)) * 100)}% of company revenue
+            </p>
+            <p className="text-[10px] text-[#F5A623] mt-2 font-semibold">
+              {filterDivision === 'international' ? '← Click to clear filter' : 'Click to filter →'}
+            </p>
+          </button>
         </div>
       </section>
 
