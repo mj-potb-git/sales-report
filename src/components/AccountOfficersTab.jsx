@@ -13,12 +13,26 @@ import {
 import {
   Award, Users, TrendingUp, TrendingDown, AlertCircle, Search,
   Target, Sparkles, ArrowLeft, ChevronRight, Lightbulb, GraduationCap,
-  Briefcase, BarChart3, Trophy, Flame, Snowflake, Clock,
+  Briefcase, BarChart3, Trophy, Flame, Snowflake, Clock, Download, Filter,
 } from 'lucide-react'
+
+function downloadCSV(filename, rows) {
+  const csv = rows.map(r => r.map(c => {
+    if (c == null) return ''
+    const s = String(c)
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
 import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
 import {
   filterByRange, rangeFor, sameDayLastWeek, parseDate, sum,
+  startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   totalsByAgent as totalsByAgentLBH, totalsByTeam as totalsByTeamLBH, dailyTrend,
   formatPHP, formatPHPCompact, timeAgo,
 } from '../api/lakbay'
@@ -29,12 +43,58 @@ const ACCENT  = '#F5A623'
 const PALETTE = [PRIMARY, ACCENT, '#4ECDC4', '#7FB069', '#C26DBC', '#6D9EEB']
 
 const PERIODS = [
-  { id: 'weekly',  label: 'This Week', days: 7  },
-  { id: 'monthly', label: 'This Month', days: 30 },
-  { id: '60d',     label: '60 Days',   days: 60 },
-  { id: '90d',     label: '90 Days',   days: 90 },
-  { id: 'all',     label: 'All-Time',  days: 9999 },
+  { id: 'today',   label: 'Today',     mode: 'calendar' },
+  { id: 'weekly',  label: 'This Week (Mon–Sun)', mode: 'calendar' },
+  { id: 'monthly', label: 'This Month',          mode: 'calendar' },
+  { id: '60d',     label: 'Last 60d',  mode: 'rolling', days: 60 },
+  { id: '90d',     label: 'Last 90d',  mode: 'rolling', days: 90 },
+  { id: 'all',     label: 'All-Time',  mode: 'all' },
 ]
+
+// Returns { start, end, priorStart, priorEnd } for any period.
+// Weekly = Monday-Sunday of current week.
+// Monthly = 1st to last day of current calendar month.
+// Today = today only.
+// Rolling = last N days ending today.
+function rangeForPeriod(period, anchor = new Date()) {
+  if (period.mode === 'all') {
+    return {
+      start: new Date(2020, 0, 1),
+      end: anchor,
+      priorStart: null,
+      priorEnd: null,
+    }
+  }
+  if (period.id === 'today') {
+    const s = startOfDay(anchor)
+    const e = new Date(s.getTime() + 86399999)
+    const ps = new Date(s.getTime() - 86400000)
+    const pe = new Date(s.getTime() - 1)
+    return { start: s, end: e, priorStart: ps, priorEnd: pe }
+  }
+  if (period.id === 'weekly') {
+    const s  = startOfWeek(anchor)       // Monday 00:00
+    const e  = endOfWeek(anchor)          // Sunday 23:59
+    const ps = startOfWeek(new Date(s.getTime() - 86400000)) // prior Monday
+    const pe = endOfWeek(new Date(s.getTime() - 86400000))    // prior Sunday
+    return { start: s, end: e, priorStart: ps, priorEnd: pe }
+  }
+  if (period.id === 'monthly') {
+    const s  = startOfMonth(anchor)
+    const e  = endOfMonth(anchor)
+    const priorAnchor = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 15)
+    const ps = startOfMonth(priorAnchor)
+    const pe = endOfMonth(priorAnchor)
+    return { start: s, end: e, priorStart: ps, priorEnd: pe }
+  }
+  // Rolling N days
+  const e = anchor
+  const s = new Date(anchor.getTime() - (period.days - 1) * 86400000)
+  s.setHours(0, 0, 0, 0)
+  const pe = new Date(s.getTime() - 1)
+  const ps = new Date(s.getTime() - period.days * 86400000)
+  return { start: s, end: e, priorStart: ps, priorEnd: pe }
+}
 
 // Performance tier thresholds — coaching-friendly labels
 function tierFor(agent, teamAvgRevenue) {
@@ -84,18 +144,97 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
   const tier = tierFor(agent, teamAvgRevenue)
   const recs = allRecords.filter(r => r.sales_agent === agent.name)
   const trend = useMemo(() => dailyTrend(recs, 30), [recs])
+
+  // Drill-down filters
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [periodFilter, setPeriodFilter] = useState('all')
+
+  // Date range for period filter
+  const inPeriod = (r) => {
+    if (periodFilter === 'all') return true
+    const d = parseDate(r.date)
+    const now = new Date()
+    if (periodFilter === 'thisweek') {
+      return d >= startOfWeek(now) && d <= endOfWeek(now)
+    }
+    if (periodFilter === 'thismonth') {
+      return d >= startOfMonth(now) && d <= endOfMonth(now)
+    }
+    if (periodFilter === 'last30') {
+      return (now - d) <= 30 * 86400000
+    }
+    return true
+  }
+
+  const filteredRecs = recs.filter(r =>
+    (statusFilter === 'all' || r.meta?.status === statusFilter) &&
+    (typeFilter === 'all' || r.meta?.transaction_type === typeFilter) &&
+    inPeriod(r)
+  )
+
+  // Available options for dropdowns
+  const statusOptions = Array.from(new Set(recs.map(r => r.meta?.status).filter(Boolean))).sort()
+  const typeOptions   = Array.from(new Set(recs.map(r => r.meta?.transaction_type).filter(Boolean))).sort()
+
+  // Status breakdown
+  const statusBreakdown = statusOptions.map(s => ({
+    status: s,
+    count: recs.filter(r => r.meta?.status === s).length,
+    revenue: recs.filter(r => r.meta?.status === s).reduce((sum, r) => sum + (r.sales_amount || 0), 0),
+  }))
+
+  // Transaction type breakdown
+  const typeBreakdown = typeOptions.map(t => ({
+    type: t,
+    count: recs.filter(r => r.meta?.transaction_type === t).length,
+    revenue: recs.filter(r => r.meta?.transaction_type === t).reduce((sum, r) => sum + (r.sales_amount || 0), 0),
+  })).sort((a, b) => b.revenue - a.revenue)
+
+  // Recent (filtered) transactions sorted by date desc
   const recent = useMemo(() =>
-    [...recs].sort((a, b) => b.transaction_id.localeCompare(a.transaction_id)).slice(0, 10),
-    [recs]
+    [...filteredRecs]
+      .sort((a, b) => parseDate(b.date) - parseDate(a.date))
+      .slice(0, 20),
+    [filteredRecs]
   )
 
   const avgDeal = agent.txnCount > 0 ? agent.sales / agent.txnCount : 0
+  const totalProfit = recs.reduce((s, r) => s + (r.profit || 0), 0)
+  const profitMargin = agent.sales > 0 ? Math.round((totalProfit / agent.sales) * 100) : 0
   const lastActivity = recs.length > 0
     ? recs.reduce((latest, r) => parseDate(r.date) > parseDate(latest.date) ? r : latest, recs[0])
     : null
 
+  // Best and worst deals
+  const bestDeal  = recs.length > 0 ? [...recs].sort((a, b) => b.sales_amount - a.sales_amount)[0] : null
+  const worstDeal = recs.length > 0 ? [...recs].sort((a, b) => a.sales_amount - b.sales_amount)[0] : null
+
   // Best day for this agent
   const bestDay = trend.reduce((max, d) => d.sales > max.sales ? d : max, trend[0] ?? { sales: 0 })
+
+  function exportAgentCSV() {
+    const today = new Date().toISOString().slice(0, 10)
+    const header = ['Date', 'Status', 'Transaction Type', 'Customer', 'Package Type', 'Travel Date', 'Duration', 'Sales Amount (PHP)', 'Profit (PHP)', 'Cost (PHP)', 'Payment Type', 'Transaction ID']
+    const rows = [header, ...filteredRecs
+      .sort((a, b) => parseDate(b.date) - parseDate(a.date))
+      .map(r => [
+        r.date,
+        r.meta?.status || '',
+        r.meta?.transaction_type || '',
+        r.customer_name,
+        r.meta?.type_of_package || '',
+        r.meta?.travel_date || '',
+        r.meta?.duration || '',
+        r.sales_amount,
+        r.profit || 0,
+        r.cost || 0,
+        r.meta?.payment_type || '',
+        r.transaction_id,
+      ])
+    ]
+    downloadCSV(`${agent.name.replace(/\s+/g, '-')}-sales-${today}.csv`, rows)
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -127,11 +266,13 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-5">
           <StatCard icon={TrendingUp} label="Total Revenue" value={formatPHP(agent.sales)} />
-          <StatCard icon={Briefcase}   label="Deals Closed" value={String(agent.txnCount)} />
-          <StatCard icon={Target}      label="Avg Deal Size" value={formatPHPCompact(avgDeal)} accent="#FFF4E0" />
-          <StatCard icon={Users}       label="Total Sign-ups" value={String(agent.signups)} />
+          <StatCard icon={Briefcase}  label="Deals Closed" value={String(agent.txnCount)} />
+          <StatCard icon={Target}     label="Avg Deal Size" value={formatPHPCompact(avgDeal)} accent="#FFF4E0" />
+          <StatCard icon={TrendingUp} label="Total Profit" value={formatPHPCompact(totalProfit)} sub={`${profitMargin}% margin`} accent="#dcfce7" />
+          <StatCard icon={Trophy}     label="Best Deal" value={bestDeal ? formatPHPCompact(bestDeal.sales_amount) : '—'} sub={bestDeal ? bestDeal.date : ''} accent="#FFF4E0" />
+          <StatCard icon={BarChart3}  label="Lowest Deal" value={worstDeal ? formatPHPCompact(worstDeal.sales_amount) : '—'} sub={worstDeal ? worstDeal.date : ''} />
         </div>
 
         {/* Comparison vs team avg */}
@@ -167,38 +308,122 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
         </ResponsiveContainer>
       </div>
 
-      {/* Recent transactions */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100">
-          <p className="text-sm font-semibold text-gray-700">Recent Transactions ({recent.length} of {agent.txnCount})</p>
+      {/* Status + Type breakdowns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <p className="text-sm font-semibold text-gray-700 mb-3">Status Breakdown</p>
+          {statusBreakdown.length === 0 ? <p className="text-xs text-gray-400">No data</p> : (
+            <div className="flex flex-col gap-2">
+              {statusBreakdown.map(s => {
+                const pctOfCount = recs.length > 0 ? Math.round((s.count / recs.length) * 100) : 0
+                return (
+                  <button key={s.status}
+                          onClick={() => setStatusFilter(s.status)}
+                          className="text-left">
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-gray-900">{s.status}</span>
+                      <span className="text-gray-500"><b>{s.count}</b> · {formatPHPCompact(s.revenue)} · {pctOfCount}%</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pctOfCount}%`, backgroundColor: PRIMARY }} />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
-        <div className="overflow-x-auto">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <p className="text-sm font-semibold text-gray-700 mb-3">Transaction Type Breakdown</p>
+          {typeBreakdown.length === 0 ? <p className="text-xs text-gray-400">No data</p> : (
+            <div className="flex flex-col gap-2">
+              {typeBreakdown.map((t, i) => {
+                const pctOfRev = agent.sales > 0 ? Math.round((t.revenue / agent.sales) * 100) : 0
+                return (
+                  <button key={t.type}
+                          onClick={() => setTypeFilter(t.type)}
+                          className="text-left">
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium text-gray-900">{t.type}</span>
+                      <span className="text-gray-500"><b>{t.count}</b> · {formatPHPCompact(t.revenue)} · {pctOfRev}%</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all"
+                           style={{ width: `${pctOfRev}%`, backgroundColor: PALETTE[i % PALETTE.length] }} />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Transactions table with filters + export */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-gray-700">Transactions ({recent.length} of {filteredRecs.length})</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">Filter + export all {agent.name}'s sales</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-[#1B4F4F]">
+              <option value="all">All time</option>
+              <option value="thisweek">This week (Mon–Sun)</option>
+              <option value="thismonth">This month</option>
+              <option value="last30">Last 30 days</option>
+            </select>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-[#1B4F4F]">
+              <option value="all">All statuses</option>
+              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-[#1B4F4F]">
+              <option value="all">All types</option>
+              {typeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <button onClick={exportAgentCSV}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-xl"
+                    style={{ backgroundColor: PRIMARY }}>
+              <Download size={12} /> Export CSV
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                {['Date', 'Customer', 'Package', 'Status', 'Amount'].map(h => (
-                  <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+            <thead className="sticky top-0 bg-gray-50 z-10">
+              <tr>
+                {['Date', 'Status', 'Type', 'Package', 'Travel', 'Sales', 'Profit', 'Cost', 'Payment'].map(h => (
+                  <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {recent.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No transactions yet</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No transactions match the filters</td></tr>
               ) : recent.map(r => (
                 <tr key={r.transaction_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 text-gray-600">{r.date}</td>
-                  <td className="px-4 py-2 font-medium text-gray-900">{r.customer_name}</td>
-                  <td className="px-4 py-2 text-gray-600">{r.meta?.package || '—'}</td>
-                  <td className="px-4 py-2">
-                    {r.meta?.payment_status && (
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.date}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {r.meta?.status && (
                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                        r.meta.payment_status === 'PAID' ? 'bg-emerald-50 text-emerald-700' :
-                        r.meta.payment_status === 'PENDING' ? 'bg-amber-50 text-amber-700' :
-                                                              'bg-gray-100 text-gray-600'
-                      }`}>{r.meta.payment_status}</span>
+                        /processed|completed|ready/i.test(r.meta.status) ? 'bg-emerald-50 text-emerald-700' :
+                        /pending|in progress/i.test(r.meta.status) ? 'bg-amber-50 text-amber-700' :
+                                                                       'bg-gray-100 text-gray-600'
+                      }`}>{r.meta.status}</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 font-semibold text-gray-900">{formatPHP(r.sales_amount)}</td>
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">{r.meta?.transaction_type || '—'}</td>
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">{r.meta?.type_of_package || '—'}</td>
+                  <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs" title={r.meta?.travel_date}>
+                    {r.meta?.duration || '—'}
+                  </td>
+                  <td className="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(r.sales_amount)}</td>
+                  <td className="px-3 py-2 text-emerald-700 font-medium whitespace-nowrap">{formatPHPCompact(r.profit || 0)}</td>
+                  <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{formatPHPCompact(r.cost || 0)}</td>
+                  <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">{r.meta?.payment_type || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -216,6 +441,8 @@ export default function AccountOfficersTab() {
   const [periodId, setPeriodId] = useState('monthly')
   const [search, setSearch] = useState('')
   const [filterUnassigned, setFilterUnassigned] = useState(true)
+  const [filterCluster, setFilterCluster] = useState('all') // cluster name or 'all'
+  const [filterTier, setFilterTier] = useState('all')        // 'Top Performer' | 'Strong' | 'Average' | 'Needs Coaching' | 'all'
   const [selectedAgent, setSelectedAgent] = useState(null)
 
   // --- Fusioo data fetch (primary source for agent attribution) ---
@@ -252,25 +479,34 @@ export default function AccountOfficersTab() {
   if (loading) return <div className="text-center py-12 text-gray-400">Loading Booking Transactions from Fusioo…</div>
   if (error)   return <div className="text-center py-12 text-red-500">{error.message}</div>
 
-  // Period filter
+  // Period filter (calendar-aligned for weekly/monthly, rolling for the rest)
   const now = new Date()
-  const start = period.id === 'all'
-    ? new Date(2020, 0, 1)
-    : new Date(now.getTime() - (period.days - 1) * 86400000)
-  start.setHours(0, 0, 0, 0)
-  const ranged = filterByRange(records, start, now)
-  const priorStart = new Date(start.getTime() - period.days * 86400000)
-  const priorEnd = new Date(start.getTime() - 1)
-  const priorRanged = filterByRange(records, priorStart, priorEnd)
+  const { start, end, priorStart, priorEnd } = rangeForPeriod(period, now)
+  const ranged = filterByRange(records, start, end)
+  const priorRanged = (priorStart && priorEnd) ? filterByRange(records, priorStart, priorEnd) : []
 
   // Per-agent totals
   const allAgents = totalsByAgent(ranged)
   const priorAgents = totalsByAgent(priorRanged)
   const priorByName = Object.fromEntries(priorAgents.map(a => [a.name, a]))
 
+  // Available clusters for the dropdown filter
+  const clusterOptions = useMemo(
+    () => Array.from(new Set(allAgents.map(a => a.team))).filter(Boolean).sort(),
+    [allAgents]
+  )
+
+  // Compute team avg first (needed for tier filter)
+  const _realAgentsForAvg = allAgents.filter(a => a.name !== 'Unassigned')
+  const _teamAvgRevenue   = _realAgentsForAvg.length > 0
+    ? _realAgentsForAvg.reduce((s, a) => s + a.sales, 0) / _realAgentsForAvg.length
+    : 0
+
   // Apply filters
   const filteredAgents = allAgents
     .filter(a => !filterUnassigned || a.name !== 'Unassigned')
+    .filter(a => filterCluster === 'all' || a.team === filterCluster)
+    .filter(a => filterTier === 'all' || tierFor(a, _teamAvgRevenue).label === filterTier)
     .filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()) || a.team.toLowerCase().includes(search.toLowerCase()))
 
   // Compute team average revenue (excluding unassigned) for tier classification
@@ -380,11 +616,26 @@ export default function AccountOfficersTab() {
                     sub={revenueDelta === null ? `${companyDeals} deals` : `${revenueDelta >= 0 ? '+' : ''}${revenueDelta}% vs prior · ${companyDeals} deals`} />
           <StatCard icon={Briefcase}  label="Total Deals" value={String(companyDeals)} sub={`${realAgents.length} agents active`} />
           <StatCard icon={Target}     label="Avg Deal Size" value={formatPHPCompact(companyAvgDeal)} sub="per closed sale" accent="#FFF4E0" />
-          <StatCard icon={Award}      label="Top Officer"
-                    value={topAgent ? (topAgent.name === 'Unassigned' ? '⚠ Unassigned' : topAgent.name.split(' ')[0]) : '—'}
-                    sub={topAgent ? `${formatPHPCompact(topAgent.sales)} · ${topAgent.txnCount} deals` : ''}
-                    accent="#FFF4E0" />
-          <StatCard icon={Users}      label="Top Cluster" value={topTeam?.name || '—'} sub={topTeam ? formatPHPCompact(topTeam.sales) : ''} />
+          <button type="button"
+                  onClick={() => topAgent && topAgent.name !== 'Unassigned' && setSelectedAgent(topAgent)}
+                  className="text-left bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col gap-2 hover:border-[#1B4F4F] hover:shadow transition-all">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#FFF4E0' }}>
+              <Award size={16} style={{ color: PRIMARY }} />
+            </div>
+            <p className="text-xl font-bold text-gray-900 truncate">{topAgent ? (topAgent.name === 'Unassigned' ? '⚠ Unassigned' : topAgent.name.split(' ')[0]) : '—'}</p>
+            <p className="text-xs text-gray-500 leading-tight">Top Officer <span className="text-[10px] text-[#1B4F4F]">· click for details</span></p>
+            {topAgent && <p className="text-[11px] text-gray-400 leading-tight">{formatPHPCompact(topAgent.sales)} · {topAgent.txnCount} deals</p>}
+          </button>
+          <button type="button"
+                  onClick={() => topTeam && setFilterCluster(topTeam.name)}
+                  className="text-left bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col gap-2 hover:border-[#1B4F4F] hover:shadow transition-all">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#E8F4F4' }}>
+              <Users size={16} style={{ color: PRIMARY }} />
+            </div>
+            <p className="text-xl font-bold text-gray-900 truncate">{topTeam?.name || '—'}</p>
+            <p className="text-xs text-gray-500 leading-tight">Top Cluster <span className="text-[10px] text-[#1B4F4F]">· click to filter</span></p>
+            {topTeam && <p className="text-[11px] text-gray-400 leading-tight">{formatPHPCompact(topTeam.sales)} · {topTeam.agents?.length || topTeam.agentCount || 0} agents</p>}
+          </button>
           <StatCard icon={AlertCircle} label="Unassigned Sales"
                     value={`${unassignedPct}%`}
                     sub={`${formatPHPCompact(unassignedRevenue)} not yet attributed`}
@@ -409,25 +660,40 @@ export default function AccountOfficersTab() {
       {/* Performance leaderboard */}
       <section>
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <h2 className="text-base font-semibold text-gray-800">Performance Leaderboard</h2>
+          <div>
+            <h2 className="text-base font-semibold text-gray-800">Performance Leaderboard</h2>
+            {(filterCluster !== 'all' || filterTier !== 'all') && (
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                Filtered: {filterCluster !== 'all' && <span className="font-semibold">{filterCluster}</span>}
+                {filterCluster !== 'all' && filterTier !== 'all' && ' · '}
+                {filterTier !== 'all' && <span className="font-semibold">{filterTier}</span>}
+                <button onClick={() => { setFilterCluster('all'); setFilterTier('all') }}
+                        className="ml-2 text-[#1B4F4F] underline">clear</button>
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
             <label className="flex items-center gap-1.5 text-xs text-gray-600">
-              <input
-                type="checkbox"
-                checked={filterUnassigned}
-                onChange={e => setFilterUnassigned(e.target.checked)}
-                className="rounded"
-              />
+              <input type="checkbox" checked={filterUnassigned} onChange={e => setFilterUnassigned(e.target.checked)} className="rounded" />
               Hide unassigned
             </label>
+            <select value={filterCluster} onChange={e => setFilterCluster(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#1B4F4F] bg-white">
+              <option value="all">All clusters</option>
+              {clusterOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={filterTier} onChange={e => setFilterTier(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#1B4F4F] bg-white">
+              <option value="all">All tiers</option>
+              <option value="Top Performer">🏆 Top Performer</option>
+              <option value="Strong">🔥 Strong</option>
+              <option value="Average">📊 Average</option>
+              <option value="Needs Coaching">🎓 Needs Coaching</option>
+            </select>
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search agent or cluster…"
-                className="pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#1B4F4F]"
-              />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search agent or cluster…"
+                     className="pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#1B4F4F]" />
             </div>
           </div>
         </div>
@@ -462,16 +728,24 @@ export default function AccountOfficersTab() {
                       </td>
                       <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">{a.name}</td>
                       <td className="px-3 py-2.5">
-                        <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded-md text-[11px] whitespace-nowrap">{a.team}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setFilterCluster(a.team) }}
+                          title={`Filter to ${a.team}`}
+                          className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded-md text-[11px] whitespace-nowrap hover:bg-teal-100 transition-colors"
+                        >{a.team}</button>
                       </td>
                       <td className="px-3 py-2.5 font-semibold text-gray-900">{formatPHP(a.sales)}</td>
                       <td className="px-3 py-2.5 text-gray-700">{a.txnCount}</td>
                       <td className="px-3 py-2.5 text-gray-600">{formatPHPCompact(avgDeal)}</td>
                       <td className="px-3 py-2.5 text-gray-600">{a.signups}</td>
                       <td className="px-3 py-2.5">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${tier.tone}`}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setFilterTier(tier.label) }}
+                          title={`Filter to ${tier.label}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold hover:opacity-80 transition-opacity ${tier.tone}`}
+                        >
                           <tier.Icon size={10} /> {tier.label}
-                        </span>
+                        </button>
                       </td>
                       <td className="px-3 py-2.5">
                         {delta === null ? (
