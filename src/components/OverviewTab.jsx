@@ -1,27 +1,32 @@
-// Overview tab — the one-glance executive summary.
-// Combines today's snapshot, monthly target, smart alerts, and the most
-// important cross-source KPIs across YCBM + LakbayHub + Meta Ads.
-// Designed to be the "morning coffee" view for the GM.
+// Overview tab — the morning-coffee single-glance dashboard for MJ
+// (Sales Skills Development Manager).
+//
+// Combines Fusioo Booking Transactions (real Officer attribution) + LakbayHub
+// + Meta Ads + YCBM bookings into one view. Charts, leaderboards, coaching
+// priorities, and direct drill-down links.
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Sun, Target, TrendingUp, TrendingDown, AlertTriangle,
-  Calendar, DollarSign, Users, Sparkles, CheckCircle2, Activity,
-  ArrowRight, Lightbulb, Award, Clock,
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from 'recharts'
+import {
+  Sun, Target, TrendingUp, TrendingDown, AlertTriangle, Users,
+  DollarSign, Sparkles, Award, Lightbulb, ChevronRight,
+  Calendar, Activity, GraduationCap, Trophy, Briefcase, Globe,
+  ArrowRight, BarChart3, Flame,
 } from 'lucide-react'
 import {
-  fetchSalesRecords, formatPHP, formatPHPCompact, parseDate, sum,
-  filterByRange, rangeFor, sameDayLastWeek, paceProjection,
-  lastSignupByCluster, aggregateBy, totalsByTeam,
+  parseDate, sum, startOfDay, startOfWeek, endOfWeek, startOfMonth,
+  endOfMonth, filterByRange, rangeFor, sameDayLastWeek,
+  paceProjection, formatPHP, formatPHPCompact, timeAgo,
 } from '../api/lakbay'
-import { fetchMetaDailyMap, sumLeads } from '../api/meta'
-import { attendanceStats } from '../lib/attendance'
+import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
 import { getSettings } from '../lib/settings'
 
 const PRIMARY = '#1B4F4F'
 const ACCENT  = '#F5A623'
-
-function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x }
+const PALETTE = [PRIMARY, ACCENT, '#4ECDC4', '#7FB069', '#C26DBC', '#6D9EEB']
 
 function fmtDateISO(d) {
   const y = d.getFullYear()
@@ -37,10 +42,12 @@ function greeting() {
   return 'Magandang gabi'
 }
 
-// ---------------------------------------------------------------------------
-// Hero card — greeting + today's headline numbers
+const isInternational = (team) => /international/i.test(team || '')
 
-function HeroCard({ userName, todaySales, todaySignups, dVsYest, dVsLW }) {
+// ---------------------------------------------------------------------------
+// Hero card
+
+function HeroCard({ userName, todaySales, todayDeals, dVsYest, dVsLW, totalSales }) {
   return (
     <section className="rounded-2xl p-6 shadow-lg text-white overflow-hidden relative"
              style={{ background: 'linear-gradient(135deg, #1B4F4F 0%, #2a6868 100%)' }}>
@@ -54,13 +61,13 @@ function HeroCard({ userName, todaySales, todaySignups, dVsYest, dVsLW }) {
           Today's revenue: <span className="text-amber-300">{formatPHP(todaySales)}</span>
         </p>
         <p className="text-white/70 text-sm">
-          {todaySignups} sign-up{todaySignups === 1 ? '' : 's'} so far ·
-          {dVsYest !== null && <> {dVsYest >= 0 ? '+' : ''}{dVsYest}% vs yesterday ·</>}
-          {dVsLW !== null && <> {dVsLW >= 0 ? '+' : ''}{dVsLW}% vs same day last week</>}
+          {todayDeals} deal{todayDeals === 1 ? '' : 's'} closed today
+          {dVsYest !== null && <> · {dVsYest >= 0 ? '+' : ''}{dVsYest}% vs yesterday</>}
+          {dVsLW !== null  && <> · {dVsLW  >= 0 ? '+' : ''}{dVsLW}% vs same day last week</>}
         </p>
-
         <p className="text-white/50 text-xs mt-3">
           {new Date().toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          {' · '}All-time tracked revenue: <b>{formatPHPCompact(totalSales)}</b>
         </p>
       </div>
     </section>
@@ -68,94 +75,30 @@ function HeroCard({ userName, todaySales, todaySignups, dVsYest, dVsLW }) {
 }
 
 // ---------------------------------------------------------------------------
-// Alerts banner — the urgent items needing action
+// Alert pill
 
-function Alert({ tone, Icon, title, body }) {
+function Pill({ tone, Icon, title, body }) {
   const tones = {
-    danger:  'bg-red-50 border-red-200 text-red-900',
-    warn:    'bg-amber-50 border-amber-200 text-amber-900',
-    good:    'bg-emerald-50 border-emerald-200 text-emerald-900',
-    info:    'bg-blue-50 border-blue-200 text-blue-900',
+    danger: 'bg-red-50 border-red-200 text-red-900',
+    warn:   'bg-amber-50 border-amber-200 text-amber-900',
+    good:   'bg-emerald-50 border-emerald-200 text-emerald-900',
+    info:   'bg-blue-50 border-blue-200 text-blue-900',
   }
   return (
-    <div className={`flex items-start gap-2.5 p-3 rounded-xl border ${tones[tone]}`}>
-      <Icon size={16} className="mt-0.5 flex-shrink-0" />
+    <div className={`flex items-start gap-2.5 p-3 rounded-xl border text-sm ${tones[tone]}`}>
+      <Icon size={15} className="mt-0.5 flex-shrink-0" />
       <div className="min-w-0">
-        <p className="font-semibold text-sm">{title}</p>
+        <p className="font-semibold leading-tight">{title}</p>
         {body && <p className="text-xs mt-0.5 opacity-90">{body}</p>}
       </div>
     </div>
   )
 }
 
-function buildAlerts({ records, target, bookings, metaByDate }) {
-  const alerts = []
-  const now = new Date()
-  const today = rangeFor('daily', now)
-  const yest  = rangeFor('daily', new Date(now.getTime() - 86400000))
-  const ts = sum(filterByRange(records, today.start, today.end), 'sales_amount')
-  const ys = sum(filterByRange(records, yest.start,  yest.end),  'sales_amount')
-
-  // Monthly target
-  const pace = paceProjection(records, target, now)
-  if (pace.targetPercent >= 100) {
-    alerts.push({ tone: 'good', Icon: Award, title: '🎉 Monthly target HIT!', body: `${pace.targetPercent}% of target with ${pace.daysInMonth - pace.daysElapsed} day(s) remaining.` })
-  } else if (pace.paceVsTarget >= 0) {
-    alerts.push({ tone: 'good', Icon: TrendingUp, title: 'Ahead of monthly pace', body: `${pace.targetPercent}% of target. Projected ${formatPHPCompact(pace.projected)} (${Math.round((pace.projected / target) * 100)}%).` })
-  } else {
-    const needPerDay = Math.max(0, (target - pace.mtd) / Math.max(1, pace.daysInMonth - pace.daysElapsed))
-    alerts.push({ tone: 'warn', Icon: AlertTriangle, title: `Behind target by ${formatPHPCompact(Math.abs(pace.paceVsTarget))}`, body: `Need ${formatPHPCompact(needPerDay)}/day for the rest of the month.` })
-  }
-
-  // Today comparison
-  if (ts === 0 && now.getHours() >= 12) {
-    alerts.push({ tone: 'warn', Icon: AlertTriangle, title: 'No sign-ups recorded today', body: 'Mid-day with no sign-ups yet. Check ad delivery or follow up on pending leads.' })
-  } else if (ys > 0 && ts >= ys * 1.2) {
-    alerts.push({ tone: 'good', Icon: TrendingUp, title: `Today outpacing yesterday`, body: `${formatPHPCompact(ts)} vs ${formatPHPCompact(ys)} yesterday (+${Math.round(((ts - ys) / ys) * 100)}%).` })
-  }
-
-  // Dormant clusters
-  const clusters = lastSignupByCluster(records)
-  const dormant = clusters.filter(c => c.daysSinceLast >= 7)
-  if (dormant.length > 0) {
-    alerts.push({
-      tone: dormant.length >= 2 ? 'danger' : 'warn',
-      Icon: AlertTriangle,
-      title: `${dormant.length} dormant cluster${dormant.length === 1 ? '' : 's'} (7+ days)`,
-      body: dormant.map(c => c.name).join(', '),
-    })
-  }
-
-  // Pending payments
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const mtd = filterByRange(records, monthStart, now)
-  const pending = mtd.filter(r => r.meta?.payment_status === 'PENDING')
-  if (pending.length >= 3) {
-    alerts.push({ tone: 'info', Icon: Lightbulb, title: `${pending.length} pending payments worth ${formatPHPCompact(sum(pending, 'sales_amount'))}`, body: 'Follow up to recover this revenue.' })
-  }
-
-  // Bookings vs sales today (no sales today but many bookings)
-  const todayBookings = bookings.filter(b => fmtDateISO(new Date(b.startsAt)) === fmtDateISO(now) && !b.raw?.cancelled)
-  const todaySales = filterByRange(records, today.start, today.end)
-  if (todayBookings.length >= 10 && todaySales.length === 0 && now.getHours() >= 18) {
-    alerts.push({ tone: 'warn', Icon: Clock, title: `${todayBookings.length} bookings today but 0 sales yet`, body: 'Check follow-up workflow with sales closers.' })
-  }
-
-  // Meta ad performance
-  if (metaByDate && metaByDate.size > 0) {
-    const todayMeta = metaByDate.get(fmtDateISO(now))
-    if (todayMeta?.spend > 5000 && todayMeta.leads === 0) {
-      alerts.push({ tone: 'danger', Icon: AlertTriangle, title: `${formatPHPCompact(todayMeta.spend)} spent today, 0 leads`, body: 'Check creative quality, audience, or pixel events.' })
-    }
-  }
-
-  return alerts
-}
-
 // ---------------------------------------------------------------------------
-// At-a-glance section — 4 columns, each with primary metric + trend
+// KPI strip card
 
-function GlanceCol({ icon: Icon, tag, value, sub, delta, tone = '#E8F4F4' }) {
+function KpiCol({ icon: Icon, tag, value, sub, delta, tone = '#E8F4F4' }) {
   const showDelta = delta !== null && delta !== undefined && !Number.isNaN(delta)
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col gap-1.5">
@@ -165,9 +108,7 @@ function GlanceCol({ icon: Icon, tag, value, sub, delta, tone = '#E8F4F4' }) {
         </div>
         {showDelta && (
           <span className={`inline-flex items-center gap-0.5 rounded-md font-semibold text-[11px] px-2 py-0.5 ${
-            delta > 0 ? 'text-emerald-700 bg-emerald-50'
-                       : delta < 0 ? 'text-red-700 bg-red-50'
-                                   : 'text-gray-600 bg-gray-50'
+            delta > 0 ? 'text-emerald-700 bg-emerald-50' : delta < 0 ? 'text-red-700 bg-red-50' : 'text-gray-600 bg-gray-50'
           }`}>
             {delta > 0 ? <TrendingUp size={11}/> : delta < 0 ? <TrendingDown size={11}/> : null}
             {delta > 0 ? '+' : ''}{delta}%
@@ -175,7 +116,7 @@ function GlanceCol({ icon: Icon, tag, value, sub, delta, tone = '#E8F4F4' }) {
         )}
       </div>
       <p className="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">{tag}</p>
-      <p className="text-2xl font-bold text-gray-900 truncate" title={value}>{value}</p>
+      <p className="text-xl font-bold text-gray-900 truncate" title={value}>{value}</p>
       {sub && <p className="text-xs text-gray-500 leading-tight">{sub}</p>}
     </div>
   )
@@ -192,7 +133,7 @@ function TargetCard({ records, target }) {
   const daysLeft = p.daysInMonth - p.daysElapsed
 
   return (
-    <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+    <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 h-full">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2 text-gray-500 text-[11px] font-semibold uppercase tracking-widest">
@@ -201,7 +142,7 @@ function TargetCard({ records, target }) {
           <p className="text-2xl font-bold text-gray-900 mt-1">
             {formatPHP(p.mtd)} <span className="text-gray-400 text-base font-medium">/ {formatPHPCompact(target)}</span>
           </p>
-          <p className="text-xs text-gray-500 mt-0.5">{p.targetPercent}% · {daysLeft} day{daysLeft === 1 ? '' : 's'} left · {formatPHPCompact(p.dailyRunRate)}/day pace</p>
+          <p className="text-xs text-gray-500 mt-0.5">{p.targetPercent}% · {daysLeft} day{daysLeft === 1 ? '' : 's'} left</p>
         </div>
         <span className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap ${
           isAhead ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
@@ -215,75 +156,120 @@ function TargetCard({ records, target }) {
              style={{ width: `${pctFilled}%`, backgroundColor: isAhead ? PRIMARY : ACCENT }} />
       </div>
       <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-gray-100">
+        <div><p className="text-[10px] text-gray-500 uppercase">Run rate</p><p className="text-sm font-bold text-gray-900">{formatPHPCompact(p.dailyRunRate)}/d</p></div>
         <div><p className="text-[10px] text-gray-500 uppercase">Projected</p><p className="text-sm font-bold text-gray-900">{formatPHPCompact(p.projected)}</p></div>
-        <div><p className="text-[10px] text-gray-500 uppercase">Need /day</p><p className="text-sm font-bold text-gray-900">{daysLeft > 0 ? formatPHPCompact(Math.max(0, (target - p.mtd) / daysLeft)) : '—'}</p></div>
-        <div><p className="text-[10px] text-gray-500 uppercase">Final est</p><p className="text-sm font-bold text-gray-900">{Math.round((p.projected / target) * 100)}%</p></div>
+        <div><p className="text-[10px] text-gray-500 uppercase">Need /d</p><p className="text-sm font-bold text-gray-900">{daysLeft > 0 ? formatPHPCompact(Math.max(0, (target - p.mtd) / daysLeft)) : '—'}</p></div>
       </div>
     </section>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Top performers row
+// Top 5 performers leaderboard
 
-function TopPerformers({ records }) {
-  const teams = totalsByTeam(records).slice(0, 5)
-  const totalRev = teams.reduce((a, t) => a + t.sales, 0)
-  return (
-    <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-      <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-        <Award size={14} style={{ color: ACCENT }} /> Top Clusters · This Month
-      </h3>
-      <div className="flex flex-col gap-2">
-        {teams.length === 0 ? (
-          <p className="text-sm text-gray-400">No data</p>
-        ) : teams.map((t, i) => {
-          const pct = totalRev > 0 ? (t.sales / totalRev) * 100 : 0
-          return (
-            <div key={t.name}>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="flex items-center gap-2">
-                  <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                    i === 0 ? 'bg-amber-100 text-amber-700' :
-                    i === 1 ? 'bg-gray-200 text-gray-700' :
-                    i === 2 ? 'bg-orange-100 text-orange-700' :
-                              'bg-gray-100 text-gray-500'
-                  }`}>{i + 1}</span>
-                  <span className="font-medium text-gray-900 truncate">{t.name}</span>
-                </span>
-                <span className="font-bold text-gray-900">{formatPHPCompact(t.sales)}</span>
-              </div>
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: PRIMARY }} />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Live activity preview
-
-function LiveActivityPreview({ records, onSeeAll }) {
-  const recent = useMemo(() =>
-    [...records]
-      .sort((a, b) => {
-        const dA = parseDate(a.date).getTime()
-        const dB = parseDate(b.date).getTime()
-        if (dA !== dB) return dB - dA
-        return (b.transaction_id || '').localeCompare(a.transaction_id || '')
-      })
-      .slice(0, 5),
-  [records])
-
+function TopPerformers({ agents, onSeeAll }) {
+  const real = agents.filter(a => a.name !== 'Unassigned').slice(0, 5)
+  const maxRev = real[0]?.sales || 1
   return (
     <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-          <Activity size={14} style={{ color: PRIMARY }} /> Latest Sign-ups
+          <Trophy size={14} style={{ color: ACCENT }} /> Top 5 Officers · This Month
+        </h3>
+        {onSeeAll && (
+          <button onClick={onSeeAll} className="text-[11px] text-[#1B4F4F] font-semibold hover:underline flex items-center gap-0.5">
+            See all <ChevronRight size={11} />
+          </button>
+        )}
+      </div>
+      {real.length === 0 ? (
+        <p className="text-sm text-gray-400">No data</p>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {real.map((a, i) => {
+            const pct = (a.sales / maxRev) * 100
+            const avgDeal = a.txnCount > 0 ? a.sales / a.txnCount : 0
+            return (
+              <div key={a.name}>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center flex-shrink-0 ${
+                      i === 0 ? 'bg-amber-100 text-amber-700' :
+                      i === 1 ? 'bg-gray-200 text-gray-700' :
+                      i === 2 ? 'bg-orange-100 text-orange-700' :
+                                'bg-gray-100 text-gray-500'
+                    }`}>{i + 1}</span>
+                    <span className="font-medium text-gray-900 truncate">{a.name}</span>
+                    {isInternational(a.team) && <span className="text-[9px] px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded">🌏</span>}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <span className="font-bold text-gray-900">{formatPHPCompact(a.sales)}</span>
+                    <span className="text-gray-400 ml-1.5">· {a.txnCount} · ₱{Math.round(avgDeal/1000)}k</span>
+                  </div>
+                </div>
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: PRIMARY }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Coaching watchlist
+
+function CoachingWatchlist({ priorities, onSeeAll }) {
+  return (
+    <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <GraduationCap size={14} className="text-amber-500" /> Coaching Watchlist
+        </h3>
+        {onSeeAll && (
+          <button onClick={onSeeAll} className="text-[11px] text-[#1B4F4F] font-semibold hover:underline flex items-center gap-0.5">
+            See all <ChevronRight size={11} />
+          </button>
+        )}
+      </div>
+      {priorities.length === 0 ? (
+        <p className="text-sm text-gray-400">No coaching items today 🎉</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {priorities.slice(0, 5).map((p, i) => (
+            <div key={i} className={`flex items-start gap-2 p-2.5 rounded-xl ${
+              p.tone === 'good' ? 'bg-emerald-50' : p.tone === 'info' ? 'bg-blue-50' : 'bg-amber-50'
+            }`}>
+              <Lightbulb size={13} className={`mt-0.5 flex-shrink-0 ${
+                p.tone === 'good' ? 'text-emerald-600' : p.tone === 'info' ? 'text-blue-600' : 'text-amber-600'
+              }`} />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-gray-900">{p.agent}</p>
+                <p className="text-[11px] text-gray-600 mt-0.5">{p.reason}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Latest deals stream
+
+function LatestDeals({ records }) {
+  const recent = [...records]
+    .sort((a, b) => parseDate(b.date) - parseDate(a.date))
+    .slice(0, 6)
+  return (
+    <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <Activity size={14} style={{ color: PRIMARY }} /> Latest Deals
         </h3>
         <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
           <span className="relative flex h-1.5 w-1.5">
@@ -293,193 +279,340 @@ function LiveActivityPreview({ records, onSeeAll }) {
           live
         </span>
       </div>
-      <div className="flex flex-col gap-2">
-        {recent.map(r => (
-          <div key={r.transaction_id} className="flex items-center gap-2.5 text-xs">
-            <div className="w-7 h-7 rounded-full text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0"
-                 style={{ backgroundColor: PRIMARY }}>
-              {r.customer_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+      {recent.length === 0 ? (
+        <p className="text-sm text-gray-400">No recent deals</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {recent.map(r => (
+            <div key={r.transaction_id} className="flex items-center gap-2.5 text-xs">
+              <div className="w-7 h-7 rounded-full text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0"
+                   style={{ backgroundColor: isInternational(r.team) ? ACCENT : PRIMARY }}>
+                {r.sales_agent.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 truncate">{r.sales_agent}</p>
+                <p className="text-gray-500 truncate text-[11px]">
+                  {r.meta?.transaction_type || '—'} · {r.date}
+                  {isInternational(r.team) ? ' 🌏' : ' 🇵🇭'}
+                </p>
+              </div>
+              <span className="font-bold text-gray-900">{formatPHPCompact(r.sales_amount)}</span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 truncate">{r.customer_name}</p>
-              <p className="text-gray-500 truncate">{r.meta?.package || '—'} · {r.date}</p>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Quick links
+
+function QuickLinks({ onJump }) {
+  const links = [
+    { id: 'dashboard', label: 'Operations',  Icon: BarChart3, desc: 'Daily matrix · time slots · funnel' },
+    { id: 'officers',  label: 'Officers',    Icon: Briefcase, desc: 'Per-agent drill-down · CSV' },
+    { id: 'sales',     label: 'Sales',       Icon: Flame,     desc: 'Cluster analytics · trends' },
+    { id: 'reports',   label: 'Reports',     Icon: Calendar,  desc: 'Raw signups · export' },
+  ]
+  return (
+    <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {links.map(l => (
+        <button key={l.id} onClick={() => onJump?.(l.id)}
+                className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:border-[#1B4F4F] hover:shadow transition-all flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#E8F4F4' }}>
+              <l.Icon size={16} style={{ color: PRIMARY }} />
             </div>
-            <span className="font-semibold text-gray-900">{formatPHPCompact(r.sales_amount)}</span>
+            <ArrowRight size={14} className="text-gray-400" />
           </div>
-        ))}
-      </div>
+          <p className="text-sm font-bold text-gray-900">{l.label}</p>
+          <p className="text-[10px] text-gray-500 leading-tight">{l.desc}</p>
+        </button>
+      ))}
     </section>
   )
 }
 
 // ---------------------------------------------------------------------------
 
-export default function OverviewTab({ bookings = [], userName = 'MJ' }) {
+export default function OverviewTab({ bookings = [], userName = 'MJ', onJumpTab }) {
   const { monthlyTarget } = getSettings()
 
-  // Load LakbayHub sales
+  // --- Load Fusioo (primary) ---
   const [records, setRecords] = useState([])
   useEffect(() => {
     let cancelled = false
-    const load = () => fetchSalesRecords()
-      .then(r => { if (!cancelled) setRecords(r) }).catch(() => {})
-    load()
-    const id = setInterval(load, 30_000)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [])
-
-  // Load Meta daily
-  const [metaByDate, setMetaByDate] = useState(new Map())
-  useEffect(() => {
-    let cancelled = false
-    const load = () => fetchMetaDailyMap({ days: 30 })
-      .then(m => { if (!cancelled) setMetaByDate(m) }).catch(() => {})
+    const load = () => fetchAllBookingTransactions()
+      .then(raw => {
+        if (cancelled) return
+        const mapped = raw.map(mapBookingTransaction).filter(r => r.date)
+        setRecords(mapped)
+      })
+      .catch(() => {})
     load()
     const id = setInterval(load, 60_000)
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
+  // --- Date windows ---
   const now = new Date()
   const today    = rangeFor('daily',   now)
   const yest     = rangeFor('daily',   new Date(now.getTime() - 86400000))
   const lwDay    = sameDayLastWeek(now)
   const thisWeek = rangeFor('weekly',  now)
+  const lastWeek = { start: startOfWeek(new Date(thisWeek.start.getTime() - 86400000)),
+                     end:   endOfWeek(new Date(thisWeek.start.getTime() - 86400000)) }
   const thisMth  = rangeFor('monthly', now)
 
   const todayRecs    = filterByRange(records, today.start,   today.end)
   const yestRecs     = filterByRange(records, yest.start,    yest.end)
   const lwRecs       = filterByRange(records, lwDay.start,   lwDay.end)
   const weekRecs     = filterByRange(records, thisWeek.start, thisWeek.end)
+  const lastWeekRecs = filterByRange(records, lastWeek.start, lastWeek.end)
   const mthRecs      = filterByRange(records, thisMth.start,  thisMth.end)
 
   const todaySales = sum(todayRecs, 'sales_amount')
   const yestSales  = sum(yestRecs,  'sales_amount')
   const lwSales    = sum(lwRecs,    'sales_amount')
+  const weekSales  = sum(weekRecs,  'sales_amount')
+  const lastWeekSales = sum(lastWeekRecs, 'sales_amount')
+  const mthSales   = sum(mthRecs,   'sales_amount')
 
   const pct = (cur, prev) => prev === 0 ? (cur > 0 ? 100 : 0) : Math.round(((cur - prev) / prev) * 100)
-  const dVsYest = pct(todaySales, yestSales)
-  const dVsLW   = pct(todaySales, lwSales)
+  const dVsYest    = pct(todaySales, yestSales)
+  const dVsLW      = pct(todaySales, lwSales)
+  const dWeekVsLW  = pct(weekSales, lastWeekSales)
 
-  // Bookings today/week
-  const todayKey = fmtDateISO(now)
-  const todayBookings = bookings.filter(b => fmtDateISO(new Date(b.startsAt)) === todayKey && !b.raw?.cancelled)
-  const weekBookings  = bookings.filter(b => {
-    const t = new Date(b.startsAt).getTime()
-    return t >= thisWeek.start.getTime() && t <= thisWeek.end.getTime() && !b.raw?.cancelled
-  })
-
-  // Meta totals — week + month
-  const metaWeek = (() => {
-    let spend = 0, leads = 0
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(thisWeek.start.getTime() + i * 86400000)
-      const m = metaByDate.get(fmtDateISO(d))
-      if (m) { spend += m.spend; leads += m.leads }
+  // Daily trend for chart (last 30 days)
+  const trendDays = useMemo(() => {
+    const days = []
+    const todayStart = startOfDay(now)
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(todayStart.getTime() - i * 86400000)
+      const next = new Date(d.getTime() + 86400000)
+      const dayRecs = records.filter(r => {
+        const t = parseDate(r.date).getTime()
+        return t >= d.getTime() && t < next.getTime()
+      })
+      days.push({
+        date: fmtDateISO(d),
+        label: d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
+        revenue: dayRecs.reduce((s, r) => s + (r.sales_amount || 0), 0),
+        deals: dayRecs.length,
+      })
     }
-    return { spend, leads }
-  })()
+    return days
+  }, [records])
 
-  const metaMonth = (() => {
-    let spend = 0, leads = 0
-    const daysInMth = Math.floor((thisMth.end - thisMth.start) / 86400000) + 1
-    for (let i = 0; i < daysInMth; i++) {
-      const d = new Date(thisMth.start.getTime() + i * 86400000)
-      const m = metaByDate.get(fmtDateISO(d))
-      if (m) { spend += m.spend; leads += m.leads }
+  // Domestic vs International breakdown
+  const domestic = mthRecs.filter(r => !isInternational(r.team))
+  const international = mthRecs.filter(r =>  isInternational(r.team))
+  const divisionData = [
+    { name: '🇵🇭 Domestic',      value: sum(domestic, 'sales_amount'), color: PRIMARY },
+    { name: '🌏 International', value: sum(international, 'sales_amount'), color: ACCENT },
+  ]
+
+  // Performers
+  const monthAgents = totalsByAgent(mthRecs)
+  const priorMthRecs = filterByRange(records, new Date(thisMth.start.getFullYear(), thisMth.start.getMonth() - 1, 1),
+                                              new Date(thisMth.start.getTime() - 1))
+  const priorByName = Object.fromEntries(totalsByAgent(priorMthRecs).map(a => [a.name, a]))
+
+  // Coaching priorities from agent deltas
+  const realAgents = monthAgents.filter(a => a.name !== 'Unassigned')
+  const teamAvgRev = realAgents.length > 0
+    ? realAgents.reduce((s, a) => s + a.sales, 0) / realAgents.length : 0
+
+  const priorities = []
+  // Spotlight: top performer
+  if (realAgents[0] && realAgents[0].sales > teamAvgRev * 1.5) {
+    priorities.push({
+      agent: realAgents[0].name,
+      reason: `🏆 Top performer · ${formatPHPCompact(realAgents[0].sales)}. Ask them to share their playbook.`,
+      tone: 'good',
+    })
+  }
+  // Big drops
+  for (const a of realAgents) {
+    const prev = priorByName[a.name]
+    if (!prev || prev.sales === 0) continue
+    const delta = Math.round(((a.sales - prev.sales) / prev.sales) * 100)
+    if (delta <= -30) {
+      priorities.push({
+        agent: a.name,
+        reason: `Revenue dropped ${delta}% vs last month (${formatPHPCompact(prev.sales)} → ${formatPHPCompact(a.sales)})`,
+        tone: 'warn',
+      })
     }
-    return { spend, leads }
-  })()
+  }
+  // Zero deals this month
+  for (const a of realAgents) {
+    if (a.txnCount === 0) priorities.push({ agent: a.name, reason: 'No deals closed this month. Schedule 1:1.', tone: 'warn' })
+  }
+  // Low avg deal size
+  const avgDealTeam = realAgents.length > 0
+    ? realAgents.reduce((s, a) => s + (a.txnCount > 0 ? a.sales / a.txnCount : 0), 0) /
+      Math.max(1, realAgents.filter(a => a.txnCount > 0).length)
+    : 0
+  for (const a of realAgents) {
+    if (a.txnCount > 0 && avgDealTeam > 0) {
+      const myAvg = a.sales / a.txnCount
+      if (myAvg < avgDealTeam * 0.4) {
+        priorities.push({
+          agent: a.name,
+          reason: `Avg deal ${formatPHPCompact(myAvg)} is well below team avg ${formatPHPCompact(avgDealTeam)}. Focus: upsell training.`,
+          tone: 'info',
+        })
+      }
+    }
+  }
 
-  const attendanceForToday = attendanceStats(todayBookings)
-  const attendanceForWeek  = attendanceStats(weekBookings)
-
-  // Conversion rates
-  const todayConv  = todayBookings.length > 0 ? Math.round((todayRecs.length / todayBookings.length) * 100) : null
-  const weekConv   = weekBookings.length  > 0 ? Math.round((weekRecs.length  / weekBookings.length)  * 100) : null
-  const roasMonth  = metaMonth.spend > 0 ? Math.round((sum(mthRecs, 'sales_amount') / metaMonth.spend) * 100) : null
-
-  const alerts = useMemo(
-    () => buildAlerts({ records, target: monthlyTarget, bookings, metaByDate }),
-    [records, monthlyTarget, bookings, metaByDate]
-  )
+  // KPI numbers
+  const avgDealMth = mthRecs.length > 0 ? mthSales / mthRecs.length : 0
+  const totalProfitMth = mthRecs.reduce((s, r) => s + (r.profit || 0), 0)
+  const profitMarginMth = mthSales > 0 ? Math.round((totalProfitMth / mthSales) * 100) : 0
+  const activeAgentsMth = realAgents.length
+  const totalSales = sum(records, 'sales_amount')
 
   return (
     <div className="flex flex-col gap-5 pb-24 sm:pb-6">
-      {/* Hero */}
-      <HeroCard
-        userName={userName}
-        todaySales={todaySales}
-        todaySignups={todayRecs.length}
-        dVsYest={dVsYest}
-        dVsLW={dVsLW}
-      />
+      {/* Hero + Target side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <HeroCard
+          userName={userName}
+          todaySales={todaySales}
+          todayDeals={todayRecs.length}
+          dVsYest={dVsYest}
+          dVsLW={dVsLW}
+          totalSales={totalSales}
+        />
+        <TargetCard records={records} target={monthlyTarget} />
+      </div>
 
-      {/* Alerts banner */}
-      {alerts.length > 0 && (
+      {/* Action items / alerts */}
+      {priorities.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
             <Sparkles size={14} className="text-amber-500" /> Action Items
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {alerts.slice(0, 6).map((a, i) => (
-              <Alert key={i} tone={a.tone} Icon={a.Icon} title={a.title} body={a.body} />
+            {priorities.slice(0, 4).map((p, i) => (
+              <Pill key={i}
+                    tone={p.tone}
+                    Icon={p.tone === 'good' ? Award : p.tone === 'info' ? Lightbulb : AlertTriangle}
+                    title={p.agent}
+                    body={p.reason} />
             ))}
           </div>
         </section>
       )}
 
-      {/* At-a-glance KPI row */}
+      {/* At a glance */}
       <section>
         <h2 className="text-sm font-semibold text-gray-700 mb-2">At a Glance</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <GlanceCol icon={DollarSign} tag="Today's Revenue"
-                     value={formatPHP(todaySales)}
-                     sub={`${todayRecs.length} sign-ups`}
-                     delta={dVsYest} />
-          <GlanceCol icon={DollarSign} tag="This Week"
-                     value={formatPHPCompact(sum(weekRecs, 'sales_amount'))}
-                     sub={`${weekRecs.length} sign-ups · Mon–Sun`}
-                     tone="#FFF4E0" />
-          <GlanceCol icon={DollarSign} tag="This Month"
-                     value={formatPHPCompact(sum(mthRecs, 'sales_amount'))}
-                     sub={`${mthRecs.length} sign-ups`}
-                     tone="#dcfce7" />
-          <GlanceCol icon={TrendingUp} tag="ROAS · MTD"
-                     value={roasMonth === null ? '—' : `${roasMonth}%`}
-                     sub={`${formatPHPCompact(metaMonth.spend)} ad spend MTD`}
-                     tone="#dbeafe" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <KpiCol icon={DollarSign} tag="Today"
+                  value={formatPHP(todaySales)}
+                  sub={`${todayRecs.length} deals`}
+                  delta={dVsYest} />
+          <KpiCol icon={Calendar}   tag="This Week"
+                  value={formatPHPCompact(weekSales)}
+                  sub={`${weekRecs.length} deals · Mon–Sun`}
+                  delta={dWeekVsLW}
+                  tone="#FFF4E0" />
+          <KpiCol icon={Calendar}   tag="This Month"
+                  value={formatPHPCompact(mthSales)}
+                  sub={`${mthRecs.length} deals`}
+                  tone="#dcfce7" />
+          <KpiCol icon={Target}     tag="Avg Deal"
+                  value={formatPHPCompact(avgDealMth)}
+                  sub="this month" />
+          <KpiCol icon={TrendingUp} tag="Profit Margin"
+                  value={`${profitMarginMth}%`}
+                  sub={`${formatPHPCompact(totalProfitMth)} profit MTD`}
+                  tone="#dbeafe" />
+          <KpiCol icon={Users}      tag="Active Officers"
+                  value={String(activeAgentsMth)}
+                  sub="closed deals MTD" />
         </div>
       </section>
 
-      {/* Funnel summary row — bookings, sales, conversion */}
+      {/* Charts row: Daily trend + Domestic/International */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Funnel · Today vs This Week</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <GlanceCol icon={Calendar}  tag="Bookings Today"
-                     value={String(todayBookings.length)}
-                     sub={`${todayBookings.length} active`} />
-          <GlanceCol icon={CheckCircle2} tag="Show-Up Rate · Today"
-                     value={attendanceForToday.showUpRate === null ? '—' : `${attendanceForToday.showUpRate}%`}
-                     sub={attendanceForToday.showUpRate === null
-                       ? `mark ${attendanceForToday.unset} pending`
-                       : `${attendanceForToday.showed}/${attendanceForToday.tracked}`}
-                     tone="#dcfce7" />
-          <GlanceCol icon={Users}     tag="Conversion · Today"
-                     value={todayConv === null ? '—' : `${todayConv}%`}
-                     sub="sales / bookings" />
-          <GlanceCol icon={Users}     tag="Conversion · Week"
-                     value={weekConv === null ? '—' : `${weekConv}%`}
-                     sub={`${weekRecs.length} sales / ${weekBookings.length} bookings`}
-                     tone="#FFF4E0" />
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">Performance Trends</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 lg:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-gray-700">30-Day Revenue Trend</p>
+              <span className="text-[11px] text-gray-500">{formatPHPCompact(trendDays.reduce((s, d) => s + d.revenue, 0))} total</span>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={trendDays}>
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={PRIMARY} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={PRIMARY} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={3} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={formatPHPCompact} />
+                <Tooltip formatter={v => formatPHP(v)} />
+                <Line type="monotone" dataKey="revenue" stroke={PRIMARY} strokeWidth={2.5}
+                      dot={{ r: 3, fill: PRIMARY }} activeDot={{ r: 5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <p className="text-sm font-semibold text-gray-700 mb-2">Division Mix · This Month</p>
+            <ResponsiveContainer width="100%" height={170}>
+              <PieChart>
+                <Pie data={divisionData} cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={3} dataKey="value">
+                  {divisionData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                </Pie>
+                <Tooltip formatter={v => formatPHP(v)} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-col gap-1.5 mt-2 pt-3 border-t border-gray-100">
+              {divisionData.map((d, i) => {
+                const total = divisionData.reduce((s, x) => s + x.value, 0)
+                const pctShare = total > 0 ? Math.round((d.value / total) * 100) : 0
+                return (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
+                      <span className="text-gray-700">{d.name}</span>
+                    </span>
+                    <span className="font-semibold text-gray-900">{pctShare}% · {formatPHPCompact(d.value)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Target + Top performers + Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <TargetCard records={records} target={monthlyTarget} />
-        <TopPerformers records={mthRecs} />
-        <LiveActivityPreview records={records} />
-      </div>
+      {/* People focus: Top 5 + Coaching Watchlist */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">People Focus</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <TopPerformers agents={monthAgents} onSeeAll={() => onJumpTab?.('officers')} />
+          <CoachingWatchlist priorities={priorities} onSeeAll={() => onJumpTab?.('officers')} />
+        </div>
+      </section>
+
+      {/* Activity stream + Quick links */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">Live & Drill-Down</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <LatestDeals records={records} />
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">Jump to</p>
+            <QuickLinks onJump={onJumpTab} />
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

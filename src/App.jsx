@@ -106,7 +106,7 @@ export default function App() {
           <ErrorState error={error} />
         ) : (
           <div key={activeTab} className="tab-content">
-            {activeTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} />}
+            {activeTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} onJumpTab={setActiveTab} />}
             {activeTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
             {activeTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
             {activeTab === 'sales'     && <SalesAgentsTab />}
