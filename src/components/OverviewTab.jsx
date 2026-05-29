@@ -23,6 +23,7 @@ import {
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
 import { getSettings } from '../lib/settings'
+import AacioOverviewCard from './AacioOverviewCard'
 
 const PRIMARY = '#1B4F4F'
 const ACCENT  = '#F5A623'
@@ -537,6 +538,9 @@ export default function OverviewTab({ bookings = [], userName = 'MJ', onJumpTab 
                   sub="closed deals MTD" />
         </div>
       </section>
+
+      {/* AACIO external-team snapshot — separate from company totals */}
+      <AacioOverviewCard onJumpTab={onJumpTab} />
 
       {/* Charts row: Daily trend + Domestic/International */}
       <section>

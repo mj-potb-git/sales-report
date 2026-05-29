@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
   const apiKey    = env.YCBM_API_KEY
   const basic     = Buffer.from(`${accountId}:${apiKey}`).toString('base64')
 
+  // Second YCBM account: AACIO external team
+  const aacioAccountId = env.YCBM_AACIO_ACCOUNT_ID || ''
+  const aacioApiKey    = env.YCBM_AACIO_API_KEY    || ''
+  const aacioBasic     = aacioApiKey ? Buffer.from(`${aacioAccountId}:${aacioApiKey}`).toString('base64') : ''
+
   const metaAdAccount = env.META_AD_ACCOUNT_ID || ''
   const metaToken     = env.META_ACCESS_TOKEN  || ''
 
@@ -25,6 +30,23 @@ export default defineConfig(({ mode }) => {
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
               proxyReq.setHeader('Authorization', `Basic ${basic}`)
+              proxyReq.setHeader('Accept', 'application/json')
+            })
+          },
+        },
+        // Second YCBM account — AACIO external team (support@pinoyonlinebiz.com).
+        // Separate account/key so we can show their bookings + sales side by side
+        // with POTB without mixing data. Same Basic-auth pattern.
+        // NOTE: route is /api/aacio (NOT /api/ycbm-aacio) — the latter would be
+        // prefix-matched by the /api/ycbm proxy above and routed to the POTB account.
+        '/api/aacio': {
+          target: 'https://api.youcanbook.me',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => path.replace(/^\/api\/aacio/, `/v1/${aacioAccountId}`),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              if (aacioBasic) proxyReq.setHeader('Authorization', `Basic ${aacioBasic}`)
               proxyReq.setHeader('Accept', 'application/json')
             })
           },

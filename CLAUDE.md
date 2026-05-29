@@ -23,7 +23,8 @@ Combines real-time data from **4 sources** into one ops-monitoring console.
 
 | Source | What it provides | Auth | Polled |
 |---|---|---|---|
-| **YouCanBook.me** (YCBM) | Bookings (session schedules) | HTTP Basic via Vite proxy | 15s, paginated 90d back |
+| **YouCanBook.me** (YCBM) | Bookings (session schedules) | HTTP Basic via Vite proxy `/api/ycbm` | 15s, paginated 90d back |
+| **YCBM — AACIO** (2nd acct) | External team bookings = their sales source (`support@pinoyonlinebiz.com`) | HTTP Basic via Vite proxy `/api/aacio` | 30s, paginated 90d back / 60d fwd |
 | **LakbayHub utilities API** | Sales records (sign-ups, packages, payments) | No auth (rate-limited) | 30s, shared cache + dedup |
 | **Meta Marketing API** | Ad spend, leads, impressions | Bearer via Vite proxy | 60s, fetches 180d |
 | **Supabase** | sales_records (mock seed) + booking_attendance (real tracking) | Publishable key direct | live + 15s poll |
@@ -33,15 +34,18 @@ server-side so the browser never sees the secrets.
 
 ---
 
-## The 7 tabs (in nav order)
+## The 8 tabs (in nav order)
 
 1. **Overview** — Daily hero, smart alerts, target progress, top clusters, live activity. The "morning coffee" view.
 2. **Bookings** — Full YCBM table + CSV export + **Auto-fill attendance** (matches YCBM bookings to LakbayHub sales by name).
 3. **Operations** (the main dashboard) — Spreadsheet-style daily matrix matching MJ's POTB Meta Ads spreadsheet. Has period selector (Today / Week / 14d / Month / 60d / 90d) + Smart Alerts + Funnel viz + Time Slots heatmap.
 4. **Sales** — Per-agent / per-team analytics, packages, smart insights.
 5. **Officers** — Sales Skills Development view: company overview, performance leaderboard with tier badges (Top Performer / Strong / Average / Needs Coaching), coaching priorities, individual drill-down with trends + recent deals. **Currently sources from LakbayHub `sales_closer` field — but 100% of revenue is currently unassigned**. Will be fixed when Fusioo BookingTransactions is integrated (credentials pending).
-6. **Reports** — Raw LakbayHub sign-ups report with daily/weekly/monthly toggle + CSV export.
-7. **Settings** — Personalization + credential health + Meta connection test.
+6. **AACIO** — Sales report for the **second YCBM account** (external team). Bookings here ARE their sales source. KPIs (Total Bookings / Active Sales / Unique Leads / Avg per Day), daily trend, time-slot bar, bookings table + CSV. Own data source (`useAacioData` → `api/ycbmAacio.js` → `/api/aacio` proxy) so it renders independently of POTB's slow load. Files: `components/AacioReportTab.jsx`, `hooks/useAacioData.js`, `api/ycbmAacio.js`.
+7. **Reports** — Raw LakbayHub sign-ups report with daily/weekly/monthly toggle + CSV export.
+8. **Settings** — Personalization + credential health + Meta connection test.
+
+> **Vite proxy gotcha:** the AACIO route MUST be `/api/aacio`, NOT `/api/ycbm-aacio` — http-proxy prefix-matches `/api/ycbm` first and would route AACIO requests to the POTB account (→ 404 "account not found"). Tabs with their own data source (Sales / Officers / AACIO / Reports) bypass the global POTB YCBM loading gate in `App.jsx`.
 
 ---
 

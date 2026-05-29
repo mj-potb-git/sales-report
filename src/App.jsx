@@ -5,6 +5,7 @@ import BookingsTab from './components/BookingsTab'
 import SalesDashboard from './components/SalesDashboard'
 import SalesAgentsTab from './components/SalesAgentsTab'
 import AccountOfficersTab from './components/AccountOfficersTab'
+import AacioReportTab from './components/AacioReportTab'
 import ReportsTab from './components/ReportsTab'
 import SettingsTab from './components/SettingsTab'
 import LiveIndicator from './components/LiveIndicator'
@@ -96,10 +97,20 @@ export default function App() {
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-5">
-        {/* Settings is always reachable — even mid-load or during an error —
-            so users can fix bad credentials without being locked out */}
+        {/* Settings + tabs with their OWN data source (Sales/Officers/AACIO/
+            Reports) are always reachable — they don't depend on POTB YCBM, so
+            they shouldn't wait behind its slow pagination. Only the POTB-booking
+            tabs (overview/bookings/operations) honor the global loading/error gate. */}
         {activeTab === 'settings' ? (
           <SettingsTab />
+        ) : activeTab === 'sales' ? (
+          <SalesAgentsTab />
+        ) : activeTab === 'officers' ? (
+          <AccountOfficersTab />
+        ) : activeTab === 'aacio' ? (
+          <AacioReportTab />
+        ) : activeTab === 'reports' ? (
+          <ReportsTab />
         ) : loading ? (
           <SkeletonLoader />
         ) : error ? (
@@ -109,9 +120,6 @@ export default function App() {
             {activeTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} onJumpTab={setActiveTab} />}
             {activeTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
             {activeTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
-            {activeTab === 'sales'     && <SalesAgentsTab />}
-            {activeTab === 'officers'  && <AccountOfficersTab />}
-            {activeTab === 'reports'   && <ReportsTab />}
           </div>
         )}
       </main>
