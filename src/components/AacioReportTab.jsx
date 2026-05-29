@@ -13,6 +13,7 @@ import {
   fetchSalesRecords, filterByRange, sum, formatPHP, formatPHPCompact,
   totalsByAgent, totalsByTeam,
 } from '../api/lakbay'
+import { attendanceStats, getStatus, subscribeAttendance } from '../lib/attendance'
 import LiveIndicator from './LiveIndicator'
 
 // AACIO external-team sales live in LakbayHub under "EXTERNAL COACH - ..."
@@ -59,6 +60,70 @@ function slotLabel(h) {
   return `${hr}${ampm}`
 }
 
+// ── Daily-matrix helpers (mirror the Operations tab layout) ─────────────────
+function dayLabel(d) {
+  return d.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+// Enumerate day-start Dates from `from`→`to`, capped at `cap` most-recent days
+// (guards against the "All Time" range producing thousands of columns).
+function enumerateDays(from, to, cap = 92) {
+  const end   = startOfDay(to)
+  let   start = startOfDay(from)
+  const maxStart = new Date(end.getTime() - (cap - 1) * 86400000)
+  if (start.getTime() < maxStart.getTime()) start = maxStart
+  const days = []
+  for (let t = start.getTime(); t <= end.getTime(); t += 86400000) days.push(new Date(t))
+  return days
+}
+
+function MatrixRow({ label, values, formatter = String, accent = false, bold = false }) {
+  return (
+    <tr className={accent ? 'bg-gray-50' : ''}>
+      <th className={`px-3 py-2 text-left text-xs uppercase tracking-wide whitespace-nowrap sticky left-0 z-10 ${
+        accent ? 'bg-gray-50 text-gray-700 font-bold' : 'bg-white text-gray-600 font-semibold'
+      }`}>
+        {label}
+      </th>
+      {values.map((v, i) => (
+        <td key={i} className={`px-3 py-2 text-sm whitespace-nowrap text-center ${
+          bold ? 'font-bold text-gray-900' : 'text-gray-700'
+        }`}>
+          {formatter(v)}
+        </td>
+      ))}
+    </tr>
+  )
+}
+
+function MatrixSectionRow({ label, span, color }) {
+  return (
+    <tr>
+      <th colSpan={span} className="px-3 py-1.5 text-left text-[11px] uppercase tracking-widest font-bold text-white sticky left-0"
+          style={{ backgroundColor: color }}>
+        {label}
+      </th>
+    </tr>
+  )
+}
+
+function HeatCell({ attendees, bookings }) {
+  if (bookings === 0) return <td className="px-2 py-1.5 text-center text-gray-300 text-xs">—</td>
+  const ratio = attendees / bookings
+  const pct   = Math.round(ratio * 100)
+  const tone =
+    ratio >= 0.7 ? 'bg-emerald-100 text-emerald-800'
+  : ratio >= 0.4 ? 'bg-amber-100 text-amber-800'
+  :                'bg-red-100 text-red-800'
+  return (
+    <td className="px-2 py-1.5 text-center">
+      <span className={`inline-flex flex-col items-center min-w-[56px] px-2 py-0.5 rounded-md font-semibold ${tone}`}>
+        <span className="text-[11px] leading-tight">{attendees}/{bookings}</span>
+        <span className="text-[9px] leading-tight opacity-80">{pct}%</span>
+      </span>
+    </td>
+  )
+}
+
 function KpiCard({ icon: Icon, label, value, sub, accent = TEAL }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-1">
@@ -99,6 +164,10 @@ export default function AacioReportTab() {
     const id = setInterval(load, 30_000)
     return () => { alive = false; clearInterval(id) }
   }, [])
+
+  // Re-render when attendance markings change (shared with POTB Bookings tab)
+  const [, bumpAttendance] = useState(0)
+  useEffect(() => subscribeAttendance(() => bumpAttendance(n => n + 1)), [])
 
   const [from, to] = useMemo(() => rangeForPeriod(period), [period])
 
@@ -178,6 +247,67 @@ export default function AacioReportTab() {
     if (other > 0) arr.push({ slot: 'Other', count: other })
     return arr
   }, [inRange])
+
+  // ── Daily Performance Matrix (mirrors the Operations tab spreadsheet) ──────
+  // Columns = one day each, across the selected period (capped at 92 days).
+  // All rows are derived from AACIO YCBM bookings + external LakbayHub sales.
+  const matrixDays = useMemo(() => enumerateDays(from, to), [from, to])
+
+  // Group AACIO bookings by SCHEDULE date (startsAt) and by CREATED date.
+  const schedByDate = useMemo(() => {
+    const m = new Map()
+    for (const b of bookings) {
+      const k = dateKey(b.startsAt)
+      if (!m.has(k)) m.set(k, [])
+      m.get(k).push(b)
+    }
+    return m
+  }, [bookings])
+  const createdByDate = useMemo(() => {
+    const m = new Map()
+    for (const b of bookings) {
+      if (!b.createdAt) continue
+      const k = dateKey(b.createdAt)
+      if (!m.has(k)) m.set(k, [])
+      m.get(k).push(b)
+    }
+    return m
+  }, [bookings])
+  const salesByDate = useMemo(() => {
+    const m = new Map()
+    for (const r of extSales) {
+      if (!r.date) continue
+      if (!m.has(r.date)) m.set(r.date, [])
+      m.get(r.date).push(r)
+    }
+    return m
+  }, [extSales])
+
+  // Per-day metrics. Computed inline (not memoized) so attendance-cache reads
+  // stay fresh whenever bumpAttendance fires.
+  const matrix = matrixDays.map(day => {
+    const k          = dateKey(day)
+    const sched      = (schedByDate.get(k) || [])
+    const active     = sched.filter(b => !b.cancelled)
+    const cancelled  = sched.filter(b => b.cancelled).length
+    const leads      = (createdByDate.get(k) || []).filter(b => !b.cancelled).length
+    const att        = attendanceStats(active)
+    const salesCount = (salesByDate.get(k) || []).length
+    const sur        = att.tracked > 0 ? att.showUpRate : null
+    const cvr        = active.length > 0 ? Math.round((salesCount / active.length) * 100) : null
+    const bySlot     = SLOTS.map(h => {
+      const slotBk = active.filter(b => b.hour === h)
+      const showed = slotBk.filter(b => getStatus(b.id) === 'showed').length
+      return { hour: h, bookings: slotBk.length, attendees: showed }
+    })
+    return {
+      day, leads,
+      scheduled: active.length,
+      showed: att.showed, noShow: att.noShow,
+      cancelled, salesCount, sur, cvr, bySlot,
+    }
+  })
+  const colCount = matrixDays.length + 1
 
   function exportCSV() {
     const rows = [['Name', 'Date', 'Time', 'Appointment Type', 'Status', 'Booked On']]
@@ -335,7 +465,7 @@ export default function AacioReportTab() {
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">By Cluster</p>
               <div className="flex flex-col gap-2">
-                {byCluster.map((t, i) => {
+                {byCluster.map((t) => {
                   const max = byCluster[0]?.sales || 1
                   return (
                     <div key={t.name}>
@@ -396,6 +526,81 @@ export default function AacioReportTab() {
           </div>
         )}
       </div>
+
+      {/* Daily Performance Matrix — spreadsheet layout (AACIO YCBM × sales) */}
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="font-semibold text-gray-900">Daily Performance Matrix</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Each column = one day · AACIO YCBM bookings × external-cluster sales
+              {matrix.every(d => d.showed + d.noShow === 0) && (
+                <> · Show-Up/No-Show untracked for AACIO (mark in POTB Bookings tab)</>
+              )}
+            </p>
+          </div>
+          <span className="text-[11px] text-gray-500">
+            Slots:
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 mx-1.5" /> ≥70%
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-400 mx-1.5" /> 40-69%
+            <span className="inline-block w-2 h-2 rounded-full bg-red-400 mx-1.5" /> &lt;40%
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wide whitespace-nowrap sticky left-0 bg-gray-50 z-10">Metric</th>
+                {matrixDays.map((d, i) => (
+                  <th key={i} className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600 whitespace-nowrap">
+                    {dayLabel(d)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <MatrixSectionRow label="# OF LEADS" span={colCount} color={TEAL} />
+              <MatrixRow label="Total # of Book an appointment"
+                values={matrix.map(d => d.leads)}
+                formatter={v => v === 0 ? '—' : String(v)} bold />
+              <MatrixRow label="Total # of YCBM booking (On the day Schedule)"
+                values={matrix.map(d => d.scheduled)} bold />
+              <MatrixRow label="Total # of Show Up"
+                values={matrix.map(d => d.showed)} accent />
+              <MatrixRow label="Total # of No-Show"
+                values={matrix.map(d => d.noShow)} accent />
+              <MatrixRow label="Total # of Cancelled"
+                values={matrix.map(d => d.cancelled)} accent />
+              <MatrixRow label="Total # of Sales"
+                values={matrix.map(d => d.salesCount)}
+                formatter={v => v === 0 ? '—' : String(v)} bold />
+
+              <MatrixSectionRow label="EFFICIENCY" span={colCount} color={GOLD} />
+              <MatrixRow label="Actual SUR (Show Up Rate)"
+                values={matrix.map(d => d.sur)}
+                formatter={v => v === null ? '—' : `${v}%`} bold />
+              <MatrixRow label="Actual CVR (Conversion Rate)"
+                values={matrix.map(d => d.cvr)}
+                formatter={v => v === null ? '—' : `${v}%`} bold />
+
+              <MatrixSectionRow label="TIME SLOTS (attendees / bookings)" span={colCount} color="#4ECDC4" />
+              {SLOTS.map((h, slotIdx) => (
+                <tr key={h}>
+                  <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 whitespace-nowrap sticky left-0 bg-white z-10">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock size={11} /> {slotLabel(h)}
+                    </span>
+                  </th>
+                  {matrix.map((d, i) => {
+                    const slot = d.bySlot[slotIdx]
+                    return <HeatCell key={i} attendees={slot.attendees} bookings={slot.bookings} />
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Daily trend */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
