@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { LogOut, Loader2 } from 'lucide-react'
 import TabNav from './components/TabNav'
 import OverviewTab from './components/OverviewTab'
 import BookingsTab from './components/BookingsTab'
@@ -9,9 +10,11 @@ import AacioReportTab from './components/AacioReportTab'
 import ReportsTab from './components/ReportsTab'
 import SettingsTab from './components/SettingsTab'
 import LiveIndicator from './components/LiveIndicator'
+import LandingPage from './components/LandingPage'
 import useYcbmData from './hooks/useYcbmData'
 import { getSettings, subscribeSettings } from './lib/settings'
 import { startAttendancePoller } from './lib/attendance'
+import { getSession, onAuthChange, signOut } from './lib/auth'
 
 // Boot attendance sync once on app load (idempotent)
 startAttendancePoller()
@@ -43,7 +46,7 @@ function ErrorState({ error }) {
   )
 }
 
-function UserBadge({ userName, userRole }) {
+function UserBadge({ userName, userRole, onSignOut }) {
   const initials = userName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
   return (
     <div className="flex items-center gap-2.5 pl-3 ml-2 border-l border-gray-200">
@@ -55,6 +58,16 @@ function UserBadge({ userName, userRole }) {
         <span className="text-xs font-semibold text-gray-900">{userName}</span>
         <span className="text-[10px] text-gray-500">{userRole}</span>
       </div>
+      {onSignOut && (
+        <button
+          onClick={onSignOut}
+          title="Log out"
+          className="ml-1 flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+          aria-label="Log out"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
+      )}
     </div>
   )
 }
@@ -66,6 +79,31 @@ export default function App() {
   // Re-read settings on change so header updates live
   const [settings, setSettings] = useState(getSettings())
   useEffect(() => subscribeSettings(setSettings), [])
+
+  // ── Auth gate ──────────────────────────────────────────────────────
+  // 'checking' until we know; then either a session object or null.
+  const [session, setSession] = useState('checking')
+  useEffect(() => {
+    let alive = true
+    getSession().then((s) => { if (alive) setSession(s) })
+    const off = onAuthChange((s) => setSession(s))
+    return () => { alive = false; off() }
+  }, [])
+
+  // While verifying the stored session, show a minimal splash (avoids a
+  // flash of the landing page for already-logged-in users).
+  if (session === 'checking') {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F8FAFA' }}>
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#1CA9D6' }} />
+      </div>
+    )
+  }
+
+  // Logged out → branded landing + login.
+  if (!session) {
+    return <LandingPage />
+  }
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8FAFA' }}>
@@ -90,7 +128,7 @@ export default function App() {
                 )}
               </div>
             </div>
-            <UserBadge userName={settings.userName} userRole={settings.userRole} />
+            <UserBadge userName={settings.userName} userRole={settings.userRole} onSignOut={signOut} />
           </div>
           <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
