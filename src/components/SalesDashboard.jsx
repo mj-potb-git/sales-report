@@ -8,13 +8,39 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Calendar, Clock, CheckCircle2, XCircle, AlertCircle,
-  DollarSign, TrendingUp, TrendingDown, Users, ChevronRight,
+  DollarSign, TrendingUp, TrendingDown, Users,
   Minus, Activity, ArrowRight,
 } from 'lucide-react'
-import { attendanceStats, getStatus, subscribeAttendance } from '../lib/attendance'
+import { subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords, formatPHP, formatPHPCompact, parseDate } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 import OpsAlerts from './sales/OpsAlerts'
+import SchedulingInsights from './sales/SchedulingInsights'
+import DateRangePicker from './DateRangePicker'
+
+// Parse a YYYY-MM-DD key into a local Date (used for custom date selections)
+function dateFromKey(k) {
+  const [y, m, d] = k.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+// Attendance derived from YCBM's own `noShow` flag — this is what the team marks
+// in the YCBM UI, so it's the source of truth (our Supabase marking was only an
+// approximation). Rules per (non-cancelled) booking:
+//   noShow === true            → No-Show
+//   past appointment, not flagged → Showed (YCBM is binary: not-no-show = attended)
+//   future appointment          → upcoming / not yet occurred (unset)
+function ycbmAttendanceStats(bookings, nowMs) {
+  let showed = 0, noShow = 0, unset = 0
+  for (const b of bookings) {
+    if (b.noShow === true) noShow++
+    else if (new Date(b.startsAt).getTime() < nowMs) showed++
+    else unset++
+  }
+  const tracked = showed + noShow
+  const showUpRate = tracked > 0 ? Math.round((showed / tracked) * 100) : null
+  return { showed, noShow, unset, tracked, total: bookings.length, showUpRate }
+}
 
 const PRIMARY = '#1B4F4F'
 const TIME_SLOTS = [10, 15, 19, 20, 21] // 10AM, 3PM, 7PM, 8PM, 9PM (typical POTB session times)
@@ -135,16 +161,32 @@ function HeatCell({ attendees, bookings }) {
 
 export default function SalesDashboard({ bookings = [] }) {
   const [periodId, setPeriodId] = useState('biweek')
+  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const period = PERIODS.find(p => p.id === periodId) ?? PERIODS[2]
+  const isCustom = periodId === 'custom' && customDates.length > 0
   const DAYS_BACK = period.days
+  // Stable "now" reference for past/future attendance derivation (set once on mount)
+  const [nowMs] = useState(() => Date.now())
 
-  const days = useMemo(() => lastNDays(DAYS_BACK), [DAYS_BACK])
-  // Previous period (same length, immediately before current window) for comparison
+  // Days driving the whole view. For custom: the exact picked dates (sorted).
+  const days = useMemo(
+    () => (isCustom ? customDates.map(dateFromKey) : lastNDays(DAYS_BACK)),
+    [isCustom, customDates, DAYS_BACK],
+  )
+  // Previous period (same length, immediately before current window) for comparison.
+  // Custom selections have no meaningful "prior" window, so skip the comparison.
   const priorDays = useMemo(() => {
+    if (isCustom) return []
     const today = startOfDay(new Date())
     return Array.from({ length: DAYS_BACK }, (_, i) =>
-      new Date(today.getTime() - (DAYS_BACK + DAYS_BACK - 1 - i) * 86400000))
-  }, [DAYS_BACK])
+      new Date(today.getTime() + 0 - (DAYS_BACK + DAYS_BACK - 1 - i) * 86400000))
+  }, [isCustom, DAYS_BACK])
+
+  // Labels that adapt to custom mode
+  const periodLabel   = isCustom
+    ? (customDates.length === 1 ? 'Custom day' : `${customDates.length} custom days`)
+    : period.label
+  const compareLabel  = isCustom ? null : period.compareLabel
   const dayKeys      = days.map(formatDateISO)
   const priorDayKeys = priorDays.map(formatDateISO)
 
@@ -204,14 +246,25 @@ export default function SalesDashboard({ bookings = [] }) {
     return map
   }, [bookings])
 
+  // Bookings whose appointment (startsAt) falls within the selected period —
+  // feeds the Scheduling Insights day/time analysis.
+  const periodBookings = useMemo(() => {
+    const keySet = new Set(days.map(formatDateISO))
+    return bookings.filter(b => keySet.has(formatDateISO(new Date(b.startsAt))))
+  }, [bookings, days])
+
   // Per-day computed metrics for the table
   const perDay = days.map(day => {
     const key = formatDateISO(day)
-    const dayBookings = (bookingsByDate.get(key) || []).filter(b => !b.raw?.cancelled)
-    const dayCancelled = (bookingsByDate.get(key) || []).filter(b => b.raw?.cancelled)
-    // Bookings created on this day (= "Leads (Booking Made)" per spreadsheet)
-    const dayLeadsBooked = (bookingsCreatedByDate.get(key) || []).filter(b => !b.raw?.cancelled).length
-    const attendance = attendanceStats(dayBookings)
+    // Cancelled detection: YCBM raw flag OR the mapped status. Belt-and-suspenders
+    // so cancelled appointments never leak into the active/no-show/unmarked counts.
+    const isCancelled = b => Boolean(b.raw?.cancelled || b.status === 'Cancelled')
+    const allDayBookings = bookingsByDate.get(key) || []
+    const dayBookings  = allDayBookings.filter(b => !isCancelled(b))   // active (scheduled) on this day
+    const dayCancelled = allDayBookings.filter(isCancelled)
+    // Bookings created on this day (= "Book an Appointment" / lead generated)
+    const dayLeadsBooked = (bookingsCreatedByDate.get(key) || []).filter(b => !isCancelled(b)).length
+    const attendance = ycbmAttendanceStats(dayBookings, nowMs)
     const daySales = salesByDate.get(key) || []
     const salesAmount = daySales.reduce((a, r) => a + (r.sales_amount || 0), 0)
     const salesCount = daySales.length
@@ -266,7 +319,8 @@ export default function SalesDashboard({ bookings = [] }) {
       // time-slot breakdown
       bySlot: TIME_SLOTS.map(h => {
         const slotBookings = dayBookings.filter(b => new Date(b.startsAt).getHours() === h)
-        const slotShowed   = slotBookings.filter(b => getStatus(b.id) === 'showed').length
+        // Showed = YCBM didn't flag no-show AND the appointment is in the past
+        const slotShowed   = slotBookings.filter(b => b.noShow !== true && new Date(b.startsAt).getTime() < nowMs).length
         return { hour: h, bookings: slotBookings.length, attendees: slotShowed }
       }),
     }
@@ -340,23 +394,30 @@ export default function SalesDashboard({ bookings = [] }) {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Operations Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">
-            POTB · {period.label} ({DAYS_BACK === 1 ? 'today' : `last ${DAYS_BACK} days`}) · YCBM × LakbayHub × Meta Ads × Attendance
+            POTB · {periodLabel}{isCustom ? '' : ` (${DAYS_BACK === 1 ? 'today' : `last ${DAYS_BACK} days`})`} · YCBM × LakbayHub × Meta Ads × Attendance
           </p>
         </div>
-        <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto max-w-full">
-          {PERIODS.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setPeriodId(p.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                periodId === p.id
-                  ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto max-w-full">
+            {PERIODS.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setPeriodId(p.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                  periodId === p.id
+                    ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <DateRangePicker
+            value={customDates}
+            active={isCustom}
+            onApply={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
+          />
         </div>
       </div>
 
@@ -367,8 +428,8 @@ export default function SalesDashboard({ bookings = [] }) {
           <h2 className="text-sm font-semibold text-gray-700">Marketing Funnel · Leads → Bookings → Attendance</h2>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-          <KpiCard icon={Users}        label="Leads (Meta)"  value={String(totals.leads)}     accent="#dbeafe" delta={delta.leads}    compareLabel={period.compareLabel} />
-          <KpiCard icon={Calendar}     label="Bookings"      value={String(totals.bookings)}  accent="#E8F4F4" delta={delta.bookings} compareLabel={period.compareLabel}
+          <KpiCard icon={Users}        label="Leads (Meta)"  value={String(totals.leads)}     accent="#dbeafe" delta={delta.leads}    compareLabel={compareLabel} />
+          <KpiCard icon={Calendar}     label="Bookings"      value={String(totals.bookings)}  accent="#E8F4F4" delta={delta.bookings} compareLabel={compareLabel}
                    sub={overallLeadToBook === null ? '' : `Lead→Book ${overallLeadToBook}%`} />
           <KpiCard icon={CheckCircle2} label="Showed Up"     value={String(totals.showed)}    accent="#dcfce7"
                    sub={overallShowUpRate === null ? 'untracked' : `${overallShowUpRate}% show-up`} />
@@ -392,8 +453,8 @@ export default function SalesDashboard({ bookings = [] }) {
           <h2 className="text-sm font-semibold text-gray-700">Sales · LakbayHub Revenue & Conversion</h2>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={period.compareLabel} />
-          <KpiCard icon={Users}      label="# of Sales"    value={String(totals.salesCount)} accent="#FFF4E0" delta={delta.salesCount} compareLabel={period.compareLabel} />
+          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={compareLabel} />
+          <KpiCard icon={Users}      label="# of Sales"    value={String(totals.salesCount)} accent="#FFF4E0" delta={delta.salesCount} compareLabel={compareLabel} />
           <KpiCard icon={TrendingUp} label="Book → Sale %" value={`${overallBookToSale}%`} sub="bookings → sales" />
           <KpiCard icon={TrendingUp} label="Show → Sale %" value={overallShowToSale === null ? '—' : `${overallShowToSale}%`} sub="showed-up → sales" />
           <KpiCard icon={DollarSign} label="Avg Order"     value={totals.salesCount === 0 ? '—' : formatPHPCompact(totals.sales / totals.salesCount)} sub="per sale" />
@@ -431,6 +492,10 @@ export default function SalesDashboard({ bookings = [] }) {
               Each column = one day · attendance: <span className="font-bold">{totals.showed}</span> showed, <span className="font-bold">{totals.noShow}</span> no-show, <span className="font-bold">{totals.bookings - totalAttendance}</span> unmarked
               {totalAttendance === 0 && <> · go to <b>Bookings → Auto-fill</b> to populate</>}
             </p>
+            <p className="text-[10px] text-gray-400 mt-1 leading-snug max-w-2xl">
+              <b>Date basis:</b> “Book an Appt” = day it was booked · “YCBM Scheduled / Show Up / No-Show” = appointment day ·
+              “Sales / Revenue” = payment date. Sales &amp; show-ups won’t always line up on the same day — that’s expected.
+            </p>
           </div>
           <span className="text-[11px] text-gray-500">
             Color legend:
@@ -457,7 +522,7 @@ export default function SalesDashboard({ bookings = [] }) {
               <MetricRow label="Total Ads Spent"
                 values={perDay.map(d => d.spend)}
                 formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
-              <MetricRow label="Total Gross Revenue"
+              <MetricRow label="Total Gross Revenue (by paid date)"
                 values={perDay.map(d => d.salesAmount)}
                 formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
               <MetricRow label="Return On Ads Spent"
@@ -466,7 +531,7 @@ export default function SalesDashboard({ bookings = [] }) {
               <MetricRow label="AR% (Ads/Revenue)"
                 values={perDay.map(d => d.arPct)}
                 formatter={v => v === null ? '—' : `${v}%`} accent />
-              <MetricRow label="Total # of Leads (Booking Made)"
+              <MetricRow label="Total # of Leads (= Book an Appt, booked this day)"
                 values={perDay.map(d => d.leads)}
                 formatter={v => v === 0 ? '—' : String(v)} bold />
               <MetricRow label="Average CPL (Cost Per Lead)"
@@ -477,32 +542,40 @@ export default function SalesDashboard({ bookings = [] }) {
                 formatter={v => v === 0 ? '—' : (v >= 0 ? formatPHPCompact(v) : `−${formatPHPCompact(-v)}`)}
                 bold />
 
-              {/* # OF LEADS — appointment funnel */}
-              <SectionHeaderRow label="# OF LEADS" span={days.length + 1} color="#1B4F4F" />
-              <MetricRow label="Total # of Book an appointment"
+              {/* # OF LEADS — appointment funnel.
+                  Date basis differs per row (booked = createdAt, scheduled/
+                  attendance = startsAt, sales = date_paid) — labels make it explicit.
+                  Reconciles: Scheduled = Show Up + No-Show + Unmarked. */}
+              <SectionHeaderRow label="# OF LEADS — APPOINTMENT FUNNEL" span={days.length + 1} color="#1B4F4F" />
+              <MetricRow label="Book an Appointment (booked this day)"
                 values={perDay.map(d => d.leads)}
                 formatter={v => v === 0 ? '—' : String(v)} bold />
-              <MetricRow label="Total # of YCBM booking (On the day Schedule)"
+              <MetricRow label="YCBM Scheduled (appointment this day)"
                 values={perDay.map(d => d.totalBookings)} bold />
-              <MetricRow label="Total # of Show Up"
+              <MetricRow label="↳ Show Up (by appt date)"
                 values={perDay.map(d => d.showed)} accent />
-              <MetricRow label="Total # of No-Show"
+              <MetricRow label="↳ No-Show (by appt date)"
                 values={perDay.map(d => d.noShow)} accent />
-              <MetricRow label="Total # of Cancelled"
-                values={perDay.map(d => d.cancelled)} accent />
-              <MetricRow label="Total # of Sales"
-                values={perDay.map(d => d.salesCount)} bold />
+              <MetricRow label="↳ Unmarked (not yet tracked)"
+                values={perDay.map(d => d.unset)}
+                formatter={v => v === 0 ? '—' : String(v)} accent />
+              <MetricRow label="Cancelled (excluded from scheduled)"
+                values={perDay.map(d => d.cancelled)}
+                formatter={v => v === 0 ? '—' : String(v)} accent />
+              <MetricRow label="Total # of Sales (by paid date)"
+                values={perDay.map(d => d.salesCount)}
+                formatter={v => v === 0 ? '—' : String(v)} bold />
 
               {/* EFFICIENCY — derived rates */}
               <SectionHeaderRow label="EFFICIENCY" span={days.length + 1} color="#F5A623" />
               <MetricRow label="Actual CAC (Customer Acquisition Cost)"
                 values={perDay.map(d => d.cac)}
                 formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
-              <MetricRow label="Actual SUR (Show Up Rate)"
+              <MetricRow label="Actual SUR (Showed ÷ tracked)"
                 values={perDay.map(d => d.showUpPct)}
                 formatter={v => v === null ? '—' : `${v}%`} bold />
-              <MetricRow label="Actual CVR (Conversion Rate)"
-                values={perDay.map(d => d.bookToSalePct)}
+              <MetricRow label="Actual CVR (Sales ÷ Show-Ups)"
+                values={perDay.map(d => d.showToSalePct)}
                 formatter={v => v === null ? '—' : `${v}%`} bold />
 
               <SectionHeaderRow label="TIME SLOTS (attendees / bookings)" span={days.length + 1} color="#4ECDC4" />
@@ -525,13 +598,16 @@ export default function SalesDashboard({ bookings = [] }) {
         </div>
       </section>
 
+      {/* Scheduling insights — best days & times to book / highest show-up */}
+      <SchedulingInsights bookings={periodBookings} nowMs={nowMs} />
+
       {/* Sales summary — LakbayHub only, focused on revenue + conversion */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-5 rounded-full" style={{ backgroundColor: '#F5A623' }} />
             <div>
-              <h2 className="font-semibold text-gray-900">Sales Summary · {period.label}</h2>
+              <h2 className="font-semibold text-gray-900">Sales Summary · {periodLabel}</h2>
               <p className="text-[11px] text-gray-500 mt-0.5">LakbayHub closed sign-ups · independent from ad spend</p>
             </div>
           </div>
@@ -544,8 +620,8 @@ export default function SalesDashboard({ bookings = [] }) {
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 p-4">
-          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} closed sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={period.compareLabel} />
-          <KpiCard icon={Users}      label="# of Sales"    value={String(totals.salesCount)}     accent="#FFF4E0" delta={delta.salesCount} compareLabel={period.compareLabel} />
+          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} closed sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={compareLabel} />
+          <KpiCard icon={Users}      label="# of Sales"    value={String(totals.salesCount)}     accent="#FFF4E0" delta={delta.salesCount} compareLabel={compareLabel} />
           <KpiCard icon={TrendingUp} label="Book → Sale"   value={`${overallBookToSale}%`}       sub={`${totals.salesCount} sales of ${totals.bookings} bookings`} />
           <KpiCard icon={TrendingUp} label="Show → Sale"   value={overallShowToSale === null ? '—' : `${overallShowToSale}%`} sub={overallShowToSale === null ? 'mark show-ups first' : `${totals.salesCount} sales of ${totals.showed} attendees`} />
           <KpiCard icon={DollarSign} label="Avg Order"     value={totals.salesCount === 0 ? '—' : formatPHPCompact(totals.sales / totals.salesCount)} sub="per closed sale" />
@@ -556,7 +632,7 @@ export default function SalesDashboard({ bookings = [] }) {
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h2 className="font-semibold text-gray-900">Ad Efficiency · {period.label}</h2>
+            <h2 className="font-semibold text-gray-900">Ad Efficiency · {periodLabel}</h2>
             <p className="text-[11px] text-gray-500 mt-0.5">Meta Ads spend metrics (combined with LakbayHub revenue for ROAS & CAC)</p>
           </div>
           {metaError ? (
@@ -574,11 +650,11 @@ export default function SalesDashboard({ bookings = [] }) {
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-4">
-          <KpiCard icon={DollarSign} label="Total Ads Spent"    value={formatPHPCompact(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={period.compareLabel} />
-          <KpiCard icon={DollarSign} label="Total Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={period.compareLabel} />
+          <KpiCard icon={DollarSign} label="Total Ads Spent"    value={formatPHPCompact(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={compareLabel} />
+          <KpiCard icon={DollarSign} label="Total Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={compareLabel} />
           <KpiCard icon={TrendingUp} label="Return On Ads Spent" value={totalROAS === null ? '—' : `${totalROAS}%`} sub="revenue / spend" accent="#fef3c7" />
           <KpiCard icon={TrendingUp} label="AR% (Ads/Revenue)"   value={totalARPct === null ? '—' : `${totalARPct}%`} sub="ad cost / revenue" />
-          <KpiCard icon={Users}      label="Total Leads"         value={String(totals.leads)} sub="bookings made" delta={delta.leads} compareLabel={period.compareLabel} />
+          <KpiCard icon={Users}      label="Total Leads"         value={String(totals.leads)} sub="bookings made" delta={delta.leads} compareLabel={compareLabel} />
           <KpiCard icon={DollarSign} label="Average CPL"         value={totalCPL === null ? '—' : formatPHPCompact(totalCPL)} sub="cost per lead" />
           <KpiCard icon={DollarSign} label="Profit"              value={totals.profit === 0 ? '—' : (totals.profit >= 0 ? formatPHPCompact(totals.profit) : `−${formatPHPCompact(-totals.profit)}`)} sub="revenue − spend" accent={totals.profit >= 0 ? '#dcfce7' : '#fee2e2'} />
         </div>

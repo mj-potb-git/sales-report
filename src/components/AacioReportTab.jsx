@@ -15,6 +15,13 @@ import {
 } from '../api/lakbay'
 import { attendanceStats, getStatus, subscribeAttendance } from '../lib/attendance'
 import LiveIndicator from './LiveIndicator'
+import DateRangePicker from './DateRangePicker'
+
+// Parse a YYYY-MM-DD key into a local Date (for custom date selections)
+function dateFromKey(k) {
+  const [y, m, d] = k.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
 
 // AACIO external-team sales live in LakbayHub under "EXTERNAL COACH - ..."
 // clusters. Match by keyword so any future external coach is auto-included.
@@ -149,6 +156,9 @@ function fmtTime(iso) {
 export default function AacioReportTab() {
   const { bookings, loading, refreshing, error, lastFetched, refresh } = useAacioData()
   const [period, setPeriod] = useState('month')
+  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when period === 'custom'
+  const isCustom = period === 'custom' && customDates.length > 0
+  const customSet = useMemo(() => new Set(customDates), [customDates])
 
   // LakbayHub sales tagged to AACIO external clusters (polled, shared cache)
   const [extSales, setExtSales] = useState([])
@@ -169,12 +179,24 @@ export default function AacioReportTab() {
   const [, bumpAttendance] = useState(0)
   useEffect(() => subscribeAttendance(() => bumpAttendance(n => n + 1)), [])
 
-  const [from, to] = useMemo(() => rangeForPeriod(period), [period])
+  const [from, to] = useMemo(() => {
+    if (isCustom) {
+      const sorted = [...customDates].sort()
+      return [startOfDay(dateFromKey(sorted[0])), endOfDay(dateFromKey(sorted[sorted.length - 1]))]
+    }
+    return rangeForPeriod(period)
+  }, [isCustom, customDates, period])
+
+  // For multi-select custom dates, also require the record's day to be one of
+  // the picked days (a plain from–to range would include in-between days).
+  const inCustom = (key) => !isCustom || customSet.has(key)
 
   // External sales within the selected period (by date_paid)
   const salesInRange = useMemo(
-    () => filterByRange(extSales, from, to).sort((a, b) => new Date(b.date) - new Date(a.date)),
-    [extSales, from, to],
+    () => filterByRange(extSales, from, to)
+      .filter(r => inCustom(r.date))
+      .sort((a, b) => new Date(b.date) - new Date(a.date)),
+    [extSales, from, to, isCustom, customSet], // eslint-disable-line react-hooks/exhaustive-deps
   )
   const salesStats = useMemo(() => {
     const revenue = sum(salesInRange, 'sales_amount')
@@ -204,9 +226,13 @@ export default function AacioReportTab() {
   const inRange = useMemo(() => {
     const a = from.getTime(), b = to.getTime()
     return bookings
-      .filter(bk => { const t = new Date(bk.startsAt).getTime(); return t >= a && t <= b })
+      .filter(bk => {
+        const t = new Date(bk.startsAt).getTime()
+        if (t < a || t > b) return false
+        return inCustom(dateKey(bk.startsAt))
+      })
       .sort((x, y) => new Date(y.startsAt) - new Date(x.startsAt))
-  }, [bookings, from, to])
+  }, [bookings, from, to, isCustom, customSet]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     const total     = inRange.length
@@ -251,7 +277,10 @@ export default function AacioReportTab() {
   // ── Daily Performance Matrix (mirrors the Operations tab spreadsheet) ──────
   // Columns = one day each, across the selected period (capped at 92 days).
   // All rows are derived from AACIO YCBM bookings + external LakbayHub sales.
-  const matrixDays = useMemo(() => enumerateDays(from, to), [from, to])
+  const matrixDays = useMemo(
+    () => (isCustom ? [...customDates].sort().map(dateFromKey) : enumerateDays(from, to)),
+    [isCustom, customDates, from, to],
+  )
 
   // Group AACIO bookings by SCHEDULE date (startsAt) and by CREATED date.
   const schedByDate = useMemo(() => {
@@ -376,19 +405,26 @@ export default function AacioReportTab() {
       </div>
 
       {/* Period selector */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-        {PERIODS.map(p => (
-          <button
-            key={p.id}
-            onClick={() => setPeriod(p.id)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              period === p.id ? 'bg-white shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
-            }`}
-            style={period === p.id ? { color: TEAL } : undefined}
-          >
-            {p.label}
-          </button>
-        ))}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
+          {PERIODS.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setPeriod(p.id)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                period === p.id ? 'bg-white shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
+              }`}
+              style={period === p.id ? { color: TEAL } : undefined}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <DateRangePicker
+          value={customDates}
+          active={isCustom}
+          onApply={(dates) => { setCustomDates(dates); setPeriod('custom') }}
+        />
       </div>
 
       {/* KPI cards */}

@@ -37,6 +37,18 @@ import {
   formatPHP, formatPHPCompact, timeAgo,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
+import DateRangePicker from './DateRangePicker'
+
+// Normalize a record's date to a local YYYY-MM-DD key (matches DateRangePicker's
+// output) so custom-date filtering is exact regardless of source date format.
+function recDayKey(dateStr) {
+  const d = parseDate(dateStr)
+  if (!d || isNaN(d)) return dateStr
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 const PRIMARY = '#1B4F4F'
 const ACCENT  = '#F5A623'
@@ -439,6 +451,7 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
 
 export default function AccountOfficersTab() {
   const [periodId, setPeriodId] = useState('monthly')
+  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const [search, setSearch] = useState('')
   const [filterUnassigned, setFilterUnassigned] = useState(true)
   const [filterCluster, setFilterCluster] = useState('all') // cluster name or 'all'
@@ -476,15 +489,25 @@ export default function AccountOfficersTab() {
   }, [])
 
   const period = PERIODS.find(p => p.id === periodId) ?? PERIODS[1]
+  const isCustom = periodId === 'custom' && customDates.length > 0
+  const customSet = new Set(customDates)
+  const periodLabel = isCustom
+    ? (customDates.length === 1 ? 'Custom day' : `${customDates.length} custom days`)
+    : period.label
 
   if (loading) return <div className="text-center py-12 text-gray-400">Loading Booking Transactions from Fusioo…</div>
   if (error)   return <div className="text-center py-12 text-red-500">{error.message}</div>
 
-  // Period filter (calendar-aligned for weekly/monthly, rolling for the rest)
+  // Period filter (calendar-aligned for weekly/monthly, rolling for the rest).
+  // Custom = exactly the picked days; no meaningful prior window so skip compare.
   const now = new Date()
   const { start, end, priorStart, priorEnd } = rangeForPeriod(period, now)
-  const rangedRaw = filterByRange(records, start, end)
-  const priorRangedRaw = (priorStart && priorEnd) ? filterByRange(records, priorStart, priorEnd) : []
+  const rangedRaw = isCustom
+    ? records.filter(r => customSet.has(recDayKey(r.date)))
+    : filterByRange(records, start, end)
+  const priorRangedRaw = isCustom
+    ? []
+    : (priorStart && priorEnd) ? filterByRange(records, priorStart, priorEnd) : []
 
   // Domestic vs International — derived from team name. "POTB International"
   // = international; everything else (e.g. "POTB Domestic") = domestic.
@@ -620,15 +643,22 @@ export default function AccountOfficersTab() {
           </div>
         </div>
         <div className="flex flex-col gap-2 items-end">
-          <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto">
-            {PERIODS.map(p => (
-              <button key={p.id} onClick={() => setPeriodId(p.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                        periodId === p.id ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
-                      }`}>
-                {p.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto">
+              {PERIODS.map(p => (
+                <button key={p.id} onClick={() => setPeriodId(p.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                          periodId === p.id ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
+                        }`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <DateRangePicker
+              value={customDates}
+              active={isCustom}
+              onApply={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
+            />
           </div>
           {/* Division quick-filter (Domestic / International) */}
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
@@ -651,7 +681,7 @@ export default function AccountOfficersTab() {
       {/* Company snapshot */}
       <section>
         <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-          <Sparkles size={14} className="text-amber-500" /> Company Overview · {period.label}
+          <Sparkles size={14} className="text-amber-500" /> Company Overview · {periodLabel}
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
           <StatCard icon={TrendingUp} label="Company Revenue"
@@ -689,7 +719,7 @@ export default function AccountOfficersTab() {
       {/* Domestic vs International side-by-side breakdown */}
       <section>
         <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-          <Users size={14} style={{ color: PRIMARY }} /> Sales by Division · {period.label}
+          <Users size={14} style={{ color: PRIMARY }} /> Sales by Division · {periodLabel}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button type="button"

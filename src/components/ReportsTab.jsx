@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
+import DateRangePicker from './DateRangePicker'
 import {
   formatPHP, formatPHPCompact, parseDate, sum,
   filterByRange, rangeFor, startOfDay, startOfWeek, startOfMonth,
@@ -424,6 +425,13 @@ function DetailedList({ records }) {
 export default function ReportsTab() {
   const { records, loading, refreshing, error, lastFetched, refresh } = useSalesData()
   const [periodId, setPeriodId] = useState('daily')
+  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
+  const isCustom = periodId === 'custom' && customDates.length > 0
+  const customSet = useMemo(() => new Set(customDates), [customDates])
+  const customRecords = useMemo(
+    () => (isCustom ? records.filter(r => customSet.has(r.date)) : records),
+    [isCustom, records, customSet],
+  )
 
   if (loading) return <div className="text-center py-12 text-gray-400">Loading sales report…</div>
   if (error)   return <div className="text-center py-12 text-red-500">{error.message}</div>
@@ -473,25 +481,39 @@ export default function ReportsTab() {
       <section>
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <h2 className="text-base font-semibold text-gray-800">Sign-ups Summary</h2>
-          <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
-            {PERIODS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setPeriodId(p.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  periodId === p.id
-                    ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+              {PERIODS.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setPeriodId(p.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    periodId === p.id
+                      ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <DateRangePicker
+              value={customDates}
+              active={isCustom}
+              onApply={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
+            />
           </div>
         </div>
         {periodId === 'daily'   && <DailyReport   records={records} />}
         {periodId === 'weekly'  && <WeeklyReport  records={records} />}
         {periodId === 'monthly' && <MonthlyReport records={records} />}
+        {periodId === 'custom'  && (
+          isCustom
+            ? <DailyReport records={customRecords} />
+            : <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center text-sm text-gray-500">
+                Pumili ng petsa sa <strong>Custom</strong> calendar para makita ang sales ng mga araw na yun.
+              </div>
+        )}
         {periodId === 'all'     && (
           <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center">
             <p className="text-3xl font-bold text-gray-900">{formatPHP(sum(records, 'sales_amount'))}</p>
@@ -500,8 +522,8 @@ export default function ReportsTab() {
         )}
       </section>
 
-      {/* Detailed signups list */}
-      <DetailedList records={records} />
+      {/* Detailed signups list — filtered to the picked days when in custom mode */}
+      <DetailedList records={isCustom ? customRecords : records} />
     </div>
   )
 }

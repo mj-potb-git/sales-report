@@ -13,6 +13,12 @@ async function get(path) {
 //
 // Default window: 30 days back to 60 days forward.
 
+// YCBM omits `noShow` (and `answers`) from the default booking payload — they
+// only appear when explicitly requested via the `fields` whitelist. We list
+// every field the app relies on PLUS noShow so attendance reflects YCBM's own
+// "No Show" marking (the team sets this in the YCBM UI; it's the source of truth).
+const BOOKING_FIELDS = 'id,title,startsAt,endsAt,createdAt,cancelled,noShow,profileId,timeZone,location,accountId,tentative'
+
 const DEFAULT_FROM_DAYS_BACK    = 30    // 1 month back — keeps initial load fast
 const DEFAULT_TO_DAYS_FORWARD   = 30
 const MAX_PAGES                 = 200
@@ -52,7 +58,7 @@ export async function fetchBookings({
   let latestSeenMs = cursorMs
 
   while (pages < MAX_PAGES && (Date.now() - startTime) < PAGINATION_HARD_TIME_LIMIT) {
-    const page = await get(`/bookings?from=${encodeURIComponent(cursor)}`)
+    const page = await get(`/bookings?from=${encodeURIComponent(cursor)}&fields=${BOOKING_FIELDS}`)
     if (!Array.isArray(page) || page.length === 0) break
 
     let progressed = false
@@ -137,7 +143,8 @@ export function mapBooking(raw, profilesById) {
     durationMinutes: mins,
     team: profile?.subdomain ?? 'unknown',
     appointmentType: profile?.title ?? parsedType,
-    status: raw.cancelled ? 'Cancelled' : null,
+    status: raw.cancelled ? 'Cancelled' : (raw.noShow ? 'No Show' : null),
+    noShow: raw.noShow === true,   // YCBM's own attendance flag (source of truth)
     startsAt: raw.startsAt,
     endsAt: raw.endsAt,
     timeZone: raw.timeZone,

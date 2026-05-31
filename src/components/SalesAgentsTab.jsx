@@ -17,6 +17,8 @@ import PackagePerformance from './sales/PackagePerformance'
 import LiveActivityFeed from './sales/LiveActivityFeed'
 import ClusterHealth from './sales/ClusterHealth'
 import DeltaBadge from './sales/DeltaBadge'
+import SalesBreakdown from './sales/SalesBreakdown'
+import DateRangePicker from './DateRangePicker'
 import { comparePeriods, previousPeriodRange } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
@@ -31,7 +33,6 @@ const PERIODS = [
   { id: 'daily',   label: 'Daily'   },
   { id: 'weekly',  label: 'Weekly'  },
   { id: 'monthly', label: 'Monthly' },
-  { id: 'custom',  label: 'Custom'  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -227,12 +228,16 @@ function TeamDetail({ team, allRecords, onBack, onAgentClick }) {
 
 // ---------------------------------------------------------------------------
 // Main overview view
-function Overview({ records, period, onPeriodChange, view, onViewChange,
+function Overview({ records, period, onPeriodChange, customDates = [], onCustomApply, view, onViewChange,
                     onAgentClick, onTeamClick, search, onSearchChange,
                     lastFetched, refreshing, onRefresh }) {
   const today = new Date()
+  const isCustom = period === 'custom' && customDates.length > 0
   const { start, end } = rangeFor(period, today)
-  const ranged = filterByRange(records, start, end)
+  const customSet = useMemo(() => new Set(customDates), [customDates])
+  const ranged = isCustom
+    ? records.filter(r => customSet.has(r.date))
+    : filterByRange(records, start, end)
 
   const dailyTotal   = sum(filterByRange(records, rangeFor('daily',   today).start, rangeFor('daily',   today).end), 'sales_amount')
   const weeklyTotal  = sum(filterByRange(records, rangeFor('weekly',  today).start, rangeFor('weekly',  today).end), 'sales_amount')
@@ -274,7 +279,7 @@ function Overview({ records, period, onPeriodChange, view, onViewChange,
             label="LakbayHub"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
             {PERIODS.map(p => (
               <button
@@ -290,6 +295,11 @@ function Overview({ records, period, onPeriodChange, view, onViewChange,
               </button>
             ))}
           </div>
+          <DateRangePicker
+            value={customDates}
+            active={isCustom}
+            onApply={onCustomApply}
+          />
         </div>
       </div>
 
@@ -316,6 +326,14 @@ function Overview({ records, period, onPeriodChange, view, onViewChange,
           <SummaryCard icon={Users}      label="Active Agents"       value={String(byAgent.length)} sub={`${byTeam.length} teams`} />
         </div>
       </div>
+
+      {/* Detailed sales breakdown — how much each closer/cluster sold this period */}
+      <SalesBreakdown
+        records={ranged}
+        periodLabel={isCustom
+          ? (customDates.length === 1 ? '1 custom day' : `${customDates.length} custom days`)
+          : period.charAt(0).toUpperCase() + period.slice(1)}
+      />
 
       {/* Period-vs-prior period comparison strip */}
       {(() => {
@@ -505,6 +523,7 @@ function Overview({ records, period, onPeriodChange, view, onViewChange,
 export default function SalesAgentsTab() {
   const { records, loading, refreshing, error, lastFetched, refresh } = useSalesData()
   const [period, setPeriod] = useState('monthly')
+  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when period === 'custom'
   const [view,   setView]   = useState('agents')
   const [search, setSearch] = useState('')
   const [selectedAgent, setSelectedAgent] = useState(null)
@@ -528,6 +547,8 @@ export default function SalesAgentsTab() {
       <Overview
         records={records}
         period={period} onPeriodChange={setPeriod}
+        customDates={customDates}
+        onCustomApply={(dates) => { setCustomDates(dates); setPeriod('custom') }}
         view={view} onViewChange={setView}
         search={search} onSearchChange={setSearch}
         onAgentClick={setSelectedAgent}
