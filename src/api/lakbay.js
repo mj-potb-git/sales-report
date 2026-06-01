@@ -14,6 +14,14 @@
 import { supabase, getSupabase } from './supabase'
 import { mockSalesRecords } from '../data/mockSalesData'
 import { fetchSignupsReport, mapLakbayHubRecord } from './lakbayhub'
+import {
+  applyOverrides, startSaleOverridePoller, subscribeSaleOverrides,
+} from '../lib/saleDateOverrides'
+
+// Boot the sale-date-correction sync once, and re-process records whenever a
+// correction changes so every report immediately reflects the true sale date.
+startSaleOverridePoller()
+subscribeSaleOverrides(() => { invalidateSalesCache() })
 
 const CACHE_TTL_MS         = 20_000   // serve cached data for 20s
 const RATE_LIMIT_BACKOFF_MS = 120_000  // after a 429/rate-limit, wait 2 min before retrying live
@@ -99,9 +107,11 @@ export async function fetchSalesRecords({ force = false } = {}) {
 
   inFlight = fetchFresh()
     .then(data => {
-      cachedData = data
+      // Re-date any late-posted manual payments to their true close date
+      const corrected = applyOverrides(data)
+      cachedData = corrected
       cachedAt = Date.now()
-      return data
+      return corrected
     })
     .finally(() => { inFlight = null })
 

@@ -3,7 +3,7 @@
 // (operations matrix). This is the "raw report" view a manager would
 // hand to finance or copy into a weekly slide.
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   FileText, Download, Search, ChevronUp, ChevronDown,
   Calendar, DollarSign, Users, Package, ExternalLink, Filter,
@@ -11,6 +11,8 @@ import {
 import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
 import DateRangePicker from './DateRangePicker'
+import { keyForRecord, setOverride, subscribeSaleOverrides } from '../lib/saleDateOverrides'
+import { CalendarClock, Check, X as XIcon } from 'lucide-react'
 import {
   formatPHP, formatPHPCompact, parseDate, sum,
   filterByRange, rangeFor, startOfDay, startOfWeek, startOfMonth,
@@ -248,6 +250,61 @@ function statusTone(s) {
   return 'bg-gray-100 text-gray-600'
 }
 
+// Date cell with inline sale-date correction (for late-posted manual payments).
+function DateCell({ r }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(r.date)
+
+  const save = () => {
+    if (val && val !== r.date) {
+      setOverride(keyForRecord(r), val, { originalDate: r.originalDate || r.date, note: 'manual correction' })
+    }
+    setEditing(false)
+  }
+  const clear = () => { setOverride(keyForRecord(r), null); setEditing(false) }
+
+  if (editing) {
+    return (
+      <td className="px-3 py-2 whitespace-nowrap">
+        <div className="flex items-center gap-1">
+          <input
+            type="date"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            className="border border-gray-200 rounded-md px-1.5 py-0.5 text-xs focus:outline-none focus:border-[#1B4F4F]"
+          />
+          <button onClick={save} title="Save corrected date" className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"><Check size={13} /></button>
+          {r.corrected && (
+            <button onClick={clear} title="Remove correction" className="p-1 text-red-500 hover:bg-red-50 rounded"><XIcon size={13} /></button>
+          )}
+          <button onClick={() => setEditing(false)} title="Cancel" className="p-1 text-gray-400 hover:bg-gray-100 rounded"><XIcon size={13} /></button>
+        </div>
+      </td>
+    )
+  }
+
+  return (
+    <td className="px-3 py-2 whitespace-nowrap">
+      <div className="flex items-center gap-1.5 group">
+        <span className="text-gray-700 font-medium">{r.date}</span>
+        {r.corrected && (
+          <span title={`Corrected from ${r.originalDate}`}
+                className="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 text-[9px] font-semibold whitespace-nowrap">
+            ✎ was {r.originalDate}
+          </span>
+        )}
+        <button
+          onClick={() => { setVal(r.date); setEditing(true) }}
+          title="Correct sale date (for late-posted manual payments)"
+          className="p-0.5 text-gray-300 hover:text-[#1B4F4F] transition-colors"
+        >
+          <CalendarClock size={13} />
+        </button>
+      </div>
+    </td>
+  )
+}
+
 function DetailedList({ records }) {
   const [search, setSearch] = useState('')
   const [payment, setPayment] = useState('All')
@@ -379,7 +436,7 @@ function DetailedList({ records }) {
               <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400">No records match filters</td></tr>
             ) : sorted.map(r => (
               <tr key={r.transaction_id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.date}</td>
+                <DateCell r={r} />
                 <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{r.customer_name}</td>
                 <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.meta?.package || '—'}</td>
                 <td className="px-3 py-2 whitespace-nowrap">
@@ -432,6 +489,9 @@ export default function ReportsTab() {
     () => (isCustom ? records.filter(r => customSet.has(r.date)) : records),
     [isCustom, records, customSet],
   )
+
+  // Re-fetch (which re-applies sale-date corrections) when a correction changes
+  useEffect(() => subscribeSaleOverrides(() => refresh()), [refresh])
 
   if (loading) return <div className="text-center py-12 text-gray-400">Loading sales report…</div>
   if (error)   return <div className="text-center py-12 text-red-500">{error.message}</div>
