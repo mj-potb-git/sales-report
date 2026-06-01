@@ -61,6 +61,12 @@ export default function LandingPage() {
              style={{ backgroundColor: BRAND_GOLD }} />
         <div className="pointer-events-none absolute -bottom-24 -left-16 w-80 h-80 rounded-full opacity-10 bg-white" />
 
+        {/* POTB logo as a large, faded background watermark (mark only, no words —
+            the wordmark would be redundant with the header) */}
+        <div className="pointer-events-none absolute -right-10 bottom-0 opacity-[0.08] select-none">
+          <PotbLogo size={420} />
+        </div>
+
         <div className="relative z-10">
           <span className="inline-block text-[11px] font-semibold tracking-[0.2em] uppercase opacity-80">
             {settings.organizationName}
@@ -68,10 +74,6 @@ export default function LandingPage() {
         </div>
 
         <div className="relative z-10 max-w-md">
-          {/* Logo in a clean white card so it always reads well on the blue */}
-          <div className="inline-flex items-center justify-center bg-white rounded-2xl px-5 py-4 mb-7 shadow-lg">
-            <PotbLogo size={56} withWordmark className="text-gray-900" />
-          </div>
           <h1 className="text-3xl sm:text-4xl font-bold leading-tight">
             {settings.dashboardTitle}
           </h1>
