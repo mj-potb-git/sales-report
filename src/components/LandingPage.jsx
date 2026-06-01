@@ -63,8 +63,8 @@ export default function LandingPage() {
 
         {/* POTB logo as a large, faded background watermark (mark only, no words —
             the wordmark would be redundant with the header) */}
-        <div className="pointer-events-none absolute -right-10 bottom-0 opacity-[0.08] select-none">
-          <PotbLogo size={420} />
+        <div className="pointer-events-none absolute -right-8 bottom-2 opacity-[0.20] select-none">
+          <PotbLogo size={440} />
         </div>
 
         <div className="relative z-10">
