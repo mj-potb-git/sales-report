@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { LogOut, Loader2 } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { LogOut, Loader2, ShieldAlert } from 'lucide-react'
 import TabNav from './components/TabNav'
 import OverviewTab from './components/OverviewTab'
 import BookingsTab from './components/BookingsTab'
@@ -15,6 +15,7 @@ import useYcbmData from './hooks/useYcbmData'
 import { getSettings, subscribeSettings } from './lib/settings'
 import { startAttendancePoller } from './lib/attendance'
 import { getSession, onAuthChange, signOut } from './lib/auth'
+import { fetchRole, allowedTabsForRole, ROLE_LABELS } from './lib/roles'
 
 // Boot attendance sync once on app load (idempotent)
 startAttendancePoller()
@@ -72,6 +73,30 @@ function UserBadge({ userName, userRole, onSignOut }) {
   )
 }
 
+function NoAccess({ email, onSignOut }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: '#F8FAFA' }}>
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-6 h-6 text-amber-500" />
+        </div>
+        <h1 className="text-lg font-bold text-gray-900">No access assigned</h1>
+        <p className="text-sm text-gray-500 mt-2">
+          Naka-login ka bilang <span className="font-semibold">{email}</span>, pero wala ka pang naka-assign na role.
+          Hingin sa admin na bigyan ka ng access.
+        </p>
+        <button
+          onClick={onSignOut}
+          className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+          style={{ backgroundColor: '#1B4F4F' }}
+        >
+          <LogOut className="w-4 h-4" /> Log out
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview')
   const { bookings, loading, refreshing, error, lastFetched, refresh } = useYcbmData()
@@ -90,6 +115,27 @@ export default function App() {
     return () => { alive = false; off() }
   }, [])
 
+  // ── Role gate ──────────────────────────────────────────────────────
+  // Track which email the resolved role belongs to, so a user switch shows
+  // 'loading' again instead of briefly flashing the previous user's tabs.
+  const [roleState, setRoleState] = useState(null) // { email, role } | null
+  const sessionEmail = session && session !== 'checking' ? session.user?.email : null
+  useEffect(() => {
+    if (!sessionEmail) return
+    let alive = true
+    fetchRole(sessionEmail).then((r) => { if (alive) setRoleState({ email: sessionEmail, role: r }) })
+    return () => { alive = false }
+  }, [sessionEmail])
+  const role = (roleState && roleState.email === sessionEmail) ? roleState.role : 'loading'
+
+  const allowedTabs = useMemo(
+    () => (role && role !== 'loading' ? allowedTabsForRole(role) : []),
+    [role],
+  )
+  // The tab actually shown — clamped to what this role may see (no flash of a
+  // forbidden tab, no need to mutate activeTab state).
+  const currentTab = allowedTabs.includes(activeTab) ? activeTab : (allowedTabs[0] || activeTab)
+
   // While verifying the stored session, show a minimal splash (avoids a
   // flash of the landing page for already-logged-in users).
   if (session === 'checking') {
@@ -105,6 +151,20 @@ export default function App() {
     return <LandingPage />
   }
 
+  // Resolving the user's role.
+  if (role === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F8FAFA' }}>
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#1CA9D6' }} />
+      </div>
+    )
+  }
+
+  // Logged in but no role assigned → no access.
+  if (!role) {
+    return <NoAccess email={session.user?.email} onSignOut={signOut} />
+  }
+
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#F8FAFA' }}>
       <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm">
@@ -118,7 +178,7 @@ export default function App() {
                 <span className="text-lg font-bold truncate" style={{ color: '#1B4F4F' }}>
                   {settings.dashboardTitle}
                 </span>
-                {(activeTab === 'overview' || activeTab === 'bookings' || activeTab === 'dashboard') && (
+                {(currentTab === 'overview' || currentTab === 'bookings' || currentTab === 'dashboard') && (
                   <LiveIndicator
                     lastFetched={lastFetched}
                     refreshing={refreshing}
@@ -128,9 +188,9 @@ export default function App() {
                 )}
               </div>
             </div>
-            <UserBadge userName={settings.userName} userRole={settings.userRole} onSignOut={signOut} />
+            <UserBadge userName={settings.userName} userRole={ROLE_LABELS[role] || settings.userRole} onSignOut={signOut} />
           </div>
-          <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
+          <TabNav activeTab={currentTab} onTabChange={setActiveTab} allowedTabs={allowedTabs} />
         </div>
       </header>
 
@@ -139,25 +199,25 @@ export default function App() {
             Reports) are always reachable — they don't depend on POTB YCBM, so
             they shouldn't wait behind its slow pagination. Only the POTB-booking
             tabs (overview/bookings/operations) honor the global loading/error gate. */}
-        {activeTab === 'settings' ? (
+        {currentTab === 'settings' ? (
           <SettingsTab />
-        ) : activeTab === 'sales' ? (
+        ) : currentTab === 'sales' ? (
           <SalesAgentsTab />
-        ) : activeTab === 'officers' ? (
+        ) : currentTab === 'officers' ? (
           <AccountOfficersTab />
-        ) : activeTab === 'aacio' ? (
+        ) : currentTab === 'aacio' ? (
           <AacioReportTab />
-        ) : activeTab === 'reports' ? (
+        ) : currentTab === 'reports' ? (
           <ReportsTab />
         ) : loading ? (
           <SkeletonLoader />
         ) : error ? (
           <ErrorState error={error} />
         ) : (
-          <div key={activeTab} className="tab-content">
-            {activeTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} onJumpTab={setActiveTab} />}
-            {activeTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
-            {activeTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
+          <div key={currentTab} className="tab-content">
+            {currentTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} onJumpTab={setActiveTab} />}
+            {currentTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
+            {currentTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
           </div>
         )}
       </main>

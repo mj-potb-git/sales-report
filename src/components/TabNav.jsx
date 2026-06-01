@@ -11,12 +11,16 @@ const tabs = [
   { id: 'settings',  label: 'Settings',  Icon: Settings },
 ]
 
-export default function TabNav({ activeTab, onTabChange }) {
+export default function TabNav({ activeTab, onTabChange, allowedTabs }) {
+  // Show only the tabs this role is allowed to see (null = show all).
+  const visibleTabs = allowedTabs
+    ? tabs.filter(t => allowedTabs.includes(t.id))
+    : tabs
   return (
     <>
       {/* Desktop: horizontal tabs */}
       <div className="hidden sm:flex gap-1 bg-gray-100 rounded-xl p-1">
-        {tabs.map(({ id, label }) => (
+        {visibleTabs.map(({ id, label }) => (
           <button
             key={id}
             onClick={() => onTabChange(id)}
@@ -38,7 +42,7 @@ export default function TabNav({ activeTab, onTabChange }) {
         className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 z-50 flex"
         aria-label="Main navigation"
       >
-        {tabs.map(({ id, label, Icon }) => (
+        {visibleTabs.map(({ id, label, Icon }) => (
           <button
             key={id}
             onClick={() => onTabChange(id)}
