@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { LogIn, Loader2, AlertCircle, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { signIn, sendPasswordReset, isAuthConfigured } from '../lib/auth'
 import { getSettings } from '../lib/settings'
+import PotbLogo from './PotbLogo'
 
 // Brand palette taken from the POTB logo: cyan-blue "P" + gold accent.
 const BRAND_BLUE   = '#1CA9D6'  // logo cyan
@@ -68,13 +69,8 @@ export default function LandingPage() {
 
         <div className="relative z-10 max-w-md">
           {/* Logo in a clean white card so it always reads well on the blue */}
-          <div className="inline-flex items-center justify-center bg-white rounded-2xl p-4 mb-7 shadow-lg">
-            <img
-              src="/logo.png"
-              alt="Pinoy Online Travel Biz"
-              className="h-16 w-auto"
-              onError={(e) => { e.currentTarget.style.display = 'none' }}
-            />
+          <div className="inline-flex items-center justify-center bg-white rounded-2xl px-5 py-4 mb-7 shadow-lg">
+            <PotbLogo size={56} withWordmark className="text-gray-900" />
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold leading-tight">
             {settings.dashboardTitle}
