@@ -7,5 +7,12 @@
     "api/**/*.js": {
       "maxDuration": 30
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/api/ycbm/:path*",   "destination": "/api/proxy" },
+    { "source": "/api/aacio/:path*",  "destination": "/api/proxy" },
+    { "source": "/api/lakbay/:path*", "destination": "/api/proxy" },
+    { "source": "/api/fusioo/:path*", "destination": "/api/proxy" },
+    { "source": "/api/meta/:path*",   "destination": "/api/proxy" }
+  ]
 }
