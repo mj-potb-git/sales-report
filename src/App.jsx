@@ -1,16 +1,17 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import { LogOut, Loader2, ShieldAlert } from 'lucide-react'
 import TabNav from './components/TabNav'
-import OverviewTab from './components/OverviewTab'
-import BookingsTab from './components/BookingsTab'
-import SalesDashboard from './components/SalesDashboard'
-import SalesAgentsTab from './components/SalesAgentsTab'
-import AccountOfficersTab from './components/AccountOfficersTab'
-import AacioReportTab from './components/AacioReportTab'
-import ReportsTab from './components/ReportsTab'
-import SettingsTab from './components/SettingsTab'
 import LiveIndicator from './components/LiveIndicator'
-import LandingPage from './components/LandingPage'
+
+const OverviewTab       = lazy(() => import('./components/OverviewTab'))
+const BookingsTab       = lazy(() => import('./components/BookingsTab'))
+const SalesDashboard    = lazy(() => import('./components/SalesDashboard'))
+const SalesAgentsTab    = lazy(() => import('./components/SalesAgentsTab'))
+const AccountOfficersTab = lazy(() => import('./components/AccountOfficersTab'))
+const AacioReportTab    = lazy(() => import('./components/AacioReportTab'))
+const ReportsTab        = lazy(() => import('./components/ReportsTab'))
+const SettingsTab       = lazy(() => import('./components/SettingsTab'))
+const LandingPage       = lazy(() => import('./components/LandingPage'))
 import useYcbmData from './hooks/useYcbmData'
 import { getSettings, subscribeSettings } from './lib/settings'
 import { startAttendancePoller } from './lib/attendance'
@@ -148,7 +149,11 @@ export default function App() {
 
   // Logged out → branded landing + login.
   if (!session) {
-    return <LandingPage />
+    return (
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F8FAFA' }}><Loader2 className="w-6 h-6 animate-spin" style={{ color: '#1CA9D6' }} /></div>}>
+        <LandingPage />
+      </Suspense>
+    )
   }
 
   // Resolving the user's role.
@@ -199,27 +204,29 @@ export default function App() {
             Reports) are always reachable — they don't depend on POTB YCBM, so
             they shouldn't wait behind its slow pagination. Only the POTB-booking
             tabs (overview/bookings/operations) honor the global loading/error gate. */}
-        {currentTab === 'settings' ? (
-          <SettingsTab />
-        ) : currentTab === 'sales' ? (
-          <SalesAgentsTab />
-        ) : currentTab === 'officers' ? (
-          <AccountOfficersTab />
-        ) : currentTab === 'aacio' ? (
-          <AacioReportTab />
-        ) : currentTab === 'reports' ? (
-          <ReportsTab />
-        ) : loading ? (
-          <SkeletonLoader />
-        ) : error ? (
-          <ErrorState error={error} />
-        ) : (
-          <div key={currentTab} className="tab-content">
-            {currentTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} onJumpTab={setActiveTab} />}
-            {currentTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
-            {currentTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
-          </div>
-        )}
+        <Suspense fallback={<SkeletonLoader />}>
+          {currentTab === 'settings' ? (
+            <SettingsTab />
+          ) : currentTab === 'sales' ? (
+            <SalesAgentsTab />
+          ) : currentTab === 'officers' ? (
+            <AccountOfficersTab />
+          ) : currentTab === 'aacio' ? (
+            <AacioReportTab />
+          ) : currentTab === 'reports' ? (
+            <ReportsTab />
+          ) : loading ? (
+            <SkeletonLoader />
+          ) : error ? (
+            <ErrorState error={error} />
+          ) : (
+            <div key={currentTab} className="tab-content">
+              {currentTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} onJumpTab={setActiveTab} />}
+              {currentTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
+              {currentTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
+            </div>
+          )}
+        </Suspense>
       </main>
     </div>
   )

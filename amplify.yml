@@ -1,0 +1,22 @@
+version: 1
+# IMPORTANT: In the Amplify Console → App settings → Build settings,
+# set "App type" to "Web compute (SSR)" so Amplify runs `npm start`
+# (node server.js) instead of doing a static deployment.
+# Without Web Compute, the Express proxy never runs and /api/* calls fail.
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    # Include everything so `npm start` (node server.js) has access to
+    # server.js, node_modules/, and the built dist/ directory.
+    baseDirectory: /
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
