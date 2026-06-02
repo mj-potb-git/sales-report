@@ -96,6 +96,24 @@ export default async function handler(req, res) {
     fusioo_via_proxy = { status: 'fetch_error', error: String(e.message) }
   }
 
+  // --- LakbayHub direct probe (bypasses proxy, confirms LakbayHub is reachable) ---
+  const lakbayKey = env.LAKBAYHUB_APP_KEY || ''
+  let lakbay_direct
+  try {
+    const r = await fetch('https://potb-utilities-api.lakbayhub.com/api/v1/signups/sales-report', {
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(lakbayKey ? { 'x-app-key': lakbayKey } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+    })
+    const body = await r.text()
+    lakbay_direct = { status: r.status, body_preview: body.slice(0, 150) }
+  } catch (e) {
+    lakbay_direct = { status: 'fetch_error', error: String(e.message) }
+  }
+
   // --- LakbayHub via proxy probe ---
   let lakbay_via_proxy
   try {
@@ -106,6 +124,17 @@ export default async function handler(req, res) {
     lakbay_via_proxy = { status: 'fetch_error', error: String(e.message) }
   }
 
+  // --- AACIO via proxy probe (tests another per-service handler) ---
+  let aacio_via_proxy
+  try {
+    const aacioId = env.YCBM_AACIO_ACCOUNT_ID || ''
+    const r = await fetch(`${base}/api/aacio/bookings?fields=id&limit=1`, { signal: AbortSignal.timeout(8000) })
+    const body = await r.text()
+    aacio_via_proxy = { status: r.status, body_preview: body.slice(0, 150) }
+  } catch (e) {
+    aacio_via_proxy = { status: 'fetch_error', error: String(e.message) }
+  }
+
   res.status(200).json({
     env_checks,
     constructed_url,
@@ -113,7 +142,9 @@ export default async function handler(req, res) {
     ycbm_via_proxy,
     fusioo_direct,
     fusioo_via_proxy,
+    lakbay_direct,
     lakbay_via_proxy,
+    aacio_via_proxy,
     health_req_url: req.url,
   })
 }
