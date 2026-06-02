@@ -96,6 +96,20 @@ export default async function handler(req, res) {
     fusioo_via_proxy = { status: 'fetch_error', error: String(e.message) }
   }
 
+  // --- Fusioo booking transactions direct probe (tests the actual records endpoint) ---
+  const BOOKING_TX_APP_ID = 'ib549c26f3ff64497b314a14d26d8cd2e'
+  let fusioo_records_direct
+  try {
+    const r = await fetch(
+      `https://api.fusioo.com/v3/records/apps/${BOOKING_TX_APP_ID}?limit=1`,
+      { headers: { Authorization: `Bearer ${fusiooToken}`, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) },
+    )
+    const body = await r.text()
+    fusioo_records_direct = { status: r.status, body_preview: body.slice(0, 200) }
+  } catch (e) {
+    fusioo_records_direct = { status: 'fetch_error', error: String(e.message) }
+  }
+
   // --- LakbayHub direct probe (bypasses proxy, confirms LakbayHub is reachable) ---
   const lakbayKey = env.LAKBAYHUB_APP_KEY || ''
   let lakbay_direct
@@ -142,6 +156,7 @@ export default async function handler(req, res) {
     ycbm_via_proxy,
     fusioo_direct,
     fusioo_via_proxy,
+    fusioo_records_direct,
     lakbay_direct,
     lakbay_via_proxy,
     aacio_via_proxy,
