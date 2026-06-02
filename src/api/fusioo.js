@@ -14,6 +14,7 @@ async function get(path) {
   const res = await fetch(`${BASE}${path}`, { headers: { Accept: 'application/json' } })
   if (!res.ok) {
     let msg = `Fusioo API ${res.status}`
+    // eslint-disable-next-line no-empty
     try { const j = await res.json(); msg = j.message || j.error_description || msg } catch {}
     throw new Error(msg)
   }

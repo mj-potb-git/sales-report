@@ -11,7 +11,7 @@
 // fetchSalesRecords() concurrently only hit LakbayHub once. This prevents
 // rate limiting when Overview, Sales, and Dashboard tabs are all open.
 
-import { supabase, getSupabase } from './supabase'
+import { getSupabase } from './supabase'
 import { mockSalesRecords } from '../data/mockSalesData'
 import { fetchSignupsReport, mapLakbayHubRecord } from './lakbayhub'
 import {
@@ -34,7 +34,7 @@ let rateLimitedUntil = 0
 // In-memory shadow of the last successful LakbayHub fetch — survives the
 // rate-limit window so the UI keeps showing real data instead of mock seed.
 let lastRealData = null
-let lastRealAt   = 0
+let _lastRealAt  = 0
 
 async function fetchFresh() {
   // 1. Live LakbayHub API ----------------------------------------------------
@@ -51,7 +51,7 @@ async function fetchFresh() {
         if (mapped.length > 0) {
           console.info(`[lakbay] Loaded ${mapped.length} records from LakbayHub API`)
           lastRealData = mapped
-          lastRealAt = Date.now()
+          _lastRealAt = Date.now()
           return mapped
         }
       }

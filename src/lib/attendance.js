@@ -34,6 +34,7 @@ function fireChange() {
     const obj = {}
     for (const [k, v] of cache) obj[k] = v
     localStorage.setItem(FALLBACK_KEY, JSON.stringify(obj))
+  // eslint-disable-next-line no-empty
   } catch {}
   window.dispatchEvent(new Event('attendance-changed'))
 }
@@ -88,6 +89,7 @@ function bootFromFallback() {
     if (!raw) return
     const obj = JSON.parse(raw)
     cache = new Map(Object.entries(obj).map(([k, v]) => [k, v]))
+  // eslint-disable-next-line no-empty
   } catch {}
 }
 

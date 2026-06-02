@@ -1,4 +1,4 @@
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { CreditCard, ShieldCheck } from 'lucide-react'
 import { aggregateBy, formatPHP } from '../../api/lakbay'
 

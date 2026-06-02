@@ -1,8 +1,6 @@
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 import { lastSignupByCluster, timeAgo, formatPHPCompact } from '../../api/lakbay'
 
-const PRIMARY = '#1B4F4F'
-
 // Status thresholds for "cluster health"
 function clusterStatus(daysSinceLast) {
   if (daysSinceLast <= 1)  return { label: 'Active',   tone: 'bg-emerald-50 text-emerald-700', Icon: CheckCircle2 }

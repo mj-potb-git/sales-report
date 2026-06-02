@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react'
 import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react'
 import { fetchMetaAccount } from '../../api/meta'
 
-const PRIMARY = '#1B4F4F'
-
 // Tests the Meta connection by hitting the account endpoint.
 // Surfaces token expiry warnings + provides one-click regenerate links.
 export default function MetaConnectionStatus() {
@@ -30,7 +28,7 @@ export default function MetaConnectionStatus() {
     }
   }
 
-  // Run a test on mount
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { test() }, [])
 
   return (

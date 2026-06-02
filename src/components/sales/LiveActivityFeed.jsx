@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Activity, ExternalLink } from 'lucide-react'
+import { Activity } from 'lucide-react'
 import { formatPHP, parseDate } from '../../api/lakbay'
 
 const PRIMARY = '#1B4F4F'
@@ -43,7 +43,7 @@ export default function LiveActivityFeed({ records, limit = 10 }) {
             <Activity size={20} className="mx-auto mb-2 opacity-50" />
             No sign-ups yet
           </div>
-        ) : recent.map((r, i) => {
+        ) : recent.map((r) => {
           const initials = r.customer_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
           const status = r.meta?.payment_status
           return (

@@ -6,7 +6,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import {
   FileText, Download, Search, ChevronUp, ChevronDown,
-  Calendar, DollarSign, Users, Package, ExternalLink, Filter,
+  Calendar, DollarSign, ExternalLink,
 } from 'lucide-react'
 import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
@@ -15,7 +15,7 @@ import { keyForRecord, setOverride, subscribeSaleOverrides } from '../lib/saleDa
 import { CalendarClock, Check, X as XIcon } from 'lucide-react'
 import {
   formatPHP, formatPHPCompact, parseDate, sum,
-  filterByRange, rangeFor, startOfDay, startOfWeek, startOfMonth,
+  filterByRange, rangeFor, startOfWeek, startOfMonth,
   endOfMonth, endOfWeek,
 } from '../api/lakbay'
 
@@ -305,6 +305,21 @@ function DateCell({ r }) {
   )
 }
 
+function SortTh({ sortKey, sortDir, onToggle, k, children, w }) {
+  return (
+    <th
+      onClick={() => onToggle(k)}
+      className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-gray-900 select-none"
+      style={w ? { minWidth: w } : undefined}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        {sortKey === k && (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
+      </span>
+    </th>
+  )
+}
+
 function DetailedList({ records }) {
   const [search, setSearch] = useState('')
   const [payment, setPayment] = useState('All')
@@ -367,18 +382,6 @@ function DetailedList({ records }) {
     downloadCSV(`signups-report-${fmtDateISO(new Date())}.csv`, rows)
   }
 
-  const Th = ({ k, children, w }) => (
-    <th
-      onClick={() => toggleSort(k)}
-      className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-gray-900 select-none"
-      style={w ? { minWidth: w } : undefined}
-    >
-      <span className="inline-flex items-center gap-1">
-        {children}
-        {sortKey === k && (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
-      </span>
-    </th>
-  )
 
   return (
     <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -420,12 +423,12 @@ function DetailedList({ records }) {
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-gray-50 z-10">
             <tr className="border-b border-gray-100">
-              <Th k="date">Date</Th>
-              <Th k="name" w={150}>Customer</Th>
-              <Th k="package">Package</Th>
-              <Th k="team">Cluster</Th>
-              <Th k="amount">Amount</Th>
-              <Th k="status">Payment</Th>
+              <SortTh sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} k="date">Date</SortTh>
+              <SortTh sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} k="name" w={150}>Customer</SortTh>
+              <SortTh sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} k="package">Package</SortTh>
+              <SortTh sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} k="team">Cluster</SortTh>
+              <SortTh sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} k="amount">Amount</SortTh>
+              <SortTh sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} k="status">Payment</SortTh>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Account</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Email</th>
               <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">Payment Link</th>

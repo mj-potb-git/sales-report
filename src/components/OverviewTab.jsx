@@ -7,26 +7,27 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
   Sun, Target, TrendingUp, TrendingDown, AlertTriangle, Users,
   DollarSign, Sparkles, Award, Lightbulb, ChevronRight,
-  Calendar, Activity, GraduationCap, Trophy, Briefcase, Globe,
+  Calendar, Activity, GraduationCap, Trophy, Briefcase,
   ArrowRight, BarChart3, Flame,
 } from 'lucide-react'
 import {
-  parseDate, sum, startOfDay, startOfWeek, endOfWeek, startOfMonth,
-  endOfMonth, filterByRange, rangeFor, sameDayLastWeek,
-  paceProjection, formatPHP, formatPHPCompact, timeAgo,
+  parseDate, sum, startOfDay, startOfWeek, endOfWeek,
+  filterByRange, rangeFor, sameDayLastWeek,
+  paceProjection, formatPHP, formatPHPCompact,
 } from '../api/lakbay'
-import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
+import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent } from '../api/fusioo'
 import { getSettings } from '../lib/settings'
 import AacioOverviewCard from './AacioOverviewCard'
 
 const PRIMARY = '#1B4F4F'
 const ACCENT  = '#F5A623'
+// eslint-disable-next-line no-unused-vars
 const PALETTE = [PRIMARY, ACCENT, '#4ECDC4', '#7FB069', '#C26DBC', '#6D9EEB']
 
 function fmtDateISO(d) {
@@ -337,7 +338,7 @@ function QuickLinks({ onJump }) {
 
 // ---------------------------------------------------------------------------
 
-export default function OverviewTab({ bookings = [], userName = 'MJ', onJumpTab }) {
+export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ', onJumpTab }) {
   const { monthlyTarget } = getSettings()
 
   // --- Load Fusioo (primary) ---

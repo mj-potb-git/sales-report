@@ -9,6 +9,7 @@ async function get(path) {
   const res = await fetch(`${BASE}${path}`, { headers: { Accept: 'application/json' } })
   if (!res.ok) {
     let err = `Meta API ${res.status}`
+    // eslint-disable-next-line no-empty
     try { const j = await res.json(); err = j.error?.message || err } catch {}
     throw new Error(err)
   }

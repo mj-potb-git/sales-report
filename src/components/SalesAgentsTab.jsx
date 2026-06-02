@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
-  TrendingUp, Users, Award, Target, RefreshCw,
+  TrendingUp, Users, Award, Target,
   ChevronRight, ArrowLeft, Search,
 } from 'lucide-react'
 import useSalesData from '../hooks/useSalesData'
@@ -22,7 +22,7 @@ import DateRangePicker from './DateRangePicker'
 import { comparePeriods, previousPeriodRange } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
-  dailyTrend, formatPHP, formatPHPCompact, startOfDay, startOfWeek, startOfMonth,
+  dailyTrend, formatPHP, formatPHPCompact,
 } from '../api/lakbay'
 
 const PRIMARY = '#1B4F4F'
@@ -244,7 +244,9 @@ function Overview({ records, period, onPeriodChange, customDates = [], onCustomA
   const monthlyTotal = sum(filterByRange(records, rangeFor('monthly', today).start, rangeFor('monthly', today).end), 'sales_amount')
   const totalSignups = sum(ranged, 'signup_count')
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const byAgent = useMemo(() => totalsByAgent(ranged), [ranged])
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const byTeam  = useMemo(() => totalsByTeam(ranged),  [ranged])
   const topAgent = byAgent[0]
   const topTeam  = byTeam[0]

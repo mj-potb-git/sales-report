@@ -9,6 +9,7 @@ import MetaConnectionStatus from './sales/MetaConnectionStatus'
 
 const PRIMARY = '#1B4F4F'
 
+// eslint-disable-next-line no-unused-vars
 function mask(value, visible = 6) {
   if (!value) return ''
   if (value.length <= visible * 2) return value

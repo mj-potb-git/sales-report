@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   }
 
   // Live YCBM probe — test against the real API from this serverless function.
-  let ycbmProbe = { status: null, error: null }
+  let ycbmProbe
   if (ycbmId && ycbmKey) {
     try {
       const auth = 'Basic ' + Buffer.from(`${ycbmId}:${ycbmKey}`).toString('base64')

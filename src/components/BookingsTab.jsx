@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { Filter, Download, ChevronLeft, ChevronRight, MoreVertical, Sparkles, Wand2, Check, X, RotateCcw } from 'lucide-react'
 import BookingCard from './BookingCard'
-import StatusBadge from './StatusBadge'
+
 import AttendanceToggle from './AttendanceToggle'
 import { getStatus, bulkSet, clearAll, inferAttendance } from '../lib/attendance'
 import { fetchSalesRecords } from '../api/lakbay'
@@ -72,6 +72,7 @@ export default function BookingsTab({ bookings = [] }) {
   }
 
   const filtered = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity
     const now = Date.now()
     if (activeFilter === 'Upcoming') {
       return bookings.filter(b => new Date(b.startsAt).getTime() >= now)

@@ -7,13 +7,13 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer,
 } from 'recharts'
 import {
   Award, Users, TrendingUp, TrendingDown, AlertCircle, Search,
   Target, Sparkles, ArrowLeft, ChevronRight, Lightbulb, GraduationCap,
-  Briefcase, BarChart3, Trophy, Flame, Snowflake, Clock, Download, Filter,
+  Briefcase, BarChart3, Trophy, Flame, Download,
 } from 'lucide-react'
 
 function downloadCSV(filename, rows) {
@@ -28,13 +28,11 @@ function downloadCSV(filename, rows) {
   a.href = url; a.download = filename; a.click()
   URL.revokeObjectURL(url)
 }
-import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
 import {
-  filterByRange, rangeFor, sameDayLastWeek, parseDate, sum,
+  filterByRange, parseDate, sum,
   startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
-  totalsByAgent as totalsByAgentLBH, totalsByTeam as totalsByTeamLBH, dailyTrend,
-  formatPHP, formatPHPCompact, timeAgo,
+  dailyTrend, formatPHP, formatPHPCompact, timeAgo,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
 import DateRangePicker from './DateRangePicker'
@@ -483,6 +481,7 @@ export default function AccountOfficersTab() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load({ background: false })
     const id = setInterval(() => load({ background: true }), 60_000)
     return () => clearInterval(id)

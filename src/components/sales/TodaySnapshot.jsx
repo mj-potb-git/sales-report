@@ -5,8 +5,6 @@ import {
 } from '../../api/lakbay'
 import DeltaBadge from './DeltaBadge'
 
-const PRIMARY = '#1B4F4F'
-
 export default function TodaySnapshot({ records }) {
   const now = new Date()
   const today  = rangeFor('daily', now)

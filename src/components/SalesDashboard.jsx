@@ -9,10 +9,10 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Calendar, Clock, CheckCircle2, XCircle, AlertCircle,
   DollarSign, TrendingUp, TrendingDown, Users,
-  Minus, Activity, ArrowRight,
+  Minus, Activity,
 } from 'lucide-react'
 import { subscribeAttendance } from '../lib/attendance'
-import { fetchSalesRecords, formatPHP, formatPHPCompact, parseDate } from '../api/lakbay'
+import { fetchSalesRecords, formatPHP, formatPHPCompact } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 import OpsAlerts from './sales/OpsAlerts'
 import SchedulingInsights from './sales/SchedulingInsights'
@@ -187,8 +187,6 @@ export default function SalesDashboard({ bookings = [] }) {
     ? (customDates.length === 1 ? 'Custom day' : `${customDates.length} custom days`)
     : period.label
   const compareLabel  = isCustom ? null : period.compareLabel
-  const dayKeys      = days.map(formatDateISO)
-  const priorDayKeys = priorDays.map(formatDateISO)
 
   // Pull LakbayHub sales for cross-source correlation
   const [salesByDate, setSalesByDate] = useState(new Map())
@@ -222,7 +220,7 @@ export default function SalesDashboard({ bookings = [] }) {
   }, [])
 
   // Re-render when attendance markings change (toggles in Bookings tab)
-  const [attendanceTick, bumpAttendance] = useState(0)
+  const [, bumpAttendance] = useState(0)
   useEffect(() => subscribeAttendance(() => bumpAttendance(n => n + 1)), [])
 
   const bookingsByDate = useMemo(() => {
@@ -343,8 +341,6 @@ export default function SalesDashboard({ bookings = [] }) {
   const totalROAS = totals.spend > 0 ? Math.round((totals.sales / totals.spend) * 100) : null
   const totalARPct = totals.sales > 0 ? Math.round((totals.spend / totals.sales) * 100) : null
   const totalCPL = totals.leads > 0 ? Math.round(totals.spend / totals.leads) : null
-  const totalCAC = totals.salesCount > 0 ? Math.round(totals.spend / totals.salesCount) : null
-  const totalCVR = totals.leads > 0 ? Math.round((totals.salesCount / totals.leads) * 100) : null
 
   // --- Prior-period totals for comparison ---
   const prior = priorDays.reduce((acc, day) => {
@@ -386,7 +382,6 @@ export default function SalesDashboard({ bookings = [] }) {
     ? Math.round((totals.bookings / totals.leads) * 100) : null
   const overallCancellationRate = (totals.bookings + totals.cancelled) > 0
     ? Math.round((totals.cancelled / (totals.bookings + totals.cancelled)) * 100) : 0
-  const overallConversion = overallShowUpRate !== null ? overallShowToSale : overallBookToSale
 
   return (
     <div className="flex flex-col gap-5 pb-24 sm:pb-6">

@@ -17,11 +17,14 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      'no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' }],
+    },
   },
   // Server-side code (Vercel serverless functions + Node scripts) runs in Node,
   // not the browser — give it Node globals (process, Buffer, etc.).
   {
-    files: ['api/**/*.js', 'scripts/**/*.mjs'],
+    files: ['api/**/*.js', 'scripts/**/*.mjs', 'server.js', 'vite.config.js'],
     languageOptions: {
       globals: globals.node,
     },

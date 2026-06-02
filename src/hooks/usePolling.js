@@ -17,6 +17,7 @@ export default function usePolling(fetcher, intervalMs = 30_000) {
   // Hold the fetcher in a ref so we don't re-bind the interval when the
   // caller passes a new function on every render
   const fetcherRef = useRef(fetcher)
+  // eslint-disable-next-line react-hooks/refs
   fetcherRef.current = fetcher
 
   const inFlight = useRef(false)
@@ -60,7 +61,7 @@ export default function usePolling(fetcher, intervalMs = 30_000) {
       }
     }
 
-    // Initial fetch
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     run({ background: false })
     start()
     document.addEventListener('visibilitychange', handleVisibility)
