@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     ycbm_api_key_set:       !!ycbmKey,
     vite_supabase_url_set:  !!env.VITE_SUPABASE_URL,
     vite_supabase_anon_key: !!env.VITE_SUPABASE_ANON_KEY,
-    fusioo_token_set:       !!env.FUSIOO_ACCESS_TOKEN,
+    fusioo_token_len:       (env.FUSIOO_ACCESS_TOKEN || '').length,
     meta_token_set:         !!env.META_ACCESS_TOKEN,
     meta_ad_account:        mask(env.META_AD_ACCOUNT_ID),
   }
