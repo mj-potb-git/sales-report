@@ -58,6 +58,7 @@ export default async function handler(req, res) {
   try {
     const host = req.headers.host || 'localhost'
     const proto = req.headers['x-forwarded-proto'] || 'https'
+    // Now routes to api/ycbm/[...path].js (nested catch-all)
     const proxyUrl = `${proto}://${host}/api/ycbm/bookings?from=2026-05-01T00:00:00Z&fields=id`
     const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) })
     const body = await r.text()
