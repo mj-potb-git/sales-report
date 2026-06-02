@@ -74,6 +74,7 @@ export default defineConfig(({ mode }) => {
             proxy.on('proxyReq', (proxyReq) => {
               proxyReq.setHeader('Accept', 'application/json')
               proxyReq.setHeader('Content-Type', 'application/json')
+              if (env.LAKBAYHUB_APP_KEY) proxyReq.setHeader('x-app-key', env.LAKBAYHUB_APP_KEY)
             })
           },
         },
