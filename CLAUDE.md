@@ -159,7 +159,7 @@ vite.config.js            — Three proxies: /api/ycbm, /api/lakbay, /api/meta
 
 ## What's pending / not done
 
-- [ ] **Fusioo integration** — MJ to register an app at https://app.fusioo.com/integrations (Credentials Grant), add `FUSIOO_CLIENT_ID`, `FUSIOO_CLIENT_SECRET`, `FUSIOO_APP_ID=b549c26f3ff64497b314a14d26d8cd2e` to .env. Then build a Vite proxy + client + integrate into Officers tab so Account Officer attribution actually works. Will give Sales Skills Development a real signal instead of 100% Unassigned.
+- [x] **Fusioo integration** — DONE. Officers tab now sources from Fusioo Booking Transactions (`ib549c26f3ff64497b314a14d26d8cd2e`). Bearer token auth via proxy. Agent + team attribution working.
 - [ ] Cache YCBM bookings in Supabase (eliminates the 2-3 min initial fetch)
 - [ ] Custom date range picker (currently only presets)
 - [ ] Trend charts of Profit/ROAS over time

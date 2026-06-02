@@ -21,16 +21,21 @@ function basicAuth(id, key) {
 }
 
 // Map each service to its upstream base + the request headers to inject.
+// Returns null for unknown services; throws for missing required credentials.
 function resolveTarget(service) {
   switch (service) {
     case 'ycbm':
+      if (!env.YCBM_ACCOUNT_ID || !env.YCBM_API_KEY)
+        throw Object.assign(new Error('YCBM credentials not configured (YCBM_ACCOUNT_ID / YCBM_API_KEY missing in env)'), { status: 503 })
       return {
-        base: `https://api.youcanbook.me/v1/${env.YCBM_ACCOUNT_ID || ''}`,
+        base: `https://api.youcanbook.me/v1/${env.YCBM_ACCOUNT_ID}`,
         headers: { Authorization: basicAuth(env.YCBM_ACCOUNT_ID, env.YCBM_API_KEY), Accept: 'application/json' },
       }
     case 'aacio':
+      if (!env.YCBM_AACIO_ACCOUNT_ID || !env.YCBM_AACIO_API_KEY)
+        throw Object.assign(new Error('AACIO credentials not configured (YCBM_AACIO_ACCOUNT_ID / YCBM_AACIO_API_KEY missing in env)'), { status: 503 })
       return {
-        base: `https://api.youcanbook.me/v1/${env.YCBM_AACIO_ACCOUNT_ID || ''}`,
+        base: `https://api.youcanbook.me/v1/${env.YCBM_AACIO_ACCOUNT_ID}`,
         headers: { Authorization: basicAuth(env.YCBM_AACIO_ACCOUNT_ID, env.YCBM_AACIO_API_KEY), Accept: 'application/json' },
       }
     case 'lakbay':
@@ -90,10 +95,16 @@ export default async function handler(req, res) {
     const body = await upstream.text()
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json')
-    // Short edge cache to soften upstream rate limits (esp. LakbayHub).
-    res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=30')
+    // Only cache successful responses at the edge (2xx). Errors must not be cached
+    // or a transient upstream failure sticks at the CDN until stale-while-revalidate expires.
+    if (upstream.status >= 200 && upstream.status < 300) {
+      res.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate=30')
+    } else {
+      res.setHeader('Cache-Control', 'no-store')
+    }
     res.send(body)
   } catch (err) {
-    res.status(502).json({ error: 'Proxy error', detail: String(err?.message || err) })
+    const status = err.status || 502
+    res.status(status).json({ error: err.message || 'Proxy error', detail: String(err?.message || err) })
   }
 }

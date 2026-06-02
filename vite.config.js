@@ -79,6 +79,7 @@ export default defineConfig(({ mode }) => {
         },
         // Fusioo Booking Transactions — for Account Officer tracking.
         // 10-year Bearer token from Credentials Grant lives in .env.
+        // Workspace slug is required in the URL path: /v3/{workspace}/...
         '/api/fusioo': {
           target: 'https://api.fusioo.com',
           changeOrigin: true,

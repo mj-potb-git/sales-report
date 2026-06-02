@@ -21,13 +21,18 @@ const aacioBasic     = aacioApiKey
 
 const metaAdAccount  = process.env.META_AD_ACCOUNT_ID    || ''
 const metaToken      = process.env.META_ACCESS_TOKEN     || ''
-const fusiooToken    = process.env.FUSIOO_ACCESS_TOKEN   || ''
+const fusiooToken = process.env.FUSIOO_ACCESS_TOKEN || ''
+
+// NOTE: app.use('/prefix', middleware) strips the prefix before the proxy sees
+// it. So pathRewrite must match the stripped path (e.g. '/bookings'), not the
+// original '/api/ycbm/bookings'. We use the function form to prepend the
+// upstream base path to whatever Express passes through.
 
 // ── /api/ycbm → YouCanBook.me POTB account ─────────────────────────────────
 app.use('/api/ycbm', createProxyMiddleware({
   target: 'https://api.youcanbook.me',
   changeOrigin: true,
-  pathRewrite: { '^/api/ycbm': `/v1/${accountId}` },
+  pathRewrite: (path) => `/v1/${accountId}${path}`,
   on: {
     proxyReq(proxyReq) {
       proxyReq.setHeader('Authorization', `Basic ${basic}`)
@@ -37,11 +42,10 @@ app.use('/api/ycbm', createProxyMiddleware({
 }))
 
 // ── /api/aacio → YouCanBook.me AACIO account ───────────────────────────────
-// Must be defined before /api/ycbm would prefix-match it — order matters.
 app.use('/api/aacio', createProxyMiddleware({
   target: 'https://api.youcanbook.me',
   changeOrigin: true,
-  pathRewrite: { '^/api/aacio': `/v1/${aacioAccountId}` },
+  pathRewrite: (path) => `/v1/${aacioAccountId}${path}`,
   on: {
     proxyReq(proxyReq) {
       if (aacioBasic) proxyReq.setHeader('Authorization', `Basic ${aacioBasic}`)
@@ -54,7 +58,7 @@ app.use('/api/aacio', createProxyMiddleware({
 app.use('/api/lakbay', createProxyMiddleware({
   target: 'https://potb-utilities-api.lakbayhub.com',
   changeOrigin: true,
-  pathRewrite: { '^/api/lakbay': '/api/v1' },
+  pathRewrite: (path) => `/api/v1${path}`,
   on: {
     proxyReq(proxyReq) {
       proxyReq.setHeader('Accept', 'application/json')
@@ -67,7 +71,7 @@ app.use('/api/lakbay', createProxyMiddleware({
 app.use('/api/fusioo', createProxyMiddleware({
   target: 'https://api.fusioo.com',
   changeOrigin: true,
-  pathRewrite: { '^/api/fusioo': '/v3' },
+  pathRewrite: (path) => `/v3${path}`,
   on: {
     proxyReq(proxyReq) {
       if (fusiooToken) proxyReq.setHeader('Authorization', `Bearer ${fusiooToken}`)
@@ -80,7 +84,7 @@ app.use('/api/fusioo', createProxyMiddleware({
 app.use('/api/meta', createProxyMiddleware({
   target: 'https://graph.facebook.com',
   changeOrigin: true,
-  pathRewrite: { '^/api/meta': `/v21.0/${metaAdAccount}` },
+  pathRewrite: (path) => `/v21.0/${metaAdAccount}${path}`,
   on: {
     proxyReq(proxyReq) {
       if (metaToken && !/(\?|&)access_token=/.test(proxyReq.path)) {
