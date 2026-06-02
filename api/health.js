@@ -67,11 +67,41 @@ export default async function handler(req, res) {
     ycbm_via_proxy = { status: 'fetch_error', error: String(e.message) }
   }
 
+  const host  = req.headers.host || 'localhost'
+  const proto = req.headers['x-forwarded-proto'] || 'https'
+  const base  = `${proto}://${host}`
+
+  // --- Fusioo direct probe ---
+  const fusiooToken = env.FUSIOO_ACCESS_TOKEN || ''
+  let fusioo_direct
+  try {
+    const r = await fetch('https://api.fusioo.com/v3/apps/', {
+      headers: { Authorization: `Bearer ${fusiooToken}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    })
+    const body = await r.text()
+    fusioo_direct = { status: r.status, body_preview: body.slice(0, 150) }
+  } catch (e) {
+    fusioo_direct = { status: 'fetch_error', error: String(e.message) }
+  }
+
+  // --- Fusioo via proxy probe ---
+  let fusioo_via_proxy
+  try {
+    const r = await fetch(`${base}/api/fusioo/apps/`, { signal: AbortSignal.timeout(8000) })
+    const body = await r.text()
+    fusioo_via_proxy = { status: r.status, body_preview: body.slice(0, 150) }
+  } catch (e) {
+    fusioo_via_proxy = { status: 'fetch_error', error: String(e.message) }
+  }
+
   res.status(200).json({
     env_checks,
     constructed_url,
     ycbm_direct,
     ycbm_via_proxy,
+    fusioo_direct,
+    fusioo_via_proxy,
     health_req_url: req.url,
   })
 }
