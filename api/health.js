@@ -25,6 +25,7 @@ export default async function handler(req, res) {
     vite_supabase_url_set:  !!env.VITE_SUPABASE_URL,
     vite_supabase_anon_key: !!env.VITE_SUPABASE_ANON_KEY,
     fusioo_token_len:       (env.FUSIOO_ACCESS_TOKEN || '').length,
+    lakbayhub_app_key_set:  !!env.LAKBAYHUB_APP_KEY,
     meta_token_set:         !!env.META_ACCESS_TOKEN,
     meta_ad_account:        mask(env.META_AD_ACCOUNT_ID),
   }
@@ -95,6 +96,16 @@ export default async function handler(req, res) {
     fusioo_via_proxy = { status: 'fetch_error', error: String(e.message) }
   }
 
+  // --- LakbayHub via proxy probe ---
+  let lakbay_via_proxy
+  try {
+    const r = await fetch(`${base}/api/lakbay/signups/sales-report`, { signal: AbortSignal.timeout(8000) })
+    const body = await r.text()
+    lakbay_via_proxy = { status: r.status, body_preview: body.slice(0, 200) }
+  } catch (e) {
+    lakbay_via_proxy = { status: 'fetch_error', error: String(e.message) }
+  }
+
   res.status(200).json({
     env_checks,
     constructed_url,
@@ -102,6 +113,7 @@ export default async function handler(req, res) {
     ycbm_via_proxy,
     fusioo_direct,
     fusioo_via_proxy,
+    lakbay_via_proxy,
     health_req_url: req.url,
   })
 }
