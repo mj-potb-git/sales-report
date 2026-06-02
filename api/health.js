@@ -67,5 +67,11 @@ export default async function handler(req, res) {
     ycbm_via_proxy = { status: 'fetch_error', error: String(e.message) }
   }
 
-  res.status(200).json({ env_checks, constructed_url, ycbm_direct, ycbm_via_proxy })
+  res.status(200).json({
+    env_checks,
+    constructed_url,
+    ycbm_direct,
+    ycbm_via_proxy,
+    health_req_url: req.url,
+  })
 }
