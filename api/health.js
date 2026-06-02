@@ -1,6 +1,6 @@
-// Temporary diagnostic endpoint — safe to keep, exposes no secret values.
-// GET /api/health  →  checks each upstream service and returns status.
-// Remove once all services confirmed working on Vercel.
+// Diagnostic endpoint — safe to keep, exposes no secret values.
+// GET /api/health  →  checks env vars, tests YCBM directly, and tests
+//                     through the proxy path to isolate where failures occur.
 
 const env = process.env
 
@@ -15,35 +15,56 @@ function looksLikeUUID(val) {
 }
 
 export default async function handler(req, res) {
-  const ycbmId  = env.YCBM_ACCOUNT_ID  || ''
-  const ycbmKey = env.YCBM_API_KEY     || ''
+  const ycbmId  = env.YCBM_ACCOUNT_ID || ''
+  const ycbmKey = env.YCBM_API_KEY    || ''
 
-  const checks = {
-    ycbm_account_id:   { value: mask(ycbmId),  is_uuid: looksLikeUUID(ycbmId) },
-    ycbm_api_key_set:  !!ycbmKey,
-    fusioo_token_set:  !!env.FUSIOO_ACCESS_TOKEN,
-    meta_token_set:    !!env.META_ACCESS_TOKEN,
-    meta_ad_account:   mask(env.META_AD_ACCOUNT_ID),
-    supabase_url_set:  !!env.VITE_SUPABASE_URL,
+  // --- Env checks ---
+  const env_checks = {
+    ycbm_account_id:        { value: mask(ycbmId), is_uuid: looksLikeUUID(ycbmId) },
+    ycbm_api_key_set:       !!ycbmKey,
+    vite_supabase_url_set:  !!env.VITE_SUPABASE_URL,
+    vite_supabase_anon_key: !!env.VITE_SUPABASE_ANON_KEY,
+    fusioo_token_set:       !!env.FUSIOO_ACCESS_TOKEN,
+    meta_token_set:         !!env.META_ACCESS_TOKEN,
+    meta_ad_account:        mask(env.META_AD_ACCOUNT_ID),
   }
 
-  // Live YCBM probe — test against the real API from this serverless function.
-  let ycbmProbe
+  // --- Direct YCBM probe (same call as the proxy would make) ---
+  const constructed_url = ycbmId
+    ? `https://api.youcanbook.me/v1/${mask(ycbmId)}/bookings?fields=id&from=2026-05-01T00:00:00Z`
+    : '(no account id)'
+
+  let ycbm_direct
   if (ycbmId && ycbmKey) {
     try {
       const auth = 'Basic ' + Buffer.from(`${ycbmId}:${ycbmKey}`).toString('base64')
-      const r = await fetch(`https://api.youcanbook.me/v1/${ycbmId}/bookings?fields=id&from=2026-01-01T00:00:00Z`, {
-        headers: { Authorization: auth, Accept: 'application/json' },
-        signal: AbortSignal.timeout(8000),
-      })
+      // Use the same fields as the real app
+      const FIELDS = 'id,title,startsAt,endsAt,createdAt,cancelled,noShow,profileId,timeZone,location,accountId,tentative'
+      const r = await fetch(
+        `https://api.youcanbook.me/v1/${ycbmId}/bookings?from=2026-05-01T00:00:00Z&fields=${FIELDS}`,
+        { headers: { Authorization: auth, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) },
+      )
       const body = await r.text()
-      ycbmProbe = { status: r.status, body_preview: body.slice(0, 120) }
+      ycbm_direct = { status: r.status, body_preview: body.slice(0, 150) }
     } catch (e) {
-      ycbmProbe = { status: 'fetch_error', error: String(e.message) }
+      ycbm_direct = { status: 'fetch_error', error: String(e.message) }
     }
   } else {
-    ycbmProbe = { status: 'skipped', error: 'credentials missing' }
+    ycbm_direct = { status: 'skipped', error: 'credentials missing' }
   }
 
-  res.status(200).json({ env_checks: checks, ycbm_live_probe: ycbmProbe })
+  // --- Proxy path probe (calls /api/ycbm via the same Vercel function) ---
+  let ycbm_via_proxy
+  try {
+    const host = req.headers.host || 'localhost'
+    const proto = req.headers['x-forwarded-proto'] || 'https'
+    const proxyUrl = `${proto}://${host}/api/ycbm/bookings?from=2026-05-01T00:00:00Z&fields=id`
+    const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) })
+    const body = await r.text()
+    ycbm_via_proxy = { status: r.status, url_called: proxyUrl, body_preview: body.slice(0, 150) }
+  } catch (e) {
+    ycbm_via_proxy = { status: 'fetch_error', error: String(e.message) }
+  }
+
+  res.status(200).json({ env_checks, constructed_url, ycbm_direct, ycbm_via_proxy })
 }
