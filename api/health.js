@@ -85,10 +85,10 @@ export default async function handler(req, res) {
     fusioo_direct = { status: 'fetch_error', error: String(e.message) }
   }
 
-  // --- Fusioo via proxy probe ---
+  // --- Fusioo via proxy probe (no trailing slash — trailing slash may break Vercel routing) ---
   let fusioo_via_proxy
   try {
-    const r = await fetch(`${base}/api/fusioo/apps/`, { signal: AbortSignal.timeout(8000) })
+    const r = await fetch(`${base}/api/fusioo/apps`, { signal: AbortSignal.timeout(8000) })
     const body = await r.text()
     fusioo_via_proxy = { status: r.status, body_preview: body.slice(0, 150) }
   } catch (e) {

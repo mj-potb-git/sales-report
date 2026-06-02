@@ -25,7 +25,7 @@ async function get(path) {
 
 /** List all apps in the workspace (one-time discovery) */
 export function fetchApps() {
-  return get('/apps/').then(j => j.data || [])
+  return get('/apps').then(j => j.data || [])
 }
 
 /** Get a single app's schema (fields, types) */
