@@ -41,7 +41,11 @@ function resolveTarget(service) {
     case 'lakbay':
       return {
         base: 'https://potb-utilities-api.lakbayhub.com/api/v1',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...(env.LAKBAYHUB_APP_KEY ? { 'x-app-key': env.LAKBAYHUB_APP_KEY } : {}),
+        },
       }
     case 'fusioo':
       return {
