@@ -6,7 +6,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import {
   FileText, Download, Search, ChevronUp, ChevronDown,
-  Calendar, DollarSign, ExternalLink,
+  Calendar, DollarSign, ExternalLink, Users, Package, Briefcase, Loader2,
 } from 'lucide-react'
 import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
@@ -18,6 +18,7 @@ import {
   filterByRange, rangeFor, startOfWeek, startOfMonth,
   endOfMonth, endOfWeek,
 } from '../api/lakbay'
+import { fetchAllBookingTransactions, mapBookingTransaction } from '../api/fusioo'
 
 const PRIMARY = '#1B4F4F'
 
@@ -27,6 +28,33 @@ const PERIODS = [
   { id: 'monthly', label: 'Monthly' },
   { id: 'all',     label: 'All'     },
 ]
+
+// Report categories (top-level selector)
+const REPORTS = [
+  { id: 'signups',  label: 'Sign-ups',   Icon: FileText },
+  { id: 'closer',   label: 'By Closer',  Icon: Users },
+  { id: 'package',  label: 'By Package', Icon: Package },
+  { id: 'officers', label: 'Officers',   Icon: Briefcase },
+]
+
+// Range-filter periods (used by the breakdown + officers reports)
+const RANGES = [
+  { id: 'today', label: 'Today',      rf: 'daily'   },
+  { id: 'week',  label: 'This Week',  rf: 'weekly'  },
+  { id: 'month', label: 'This Month', rf: 'monthly' },
+  { id: 'all',   label: 'All-Time' },
+]
+
+// Filter records to a selected range (or custom date set). Works for both
+// LakbayHub and Fusioo records (both expose `date` as YYYY-MM-DD).
+function filterByPeriod(records, rangeId, customSet, isCustom) {
+  if (rangeId === 'custom') return isCustom ? records.filter(r => customSet.has(r.date)) : []
+  if (rangeId === 'all') return records
+  const rf = RANGES.find(r => r.id === rangeId)?.rf
+  if (!rf) return records
+  const { start, end } = rangeFor(rf, new Date())
+  return filterByRange(records, start, end)
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -481,13 +509,255 @@ function DetailedList({ records }) {
 }
 
 // ---------------------------------------------------------------------------
+// Reusable range filter (pills + custom date picker)
+
+function PeriodFilter({ rangeId, onRange, customDates, isCustom, onApplyCustom }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+        {RANGES.map(r => (
+          <button key={r.id} onClick={() => onRange(r.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              rangeId === r.id ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
+            }`}>
+            {r.label}
+          </button>
+        ))}
+      </div>
+      <DateRangePicker value={customDates} active={isCustom} onApply={onApplyCustom} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Generic breakdown report: group records by a dimension → ranked table + CSV
+
+function BreakdownReport({ records, dimension, label, filename, periodLabel }) {
+  const rows = useMemo(() => {
+    const m = new Map()
+    for (const r of records) {
+      const k = (dimension(r) || '—')
+      if (!m.has(k)) m.set(k, { name: k, revenue: 0, count: 0 })
+      const g = m.get(k)
+      g.revenue += r.sales_amount || 0
+      g.count += 1
+    }
+    return [...m.values()]
+      .map(g => ({ ...g, avg: g.count ? Math.round(g.revenue / g.count) : 0 }))
+      .sort((a, b) => b.revenue - a.revenue)
+  }, [records, dimension])
+
+  const total = rows.reduce((a, r) => a + r.revenue, 0)
+  const totalCount = records.length
+  const maxRev = Math.max(1, ...rows.map(r => r.revenue))
+
+  function exportCSV() {
+    const header = [label, 'Revenue (PHP)', '# Sales', 'Avg (PHP)', 'Share %']
+    const body = rows.map(r => [r.name, r.revenue, r.count, r.avg, total ? Math.round(r.revenue / total * 100) : 0])
+    downloadCSV(`${filename}-${fmtDateISO(new Date())}.csv`,
+      [header, ...body, [], ['TOTAL', total, totalCount, totalCount ? Math.round(total / totalCount) : 0, 100]])
+  }
+
+  return (
+    <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-semibold text-gray-900">{label} {periodLabel ? `· ${periodLabel}` : ''}</h3>
+          <p className="text-[11px] text-gray-500 mt-0.5">Overall {formatPHP(total)} · {totalCount} sales</p>
+        </div>
+        <button onClick={exportCSV} disabled={rows.length === 0}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-white disabled:opacity-40"
+          style={{ backgroundColor: PRIMARY }}>
+          <Download size={13} /> Export CSV
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>{['#', label, 'Revenue', '# Sales', 'Avg', 'Share'].map(h => (
+              <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+            ))}</tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {rows.length === 0 ? (
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-400">No sales in this period</td></tr>
+            ) : rows.map((r, i) => {
+              const share = total ? Math.round(r.revenue / total * 100) : 0
+              return (
+                <tr key={r.name} className="hover:bg-gray-50">
+                  <td className="px-3 py-2.5">
+                    <span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${
+                      i === 0 ? 'bg-amber-100 text-amber-700' : i === 1 ? 'bg-gray-200 text-gray-700' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'
+                    }`}>{i + 1}</span>
+                  </td>
+                  <td className="px-3 py-2.5 font-medium text-gray-900">{r.name}</td>
+                  <td className="px-3 py-2.5 font-bold text-gray-900 whitespace-nowrap">{formatPHP(r.revenue)}</td>
+                  <td className="px-3 py-2.5 text-gray-600">{r.count}</td>
+                  <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{formatPHPCompact(r.avg)}</td>
+                  <td className="px-3 py-2.5 w-40">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${Math.max(4, r.revenue / maxRev * 100)}%`, backgroundColor: i === 0 ? '#F5A623' : PRIMARY }} />
+                      </div>
+                      <span className="text-xs text-gray-500 w-9 text-right">{share}%</span>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Officers report (Fusioo Booking Transactions) — per-agent totals + detail
+
+function OfficersReport({ rangeId, isCustom, customSet }) {
+  const [txs, setTxs] = useState(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    fetchAllBookingTransactions()
+      .then(raw => { if (alive) setTxs(raw.map(mapBookingTransaction)) })
+      .catch(e => { if (alive) { setErr(e.message); setTxs([]) } })
+    return () => { alive = false }
+  }, [])
+
+  const scoped = useMemo(
+    () => (txs ? filterByPeriod(txs.filter(t => t.date), rangeId, customSet, isCustom) : []),
+    [txs, rangeId, customSet, isCustom],
+  )
+  const byAgent = useMemo(() => {
+    const m = new Map()
+    for (const r of scoped) {
+      const k = r.sales_agent || 'Unassigned'
+      if (!m.has(k)) m.set(k, { name: k, team: r.team, revenue: 0, profit: 0, count: 0 })
+      const g = m.get(k); g.revenue += r.sales_amount || 0; g.profit += r.profit || 0; g.count += 1
+    }
+    return [...m.values()].map(g => ({ ...g, avg: g.count ? Math.round(g.revenue / g.count) : 0 })).sort((a, b) => b.revenue - a.revenue)
+  }, [scoped])
+
+  const totalRev = byAgent.reduce((a, r) => a + r.revenue, 0)
+  const totalProfit = byAgent.reduce((a, r) => a + r.profit, 0)
+
+  function exportAgents() {
+    const header = ['Officer', 'Team', 'Revenue (PHP)', 'Profit (PHP)', '# Transactions', 'Avg (PHP)']
+    const body = byAgent.map(a => [a.name, a.team, a.revenue, a.profit, a.count, a.avg])
+    downloadCSV(`officers-summary-${fmtDateISO(new Date())}.csv`,
+      [header, ...body, [], ['TOTAL', '', totalRev, totalProfit, scoped.length, scoped.length ? Math.round(totalRev / scoped.length) : 0]])
+  }
+  function exportDetail() {
+    const header = ['Date', 'Officer', 'Team', 'Type', 'Package', 'Status', 'Revenue (PHP)', 'Profit (PHP)', 'Transaction ID']
+    const body = scoped.map(t => [t.date, t.sales_agent, t.team, t.meta?.transaction_type || '', t.meta?.type_of_package || '', t.meta?.status || '', t.sales_amount, t.profit, t.transaction_id])
+    downloadCSV(`officers-transactions-${fmtDateISO(new Date())}.csv`, [header, ...body])
+  }
+
+  if (txs === null) return <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center text-gray-400"><Loader2 className="inline animate-spin mr-2" size={15} />Loading Fusioo transactions…</div>
+  if (err) return <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center text-red-600">Fusioo error: {err}</div>
+
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="font-semibold text-gray-900">Account Officers — per agent</h3>
+            <p className="text-[11px] text-gray-500 mt-0.5">Revenue {formatPHP(totalRev)} · Profit {formatPHP(totalProfit)} · {scoped.length} transactions (Fusioo)</p>
+          </div>
+          <button onClick={exportAgents} disabled={byAgent.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-white disabled:opacity-40" style={{ backgroundColor: PRIMARY }}>
+            <Download size={13} /> Export CSV
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>{['#', 'Officer', 'Team', 'Revenue', 'Profit', '# Txns', 'Avg'].map(h => (
+                <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {byAgent.length === 0 ? (
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">No transactions in this period</td></tr>
+              ) : byAgent.map((a, i) => (
+                <tr key={a.name} className="hover:bg-gray-50">
+                  <td className="px-3 py-2.5"><span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>{i + 1}</span></td>
+                  <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">{a.name}</td>
+                  <td className="px-3 py-2.5 text-gray-500 text-xs">{a.team}</td>
+                  <td className="px-3 py-2.5 font-bold text-gray-900 whitespace-nowrap">{formatPHP(a.revenue)}</td>
+                  <td className="px-3 py-2.5 text-emerald-700 whitespace-nowrap">{formatPHPCompact(a.profit)}</td>
+                  <td className="px-3 py-2.5 text-gray-600">{a.count}</td>
+                  <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{formatPHPCompact(a.avg)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="font-semibold text-gray-900">Transaction detail ({scoped.length})</h3>
+          <button onClick={exportDetail} disabled={scoped.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-white disabled:opacity-40" style={{ backgroundColor: PRIMARY }}>
+            <Download size={13} /> Export CSV
+          </button>
+        </div>
+        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-gray-50 z-10">
+              <tr>{['Date', 'Officer', 'Team', 'Type', 'Package', 'Status', 'Revenue'].map(h => (
+                <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {scoped.length === 0 ? (
+                <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">No transactions</td></tr>
+              ) : scoped.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(t => (
+                <tr key={t.transaction_id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{t.date}</td>
+                  <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{t.sales_agent}</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">{t.team}</td>
+                  <td className="px-3 py-2 text-gray-600 text-xs">{t.meta?.transaction_type || '—'}</td>
+                  <td className="px-3 py-2 text-gray-600 text-xs">{t.meta?.type_of_package || '—'}</td>
+                  <td className="px-3 py-2 text-xs">{t.meta?.status || '—'}</td>
+                  <td className="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(t.sales_amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 
 export default function ReportsTab() {
   const { records, loading, refreshing, error, lastFetched, refresh } = useSalesData()
+  const [report, setReport] = useState('signups')  // signups | closer | package | officers
   const [periodId, setPeriodId] = useState('daily')
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const isCustom = periodId === 'custom' && customDates.length > 0
   const customSet = useMemo(() => new Set(customDates), [customDates])
+
+  // Separate range filter for the breakdown / officers reports
+  const [rangeId, setRangeId] = useState('month')
+  const [rangeCustom, setRangeCustom] = useState([])
+  const isRangeCustom = rangeId === 'custom' && rangeCustom.length > 0
+  const rangeCustomSet = useMemo(() => new Set(rangeCustom), [rangeCustom])
+  const scoped = useMemo(
+    () => filterByPeriod(records, rangeId, rangeCustomSet, isRangeCustom),
+    [records, rangeId, rangeCustomSet, isRangeCustom],
+  )
+  const rangeLabel = isRangeCustom
+    ? (rangeCustom.length === 1 ? '1 day' : `${rangeCustom.length} days`)
+    : (RANGES.find(r => r.id === rangeId)?.label || '')
+  const applyRangeCustom = (dates) => { setRangeCustom(dates); setRangeId('custom') }
   const customRecords = useMemo(
     () => (isCustom ? records.filter(r => customSet.has(r.date)) : records),
     [isCustom, records, customSet],
@@ -515,10 +785,10 @@ export default function ReportsTab() {
         <div>
           <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
             <FileText size={20} style={{ color: PRIMARY }} />
-            Sales Report
+            Reports
           </h1>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <p className="text-sm text-gray-500">LakbayHub sign-ups — full raw data for finance & GM review.</p>
+            <p className="text-sm text-gray-500">Sign-ups, sales by closer/package, and officer performance — all downloadable.</p>
             <LiveIndicator lastFetched={lastFetched} refreshing={refreshing} onRefresh={refresh} label="LakbayHub" />
           </div>
         </div>
@@ -540,6 +810,43 @@ export default function ReportsTab() {
                  sub={`${records.length} total records`} tone="#dcfce7" />
       </div>
 
+      {/* Report category selector */}
+      <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto w-fit max-w-full">
+        {REPORTS.map(({ id, label, Icon }) => (
+          <button key={id} onClick={() => setReport(id)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              report === id ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
+            }`}>
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Range filter — for By Closer / By Package / Officers */}
+      {report !== 'signups' && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-base font-semibold text-gray-800">
+            {REPORTS.find(r => r.id === report)?.label} report
+          </h2>
+          <PeriodFilter rangeId={rangeId} onRange={setRangeId}
+            customDates={rangeCustom} isCustom={isRangeCustom} onApplyCustom={applyRangeCustom} />
+        </div>
+      )}
+
+      {report === 'closer' && (
+        <BreakdownReport records={scoped} dimension={r => r.team} label="Closer / Cluster"
+          filename="sales-by-closer" periodLabel={rangeLabel} />
+      )}
+      {report === 'package' && (
+        <BreakdownReport records={scoped} dimension={r => r.meta?.package} label="Package"
+          filename="sales-by-package" periodLabel={rangeLabel} />
+      )}
+      {report === 'officers' && (
+        <OfficersReport rangeId={rangeId} isCustom={isRangeCustom} customSet={rangeCustomSet} />
+      )}
+
+      {/* ── Sign-ups report (existing) ── */}
+      {report === 'signups' && (<>
       {/* Period selector + summary table */}
       <section>
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -587,6 +894,7 @@ export default function ReportsTab() {
 
       {/* Detailed signups list — filtered to the picked days when in custom mode */}
       <DetailedList records={isCustom ? customRecords : records} />
+      </>)}
     </div>
   )
 }
