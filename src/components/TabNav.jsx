@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarDays, BarChart2, Users, Briefcase, FileText, Settings, Globe } from 'lucide-react'
+import { LayoutDashboard, CalendarDays, BarChart2, Users, Briefcase, FileText, Settings, Globe, UserCog } from 'lucide-react'
 
 const tabs = [
   { id: 'overview',  label: 'Overview',  Icon: LayoutDashboard },
@@ -8,6 +8,7 @@ const tabs = [
   { id: 'officers',  label: 'Officers',  Icon: Briefcase },
   { id: 'aacio',     label: 'AACIO',     Icon: Globe },
   { id: 'reports',   label: 'Reports',   Icon: FileText },
+  { id: 'users',     label: 'Users',     Icon: UserCog },
   { id: 'settings',  label: 'Settings',  Icon: Settings },
 ]
 

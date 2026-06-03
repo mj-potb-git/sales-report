@@ -54,6 +54,12 @@ export async function getSession() {
   return data.session
 }
 
+/** Current access token (JWT) for authenticating admin API calls, or null. */
+export async function getAccessToken() {
+  const session = await getSession()
+  return session?.access_token || null
+}
+
 /** Sign in with email + password. Throws on failure (caller shows the message). */
 export async function signIn(email, password) {
   const { data, error } = await client().auth.signInWithPassword({

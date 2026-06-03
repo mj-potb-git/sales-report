@@ -2,6 +2,7 @@ import express from 'express'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { createAdminHandler } from './api/_adminLogic.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -95,6 +96,21 @@ app.use('/api/meta', createProxyMiddleware({
     },
   },
 }))
+
+// ── /api/admin → user management (server-side, service key) ─────────────────
+const adminHandle = createAdminHandler({
+  url: process.env.VITE_SUPABASE_URL,
+  serviceKey: process.env.SUPABASE_SERVICE_KEY,
+})
+app.use('/api/admin', express.json(), async (req, res) => {
+  const result = await adminHandle({
+    method: req.method,
+    query: req.query || {},
+    body: req.body || {},
+    authHeader: req.headers.authorization,
+  })
+  res.status(result.status).json(result.body)
+})
 
 // ── Static files (Vite build output) ───────────────────────────────────────
 app.use(express.static(join(__dirname, 'dist')))

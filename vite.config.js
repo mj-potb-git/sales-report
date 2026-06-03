@@ -18,8 +18,43 @@ export default defineConfig(({ mode }) => {
 
   const fusiooToken = env.FUSIOO_ACCESS_TOKEN || ''
 
+  // Dev-only middleware for /api/admin (user management). In production this is
+  // a Vercel function (api/admin.js) or an Express route (server.js); locally
+  // the Vite proxy can't run serverless code, so we mount it here.
+  const adminApiPlugin = {
+    name: 'potb-admin-api',
+    configureServer(server) {
+      server.middlewares.use('/api/admin', (req, res) => {
+        let raw = ''
+        req.on('data', (c) => { raw += c })
+        req.on('end', async () => {
+          try {
+            const { createAdminHandler } = await import('./api/_adminLogic.js')
+            const handle = createAdminHandler({
+              url: env.VITE_SUPABASE_URL,
+              serviceKey: env.SUPABASE_SERVICE_KEY,
+            })
+            const u = new URL(req.url, 'http://localhost')
+            const query = Object.fromEntries(u.searchParams)
+            const body = raw ? JSON.parse(raw) : {}
+            const result = await handle({
+              method: req.method, query, body, authHeader: req.headers.authorization,
+            })
+            res.statusCode = result.status
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify(result.body))
+          } catch (e) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: String(e?.message || e) }))
+          }
+        })
+      })
+    },
+  }
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), adminApiPlugin],
     build: {
       rollupOptions: {
         output: {

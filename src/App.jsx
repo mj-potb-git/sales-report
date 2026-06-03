@@ -10,6 +10,7 @@ const SalesAgentsTab    = lazy(() => import('./components/SalesAgentsTab'))
 const AccountOfficersTab = lazy(() => import('./components/AccountOfficersTab'))
 const AacioReportTab    = lazy(() => import('./components/AacioReportTab'))
 const ReportsTab        = lazy(() => import('./components/ReportsTab'))
+const UserManagementTab = lazy(() => import('./components/UserManagementTab'))
 const SettingsTab       = lazy(() => import('./components/SettingsTab'))
 const LandingPage       = lazy(() => import('./components/LandingPage'))
 import useYcbmData from './hooks/useYcbmData'
@@ -207,6 +208,8 @@ export default function App() {
         <Suspense fallback={<SkeletonLoader />}>
           {currentTab === 'settings' ? (
             <SettingsTab />
+          ) : currentTab === 'users' ? (
+            <UserManagementTab />
           ) : currentTab === 'sales' ? (
             <SalesAgentsTab />
           ) : currentTab === 'officers' ? (
