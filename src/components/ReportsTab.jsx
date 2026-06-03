@@ -19,8 +19,29 @@ import {
   endOfMonth, endOfWeek,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction } from '../api/fusioo'
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  LineChart, Line, PieChart, Pie, Cell, Legend,
+} from 'recharts'
 
 const PRIMARY = '#1B4F4F'
+const ACCENT  = '#F5A623'
+const CHART_COLORS = [PRIMARY, ACCENT, '#4ECDC4', '#7FB069', '#C26DBC', '#6D9EEB', '#E8945A', '#9B8Bd4']
+
+// Daily revenue + sign-up series from records (oldest → newest), for trend charts
+function dailySeries(records) {
+  const m = new Map()
+  for (const r of records) {
+    if (!r.date) continue
+    if (!m.has(r.date)) m.set(r.date, { date: r.date, revenue: 0, signups: 0 })
+    const g = m.get(r.date)
+    g.revenue += r.sales_amount || 0
+    g.signups += 1
+  }
+  return [...m.values()]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(d => ({ ...d, label: parseDate(d.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) }))
+}
 
 const PERIODS = [
   { id: 'daily',   label: 'Daily'   },
@@ -551,6 +572,15 @@ function BreakdownReport({ records, dimension, label, filename, periodLabel }) {
   const totalCount = records.length
   const maxRev = Math.max(1, ...rows.map(r => r.revenue))
 
+  // Chart data: top 12 for the bar, top 6 + "Others" for the donut
+  const barData = rows.slice(0, 12).map(r => ({
+    name: r.name.length > 16 ? r.name.slice(0, 15) + '…' : r.name, revenue: r.revenue,
+  }))
+  const donutData = [
+    ...rows.slice(0, 6).map(r => ({ name: r.name, value: r.revenue })),
+    ...(rows.length > 6 ? [{ name: 'Others', value: rows.slice(6).reduce((a, r) => a + r.revenue, 0) }] : []),
+  ]
+
   function exportCSV() {
     const header = [label, 'Revenue (PHP)', '# Sales', 'Avg (PHP)', 'Share %']
     const body = rows.map(r => [r.name, r.revenue, r.count, r.avg, total ? Math.round(r.revenue / total * 100) : 0])
@@ -571,6 +601,36 @@ function BreakdownReport({ records, dimension, label, filename, periodLabel }) {
           <Download size={13} /> Export CSV
         </button>
       </div>
+      {rows.length > 0 && (
+        <div className="grid lg:grid-cols-2 gap-4 p-5 pb-1">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">Revenue by {label.toLowerCase()} (top 12)</p>
+            <ResponsiveContainer width="100%" height={Math.max(180, barData.length * 30)}>
+              <BarChart data={barData} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={formatPHPCompact} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={96} />
+                <Tooltip formatter={(v) => formatPHP(v)} />
+                <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
+                  {barData.map((e, i) => <Cell key={i} fill={i === 0 ? ACCENT : PRIMARY} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">Revenue share</p>
+            <ResponsiveContainer width="100%" height={Math.max(180, barData.length * 30)}>
+              <PieChart>
+                <Pie data={donutData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value">
+                  {donutData.map((e, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={(v) => formatPHP(v)} />
+                <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 10 }}>{v}</span>} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
@@ -672,6 +732,23 @@ function OfficersReport({ rangeId, isCustom, customSet }) {
             <Download size={13} /> Export CSV
           </button>
         </div>
+        {byAgent.length > 0 && (
+          <div className="p-5 pb-1">
+            <p className="text-xs font-semibold text-gray-500 mb-2">Revenue vs Profit by officer</p>
+            <ResponsiveContainer width="100%" height={Math.max(200, byAgent.length * 34)}>
+              <BarChart data={byAgent.slice(0, 12).map(a => ({ name: a.name.length > 16 ? a.name.slice(0, 15) + '…' : a.name, revenue: a.revenue, profit: a.profit }))}
+                        layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={formatPHPCompact} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={100} />
+                <Tooltip formatter={(v) => formatPHP(v)} />
+                <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 11 }}>{v}</span>} />
+                <Bar dataKey="revenue" name="Revenue" fill={PRIMARY} radius={[0, 4, 4, 0]} />
+                <Bar dataKey="profit" name="Profit" fill={ACCENT} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
@@ -746,7 +823,7 @@ export default function ReportsTab() {
   const customSet = useMemo(() => new Set(customDates), [customDates])
 
   // Separate range filter for the breakdown / officers reports
-  const [rangeId, setRangeId] = useState('month')
+  const [rangeId, setRangeId] = useState('all')
   const [rangeCustom, setRangeCustom] = useState([])
   const isRangeCustom = rangeId === 'custom' && rangeCustom.length > 0
   const rangeCustomSet = useMemo(() => new Set(rangeCustom), [rangeCustom])
@@ -847,6 +924,25 @@ export default function ReportsTab() {
 
       {/* ── Sign-ups report (existing) ── */}
       {report === 'signups' && (<>
+      {/* Revenue trend chart */}
+      {(() => {
+        const series = dailySeries(records)
+        if (series.length < 2) return null
+        return (
+          <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <p className="text-sm font-semibold text-gray-700 mb-3">Revenue trend (all sign-ups)</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={series} margin={{ left: 4, right: 12, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={24} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={formatPHPCompact} />
+                <Tooltip formatter={(v) => formatPHP(v)} />
+                <Line type="monotone" dataKey="revenue" stroke={PRIMARY} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </section>
+        )
+      })()}
       {/* Period selector + summary table */}
       <section>
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
