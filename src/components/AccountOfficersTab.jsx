@@ -31,11 +31,12 @@ function downloadCSV(filename, rows) {
 import LiveIndicator from './LiveIndicator'
 import {
   filterByRange, parseDate, sum,
-  startOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
+  startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   dailyTrend, formatPHP, formatPHPCompact, timeAgo,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
-import DateRangePicker from './DateRangePicker'
+import PeriodBar from './PeriodBar'
+import { periodRange, periodLabelFor, currentMonthKey } from '../lib/periods'
 
 // Normalize a record's date to a local YYYY-MM-DD key (matches DateRangePicker's
 // output) so custom-date filtering is exact regardless of source date format.
@@ -52,59 +53,6 @@ const PRIMARY = '#1B4F4F'
 const ACCENT  = '#F5A623'
 const PALETTE = [PRIMARY, ACCENT, '#4ECDC4', '#7FB069', '#C26DBC', '#6D9EEB']
 
-const PERIODS = [
-  { id: 'today',   label: 'Today',     mode: 'calendar' },
-  { id: 'weekly',  label: 'This Week (Mon–Sun)', mode: 'calendar' },
-  { id: 'monthly', label: 'This Month',          mode: 'calendar' },
-  { id: '60d',     label: 'Last 60d',  mode: 'rolling', days: 60 },
-  { id: '90d',     label: 'Last 90d',  mode: 'rolling', days: 90 },
-  { id: 'all',     label: 'All-Time',  mode: 'all' },
-]
-
-// Returns { start, end, priorStart, priorEnd } for any period.
-// Weekly = Monday-Sunday of current week.
-// Monthly = 1st to last day of current calendar month.
-// Today = today only.
-// Rolling = last N days ending today.
-function rangeForPeriod(period, anchor = new Date()) {
-  if (period.mode === 'all') {
-    return {
-      start: new Date(2020, 0, 1),
-      end: anchor,
-      priorStart: null,
-      priorEnd: null,
-    }
-  }
-  if (period.id === 'today') {
-    const s = startOfDay(anchor)
-    const e = new Date(s.getTime() + 86399999)
-    const ps = new Date(s.getTime() - 86400000)
-    const pe = new Date(s.getTime() - 1)
-    return { start: s, end: e, priorStart: ps, priorEnd: pe }
-  }
-  if (period.id === 'weekly') {
-    const s  = startOfWeek(anchor)       // Monday 00:00
-    const e  = endOfWeek(anchor)          // Sunday 23:59
-    const ps = startOfWeek(new Date(s.getTime() - 86400000)) // prior Monday
-    const pe = endOfWeek(new Date(s.getTime() - 86400000))    // prior Sunday
-    return { start: s, end: e, priorStart: ps, priorEnd: pe }
-  }
-  if (period.id === 'monthly') {
-    const s  = startOfMonth(anchor)
-    const e  = endOfMonth(anchor)
-    const priorAnchor = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 15)
-    const ps = startOfMonth(priorAnchor)
-    const pe = endOfMonth(priorAnchor)
-    return { start: s, end: e, priorStart: ps, priorEnd: pe }
-  }
-  // Rolling N days
-  const e = anchor
-  const s = new Date(anchor.getTime() - (period.days - 1) * 86400000)
-  s.setHours(0, 0, 0, 0)
-  const pe = new Date(s.getTime() - 1)
-  const ps = new Date(s.getTime() - period.days * 86400000)
-  return { start: s, end: e, priorStart: ps, priorEnd: pe }
-}
 
 // Performance tier thresholds — coaching-friendly labels
 function tierFor(agent, teamAvgRevenue) {
@@ -448,7 +396,8 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
 // Main view
 
 export default function AccountOfficersTab() {
-  const [periodId, setPeriodId] = useState('monthly')
+  const [periodId, setPeriodId] = useState('month')
+  const [monthKey, setMonthKey] = useState(currentMonthKey())
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const [search, setSearch] = useState('')
   const [filterUnassigned, setFilterUnassigned] = useState(true)
@@ -487,20 +436,21 @@ export default function AccountOfficersTab() {
     return () => clearInterval(id)
   }, [])
 
-  const period = PERIODS.find(p => p.id === periodId) ?? PERIODS[1]
   const isCustom = periodId === 'custom' && customDates.length > 0
   const customSet = new Set(customDates)
   const periodLabel = isCustom
     ? (customDates.length === 1 ? 'Custom day' : `${customDates.length} custom days`)
-    : period.label
+    : periodLabelFor(periodId, monthKey)
 
   if (loading) return <div className="text-center py-12 text-gray-400">Loading Booking Transactions from Fusioo…</div>
   if (error)   return <div className="text-center py-12 text-red-500">{error.message}</div>
 
-  // Period filter (calendar-aligned for weekly/monthly, rolling for the rest).
-  // Custom = exactly the picked days; no meaningful prior window so skip compare.
-  const now = new Date()
-  const { start, end, priorStart, priorEnd } = rangeForPeriod(period, now)
+  // Period filter. Prior = same-length window immediately before the current
+  // one. Custom = exactly the picked days; no meaningful prior window.
+  const { start, end } = periodRange(periodId, monthKey)
+  const lenMs = Math.max(86400000, end.getTime() - start.getTime())
+  const priorStart = isCustom ? null : new Date(start.getTime() - lenMs - 1)
+  const priorEnd   = isCustom ? null : new Date(start.getTime() - 1)
   const rangedRaw = isCustom
     ? records.filter(r => customSet.has(recDayKey(r.date)))
     : filterByRange(records, start, end)
@@ -587,7 +537,7 @@ export default function AccountOfficersTab() {
       if (delta <= -30) {
         coachingPriorities.push({
           agent: agent.name,
-          reason: `Revenue dropped ${Math.round(delta)}% vs prior ${period.label.toLowerCase()} (${formatPHPCompact(prior.sales)} → ${formatPHPCompact(agent.sales)})`,
+          reason: `Revenue dropped ${Math.round(delta)}% vs prior ${periodLabel.toLowerCase()} (${formatPHPCompact(prior.sales)} → ${formatPHPCompact(agent.sales)})`,
           tone: 'warn',
         })
       }
@@ -596,7 +546,7 @@ export default function AccountOfficersTab() {
     if (agent.txnCount === 0) {
       coachingPriorities.push({
         agent: agent.name,
-        reason: `No deals closed this ${period.label.toLowerCase()}. Schedule a 1:1 to identify blockers.`,
+        reason: `No deals closed this ${periodLabel.toLowerCase()}. Schedule a 1:1 to identify blockers.`,
         tone: 'warn',
       })
     }
@@ -617,7 +567,7 @@ export default function AccountOfficersTab() {
   if (topAgent && topAgent.sales > teamAvgRevenue * 1.5 && topAgent.name !== 'Unassigned') {
     coachingPriorities.unshift({
       agent: topAgent.name,
-      reason: `Top performer this ${period.label.toLowerCase()} (${formatPHP(topAgent.sales)}). Consider asking them to share their playbook with the team.`,
+      reason: `Top performer this ${periodLabel.toLowerCase()} (${formatPHP(topAgent.sales)}). Consider asking them to share their playbook with the team.`,
       tone: 'good',
     })
   }
@@ -642,23 +592,12 @@ export default function AccountOfficersTab() {
           </div>
         </div>
         <div className="flex flex-col gap-2 items-end">
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto">
-              {PERIODS.map(p => (
-                <button key={p.id} onClick={() => setPeriodId(p.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                          periodId === p.id ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
-                        }`}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <DateRangePicker
-              value={customDates}
-              active={isCustom}
-              onApply={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
-            />
-          </div>
+          <PeriodBar
+            periodId={periodId} onPeriod={setPeriodId}
+            monthKey={monthKey} onMonth={setMonthKey}
+            customDates={customDates} isCustom={isCustom}
+            onApplyCustom={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
+          />
           {/* Division quick-filter (Domestic / International) */}
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
             {[

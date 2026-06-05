@@ -15,7 +15,8 @@ import {
 } from '../api/lakbay'
 import { attendanceStats, getStatus, subscribeAttendance } from '../lib/attendance'
 import LiveIndicator from './LiveIndicator'
-import DateRangePicker from './DateRangePicker'
+import PeriodBar from './PeriodBar'
+import { periodRange, currentMonthKey } from '../lib/periods'
 
 // Parse a YYYY-MM-DD key into a local Date (for custom date selections)
 function dateFromKey(k) {
@@ -33,32 +34,7 @@ const GOLD = '#F5A623'
 // ── Calendar-aligned period ranges (PHT-local) ──────────────────────────────
 function startOfDay(d)  { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
 function endOfDay(d)    { const x = new Date(d); x.setHours(23, 59, 59, 999); return x }
-function startOfWeek(d) { // Monday
-  const x = startOfDay(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); return x
-}
-function startOfMonth(d){ const x = startOfDay(d); x.setDate(1); return x }
 
-function rangeForPeriod(period) {
-  const now = new Date()
-  switch (period) {
-    case 'today': return [startOfDay(now), endOfDay(now)]
-    case 'week':  return [startOfWeek(now), endOfDay(now)]
-    case 'month': return [startOfMonth(now), endOfDay(now)]
-    case '60d':   return [startOfDay(new Date(now.getTime() - 59 * 86400000)), endOfDay(now)]
-    case '90d':   return [startOfDay(new Date(now.getTime() - 89 * 86400000)), endOfDay(now)]
-    case 'all':   return [new Date(0), endOfDay(now)]
-    default:      return [startOfWeek(now), endOfDay(now)]
-  }
-}
-
-const PERIODS = [
-  { id: 'today', label: 'Today' },
-  { id: 'week',  label: 'This Week' },
-  { id: 'month', label: 'This Month' },
-  { id: '60d',   label: 'Last 60d' },
-  { id: '90d',   label: 'Last 90d' },
-  { id: 'all',   label: 'All Time' },
-]
 
 const SLOTS = [10, 15, 19, 20, 21] // 10AM, 3PM, 7PM, 8PM, 9PM (POTB session slots)
 function slotLabel(h) {
@@ -155,9 +131,10 @@ function fmtTime(iso) {
 
 export default function AacioReportTab() {
   const { bookings, loading, refreshing, error, lastFetched, refresh } = useAacioData()
-  const [period, setPeriod] = useState('month')
-  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when period === 'custom'
-  const isCustom = period === 'custom' && customDates.length > 0
+  const [periodId, setPeriodId] = useState('month')
+  const [monthKey, setMonthKey] = useState(currentMonthKey())
+  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
+  const isCustom = periodId === 'custom' && customDates.length > 0
   const customSet = useMemo(() => new Set(customDates), [customDates])
 
   // LakbayHub sales tagged to AACIO external clusters (polled, shared cache)
@@ -184,8 +161,9 @@ export default function AacioReportTab() {
       const sorted = [...customDates].sort()
       return [startOfDay(dateFromKey(sorted[0])), endOfDay(dateFromKey(sorted[sorted.length - 1]))]
     }
-    return rangeForPeriod(period)
-  }, [isCustom, customDates, period])
+    const { start, end } = periodRange(periodId, monthKey)
+    return [start, end]
+  }, [isCustom, customDates, periodId, monthKey])
 
   // For multi-select custom dates, also require the record's day to be one of
   // the picked days (a plain from–to range would include in-between days).
@@ -355,7 +333,7 @@ export default function AacioReportTab() {
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url
-    a.download = `aacio-sales-report-${period}-${dateKey(new Date())}.csv`
+    a.download = `aacio-sales-report-${periodId}-${dateKey(new Date())}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -405,27 +383,12 @@ export default function AacioReportTab() {
       </div>
 
       {/* Period selector */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-          {PERIODS.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setPeriod(p.id)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                period === p.id ? 'bg-white shadow-sm font-semibold' : 'text-gray-500 hover:text-gray-700'
-              }`}
-              style={period === p.id ? { color: TEAL } : undefined}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <DateRangePicker
-          value={customDates}
-          active={isCustom}
-          onApply={(dates) => { setCustomDates(dates); setPeriod('custom') }}
-        />
-      </div>
+      <PeriodBar
+        periodId={periodId} onPeriod={setPeriodId}
+        monthKey={monthKey} onMonth={setMonthKey}
+        customDates={customDates} isCustom={isCustom}
+        onApplyCustom={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
+      />
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

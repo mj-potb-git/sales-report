@@ -16,7 +16,10 @@ import { fetchSalesRecords, formatPHP, formatPHPCompact } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 import OpsAlerts from './sales/OpsAlerts'
 import SchedulingInsights from './sales/SchedulingInsights'
-import DateRangePicker from './DateRangePicker'
+import PeriodBar from './PeriodBar'
+import {
+  UNIFORM_PERIODS, periodDays, periodLabelFor, currentMonthKey,
+} from '../lib/periods'
 
 // Parse a YYYY-MM-DD key into a local Date (used for custom date selections)
 function dateFromKey(k) {
@@ -45,14 +48,6 @@ function ycbmAttendanceStats(bookings, nowMs) {
 const PRIMARY = '#1B4F4F'
 const TIME_SLOTS = [10, 15, 19, 20, 21] // 10AM, 3PM, 7PM, 8PM, 9PM (typical POTB session times)
 
-const PERIODS = [
-  { id: 'today',   label: 'Today',     days: 1,  compareLabel: 'vs yesterday' },
-  { id: 'weekly',  label: 'This Week', days: 7,  compareLabel: 'vs last week' },
-  { id: 'biweek',  label: '14 Days',   days: 14, compareLabel: 'vs prior 14d' },
-  { id: 'monthly', label: 'This Month',days: 30, compareLabel: 'vs last month' },
-  { id: '60d',     label: '60 Days',   days: 60, compareLabel: 'vs prior 60d' },
-  { id: '90d',     label: '90 Days',   days: 90, compareLabel: 'vs prior 90d' },
-]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,12 +68,6 @@ function formatDateISO(d) {
 }
 function hourLabel(h) {
   return h === 0 ? '12AM' : h < 12 ? `${h}AM` : h === 12 ? '12PM' : `${h - 12}PM`
-}
-
-// Last N days as Date objects (oldest → newest)
-function lastNDays(n, anchor = new Date()) {
-  const today = startOfDay(anchor)
-  return Array.from({ length: n }, (_, i) => new Date(today.getTime() - (n - 1 - i) * 86400000))
 }
 
 // Group bookings by date string YYYY-MM-DD
@@ -160,33 +149,32 @@ function HeatCell({ attendees, bookings }) {
 // ---------------------------------------------------------------------------
 
 export default function SalesDashboard({ bookings = [] }) {
-  const [periodId, setPeriodId] = useState('biweek')
-  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
-  const period = PERIODS.find(p => p.id === periodId) ?? PERIODS[2]
+  const [periodId, setPeriodId] = useState('month')
+  const [monthKey, setMonthKey] = useState(currentMonthKey())
+  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when in custom mode
   const isCustom = periodId === 'custom' && customDates.length > 0
-  const DAYS_BACK = period.days
   // Stable "now" reference for past/future attendance derivation (set once on mount)
   const [nowMs] = useState(() => Date.now())
 
   // Days driving the whole view. For custom: the exact picked dates (sorted).
   const days = useMemo(
-    () => (isCustom ? customDates.map(dateFromKey) : lastNDays(DAYS_BACK)),
-    [isCustom, customDates, DAYS_BACK],
+    () => (isCustom ? customDates.map(dateFromKey) : periodDays(periodId, monthKey)),
+    [isCustom, customDates, periodId, monthKey],
   )
-  // Previous period (same length, immediately before current window) for comparison.
-  // Custom selections have no meaningful "prior" window, so skip the comparison.
+  // Previous period (same length, immediately before the current window) for
+  // comparison. Custom selections have no meaningful "prior" window.
   const priorDays = useMemo(() => {
-    if (isCustom) return []
-    const today = startOfDay(new Date())
-    return Array.from({ length: DAYS_BACK }, (_, i) =>
-      new Date(today.getTime() + 0 - (DAYS_BACK + DAYS_BACK - 1 - i) * 86400000))
-  }, [isCustom, DAYS_BACK])
+    if (isCustom || days.length === 0) return []
+    const n = days.length
+    const first = startOfDay(days[0]).getTime()
+    return Array.from({ length: n }, (_, i) => new Date(first - (n - i) * 86400000))
+  }, [isCustom, days])
 
   // Labels that adapt to custom mode
-  const periodLabel   = isCustom
+  const periodLabel = isCustom
     ? (customDates.length === 1 ? 'Custom day' : `${customDates.length} custom days`)
-    : period.label
-  const compareLabel  = isCustom ? null : period.compareLabel
+    : periodLabelFor(periodId, monthKey)
+  const compareLabel = isCustom ? null : (UNIFORM_PERIODS.find(p => p.id === periodId)?.compareLabel ?? null)
 
   // Pull LakbayHub sales for cross-source correlation
   const [salesByDate, setSalesByDate] = useState(new Map())
@@ -389,31 +377,15 @@ export default function SalesDashboard({ bookings = [] }) {
         <div>
           <h1 className="text-xl font-bold text-gray-900">Operations Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">
-            POTB · {periodLabel}{isCustom ? '' : ` (${DAYS_BACK === 1 ? 'today' : `last ${DAYS_BACK} days`})`} · YCBM × LakbayHub × Meta Ads × Attendance
+            POTB · {periodLabel} · YCBM × LakbayHub × Meta Ads × Attendance
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-          <div className="flex bg-gray-100 rounded-xl p-1 gap-1 overflow-x-auto max-w-full">
-            {PERIODS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setPeriodId(p.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
-                  periodId === p.id
-                    ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <DateRangePicker
-            value={customDates}
-            active={isCustom}
-            onApply={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
-          />
-        </div>
+        <PeriodBar
+          periodId={periodId} onPeriod={setPeriodId}
+          monthKey={monthKey} onMonth={setMonthKey}
+          customDates={customDates} isCustom={isCustom}
+          onApplyCustom={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
+        />
       </div>
 
       {/* Section 1: Marketing Funnel KPIs (combined Meta + YCBM + Attendance) */}
@@ -471,7 +443,7 @@ export default function SalesDashboard({ bookings = [] }) {
         totals={totals}
         perDay={perDay}
         delta={delta}
-        period={period}
+        period={{ label: periodLabel, compareLabel }}
         metaError={metaError}
         overallShowUpRate={overallShowUpRate}
         overallBookToSale={overallBookToSale}

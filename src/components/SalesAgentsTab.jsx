@@ -18,8 +18,9 @@ import LiveActivityFeed from './sales/LiveActivityFeed'
 import ClusterHealth from './sales/ClusterHealth'
 import DeltaBadge from './sales/DeltaBadge'
 import SalesBreakdown from './sales/SalesBreakdown'
-import DateRangePicker from './DateRangePicker'
-import { comparePeriods, previousPeriodRange } from '../api/lakbay'
+import PeriodBar from './PeriodBar'
+import { periodRange, periodLabelFor, currentMonthKey } from '../lib/periods'
+import { comparePeriods } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
   dailyTrend, formatPHP, formatPHPCompact,
@@ -29,11 +30,6 @@ const PRIMARY = '#1B4F4F'
 const ACCENT  = '#F5A623'
 const PALETTE = [PRIMARY, ACCENT, '#4ECDC4', '#7FB069', '#C26DBC', '#6D9EEB']
 
-const PERIODS = [
-  { id: 'daily',   label: 'Daily'   },
-  { id: 'weekly',  label: 'Weekly'  },
-  { id: 'monthly', label: 'Monthly' },
-]
 
 // ---------------------------------------------------------------------------
 
@@ -228,16 +224,19 @@ function TeamDetail({ team, allRecords, onBack, onAgentClick }) {
 
 // ---------------------------------------------------------------------------
 // Main overview view
-function Overview({ records, period, onPeriodChange, customDates = [], onCustomApply, view, onViewChange,
+function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates = [], onCustomApply, view, onViewChange,
                     onAgentClick, onTeamClick, search, onSearchChange,
                     lastFetched, refreshing, onRefresh }) {
   const today = new Date()
-  const isCustom = period === 'custom' && customDates.length > 0
-  const { start, end } = rangeFor(period, today)
+  const isCustom = periodId === 'custom' && customDates.length > 0
+  const { start, end } = periodRange(periodId, monthKey)
   const customSet = useMemo(() => new Set(customDates), [customDates])
   const ranged = isCustom
     ? records.filter(r => customSet.has(r.date))
     : filterByRange(records, start, end)
+  const periodLabel = isCustom
+    ? (customDates.length === 1 ? '1 custom day' : `${customDates.length} custom days`)
+    : periodLabelFor(periodId, monthKey)
 
   const dailyTotal   = sum(filterByRange(records, rangeFor('daily',   today).start, rangeFor('daily',   today).end), 'sales_amount')
   const weeklyTotal  = sum(filterByRange(records, rangeFor('weekly',  today).start, rangeFor('weekly',  today).end), 'sales_amount')
@@ -281,28 +280,11 @@ function Overview({ records, period, onPeriodChange, customDates = [], onCustomA
             label="LakbayHub"
           />
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
-            {PERIODS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => onPeriodChange(p.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  period === p.id
-                    ? 'bg-white text-[#1B4F4F] shadow-sm font-semibold'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <DateRangePicker
-            value={customDates}
-            active={isCustom}
-            onApply={onCustomApply}
-          />
-        </div>
+        <PeriodBar
+          periodId={periodId} onPeriod={onPeriod}
+          monthKey={monthKey} onMonth={onMonth}
+          customDates={customDates} isCustom={isCustom} onApplyCustom={onCustomApply}
+        />
       </div>
 
       {/* Today's live snapshot + monthly target */}
@@ -316,12 +298,12 @@ function Overview({ records, period, onPeriodChange, customDates = [], onCustomA
 
       {/* Summary cards with period-over-period comparison */}
       <div>
-        <h2 className="text-base font-semibold text-gray-800 mb-3 capitalize">{period} Overview</h2>
+        <h2 className="text-base font-semibold text-gray-800 mb-3">{periodLabel} Overview</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <SummaryCard icon={TrendingUp} label="Total Daily Sales"   value={formatPHPCompact(dailyTotal)} />
           <SummaryCard icon={TrendingUp} label="Total Weekly Sales"  value={formatPHPCompact(weeklyTotal)} sub="Mon–Sun" />
           <SummaryCard icon={TrendingUp} label="Total Monthly Sales" value={formatPHPCompact(monthlyTotal)} />
-          <SummaryCard icon={Users}      label="Total Sign-ups"      value={String(totalSignups)} sub={`current ${period} view`} />
+          <SummaryCard icon={Users}      label="Total Sign-ups"      value={String(totalSignups)} sub={`current ${periodLabel} view`} />
           <SummaryCard icon={Award}      label="Top Agent"           value={topAgent ? topAgent.name.split(' ')[0] : '—'} sub={topAgent ? formatPHPCompact(topAgent.sales) : ''} accent="#FFF4E0" />
           <SummaryCard icon={Award}      label="Top Team"            value={topTeam ? topTeam.name : '—'} sub={topTeam ? formatPHPCompact(topTeam.sales) : ''} accent="#FFF4E0" />
           <SummaryCard icon={Target}     label="Conversion Rate"     value={`${conversionRate}%`} sub="signups / max" />
@@ -330,18 +312,16 @@ function Overview({ records, period, onPeriodChange, customDates = [], onCustomA
       </div>
 
       {/* Detailed sales breakdown — how much each closer/cluster sold this period */}
-      <SalesBreakdown
-        records={ranged}
-        periodLabel={isCustom
-          ? (customDates.length === 1 ? '1 custom day' : `${customDates.length} custom days`)
-          : period.charAt(0).toUpperCase() + period.slice(1)}
-      />
+      <SalesBreakdown records={ranged} periodLabel={periodLabel} />
 
       {/* Period-vs-prior period comparison strip */}
       {(() => {
-        const prior = previousPeriodRange(period, today)
-        const cmp = comparePeriods(records, start, end, prior.start, prior.end)
-        const label = period === 'daily' ? 'yesterday' : period === 'weekly' ? 'last week' : period === 'monthly' ? 'last month' : 'prior'
+        // Prior = same-length window immediately before the current one
+        const lenMs = Math.max(86400000, end.getTime() - start.getTime())
+        const priorEnd = new Date(start.getTime() - 1)
+        const priorStart = new Date(start.getTime() - lenMs - 1)
+        const cmp = comparePeriods(records, start, end, priorStart, priorEnd)
+        const label = 'prior period'
         return (
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-center gap-4 text-sm">
             <span className="text-gray-500 font-medium">vs {label}:</span>
@@ -396,7 +376,7 @@ function Overview({ records, period, onPeriodChange, customDates = [], onCustomA
       </div>
 
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-        <p className="text-sm font-semibold text-gray-700 mb-3">Sales per Agent ({period})</p>
+        <p className="text-sm font-semibold text-gray-700 mb-3">Sales per Agent ({periodLabel})</p>
         <ResponsiveContainer width="100%" height={Math.max(220, byAgent.length * 28)}>
           <BarChart data={byAgent} layout="vertical" margin={{ left: 30 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -524,8 +504,9 @@ function Overview({ records, period, onPeriodChange, customDates = [], onCustomA
 
 export default function SalesAgentsTab() {
   const { records, loading, refreshing, error, lastFetched, refresh } = useSalesData()
-  const [period, setPeriod] = useState('monthly')
-  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when period === 'custom'
+  const [periodId, setPeriodId] = useState('month')
+  const [monthKey, setMonthKey] = useState(currentMonthKey())
+  const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const [view,   setView]   = useState('agents')
   const [search, setSearch] = useState('')
   const [selectedAgent, setSelectedAgent] = useState(null)
@@ -548,9 +529,10 @@ export default function SalesAgentsTab() {
     <div className="pb-24 sm:pb-6">
       <Overview
         records={records}
-        period={period} onPeriodChange={setPeriod}
+        periodId={periodId} onPeriod={setPeriodId}
+        monthKey={monthKey} onMonth={setMonthKey}
         customDates={customDates}
-        onCustomApply={(dates) => { setCustomDates(dates); setPeriod('custom') }}
+        onCustomApply={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
         view={view} onViewChange={setView}
         search={search} onSearchChange={setSearch}
         onAgentClick={setSelectedAgent}
