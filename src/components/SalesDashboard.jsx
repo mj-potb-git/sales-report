@@ -572,6 +572,9 @@ export default function SalesDashboard({ bookings = [] }) {
               <MetricRow label="Actual CVR (Sales ÷ Show-Ups)"
                 values={perDay.map(d => d.showToSalePct)}
                 formatter={v => v === null ? '—' : `${v}%`} bold />
+              <MetricRow label="Closing Rate (Sales ÷ Scheduled)"
+                values={perDay.map(d => d.bookToSalePct)}
+                formatter={v => v === null ? '—' : `${v}%`} bold />
 
               <SectionHeaderRow label="TIME SLOTS (attendees / bookings)" span={days.length + 1} color="#4ECDC4" />
               {TIME_SLOTS.map((h, slotIdx) => (
