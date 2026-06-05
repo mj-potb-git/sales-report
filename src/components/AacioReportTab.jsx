@@ -13,7 +13,7 @@ import {
   fetchSalesRecords, filterByRange, sum, formatPHP, formatPHPCompact,
   totalsByAgent, totalsByTeam,
 } from '../api/lakbay'
-import { attendanceStats, getStatus, subscribeAttendance } from '../lib/attendance'
+import { subscribeAttendance } from '../lib/attendance'
 import LiveIndicator from './LiveIndicator'
 import PeriodBar from './PeriodBar'
 import { periodRange, currentMonthKey } from '../lib/periods'
@@ -136,6 +136,8 @@ export default function AacioReportTab() {
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const isCustom = periodId === 'custom' && customDates.length > 0
   const customSet = useMemo(() => new Set(customDates), [customDates])
+  // Stable "now" for past/future attendance derivation (set once on mount)
+  const [nowMs] = useState(() => Date.now())
 
   // LakbayHub sales tagged to AACIO external clusters (polled, shared cache)
   const [extSales, setExtSales] = useState([])
@@ -298,19 +300,27 @@ export default function AacioReportTab() {
     const active     = sched.filter(b => !b.cancelled)
     const cancelled  = sched.filter(b => b.cancelled).length
     const leads      = (createdByDate.get(k) || []).filter(b => !b.cancelled).length
-    const att        = attendanceStats(active)
+    // Attendance from YCBM's own noShow flag (source of truth):
+    //   noShow=true → No-Show · past & not flagged → Showed · future → unmarked
+    let showed = 0, noShow = 0, unmarked = 0
+    for (const b of active) {
+      if (b.noShow === true) noShow++
+      else if (new Date(b.startsAt).getTime() < nowMs) showed++
+      else unmarked++
+    }
+    const tracked    = showed + noShow
     const salesCount = (salesByDate.get(k) || []).length
-    const sur        = att.tracked > 0 ? att.showUpRate : null
+    const sur        = tracked > 0 ? Math.round((showed / tracked) * 100) : null
     const cvr        = active.length > 0 ? Math.round((salesCount / active.length) * 100) : null
     const bySlot     = SLOTS.map(h => {
       const slotBk = active.filter(b => b.hour === h)
-      const showed = slotBk.filter(b => getStatus(b.id) === 'showed').length
-      return { hour: h, bookings: slotBk.length, attendees: showed }
+      const att    = slotBk.filter(b => b.noShow !== true && new Date(b.startsAt).getTime() < nowMs).length
+      return { hour: h, bookings: slotBk.length, attendees: att }
     })
     return {
       day, leads,
       scheduled: active.length,
-      showed: att.showed, noShow: att.noShow,
+      showed, noShow, unmarked,
       cancelled, salesCount, sur, cvr, bySlot,
     }
   })
@@ -532,9 +542,9 @@ export default function AacioReportTab() {
           <div>
             <h3 className="font-semibold text-gray-900">Daily Performance Matrix</h3>
             <p className="text-[11px] text-gray-500 mt-0.5">
-              Each column = one day · AACIO YCBM bookings × external-cluster sales
+              Each column = one day · AACIO YCBM bookings × external-cluster sales · Show-Up/No-Show from YCBM’s own marks
               {matrix.every(d => d.showed + d.noShow === 0) && (
-                <> · Show-Up/No-Show untracked for AACIO (mark in POTB Bookings tab)</>
+                <> · no attendance marked yet in YCBM for this range</>
               )}
             </p>
           </div>
@@ -564,12 +574,16 @@ export default function AacioReportTab() {
                 formatter={v => v === 0 ? '—' : String(v)} bold />
               <MatrixRow label="Total # of YCBM booking (On the day Schedule)"
                 values={matrix.map(d => d.scheduled)} bold />
-              <MatrixRow label="Total # of Show Up"
+              <MatrixRow label="↳ Show Up (by appt date)"
                 values={matrix.map(d => d.showed)} accent />
-              <MatrixRow label="Total # of No-Show"
+              <MatrixRow label="↳ No-Show (by appt date)"
                 values={matrix.map(d => d.noShow)} accent />
+              <MatrixRow label="↳ Unmarked (not yet tracked)"
+                values={matrix.map(d => d.unmarked)}
+                formatter={v => v === 0 ? '—' : String(v)} accent />
               <MatrixRow label="Total # of Cancelled"
-                values={matrix.map(d => d.cancelled)} accent />
+                values={matrix.map(d => d.cancelled)}
+                formatter={v => v === 0 ? '—' : String(v)} accent />
               <MatrixRow label="Total # of Sales"
                 values={matrix.map(d => d.salesCount)}
                 formatter={v => v === 0 ? '—' : String(v)} bold />

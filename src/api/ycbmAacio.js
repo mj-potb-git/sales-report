@@ -14,6 +14,10 @@ async function get(path) {
 
 // Window: 90 days back → 60 forward. AACIO has fewer profiles/bookings than
 // POTB, so a wider history is cheap and gives better month-over-month views.
+// YCBM omits `noShow` from the default payload — request it explicitly via the
+// `fields` whitelist so AACIO attendance reflects the team's own No-Show marks.
+const BOOKING_FIELDS = 'id,title,startsAt,endsAt,createdAt,cancelled,noShow,profileId,timeZone,location,accountId,tentative'
+
 const DEFAULT_FROM_DAYS_BACK     = 90
 const DEFAULT_TO_DAYS_FORWARD    = 60
 const MAX_PAGES                  = 300
@@ -48,7 +52,7 @@ export async function fetchAacioBookings({
   let latestSeenMs = cursorMs
 
   while (pages < MAX_PAGES && (Date.now() - startTime) < PAGINATION_HARD_TIME_LIMIT) {
-    const page = await get(`/bookings?from=${encodeURIComponent(cursor)}`)
+    const page = await get(`/bookings?from=${encodeURIComponent(cursor)}&fields=${BOOKING_FIELDS}`)
     if (!Array.isArray(page) || page.length === 0) break
 
     let progressed = false
@@ -106,6 +110,7 @@ export function mapAacioBooking(raw, profilesById) {
     endsAt: raw.endsAt,
     createdAt: raw.createdAt,
     cancelled: !!raw.cancelled,
+    noShow: raw.noShow === true,   // YCBM's own attendance flag (source of truth)
     profileId: raw.profileId,
     team: profile?.subdomain ?? 'aacio',
     appointmentType: profile?.title ?? 'Coaching Session',
