@@ -37,7 +37,7 @@ import {
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
-import { periodRange, periodLabelFor, currentMonthKey } from '../lib/periods'
+import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 
 // Normalize a record's date to a local YYYY-MM-DD key (matches DateRangePicker's
 // output) so custom-date filtering is exact regardless of source date format.
@@ -398,7 +398,7 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
 
 export default function AccountOfficersTab() {
   const [periodId, setPeriodId] = useState('month')
-  const [monthKey, setMonthKey] = useState(currentMonthKey())
+  const [monthKey, setMonthKey] = useState(null)  // null = auto (latest month with data)
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const [search, setSearch] = useState('')
   const [filterUnassigned, setFilterUnassigned] = useState(true)
@@ -439,16 +439,18 @@ export default function AccountOfficersTab() {
 
   const isCustom = periodId === 'custom' && customDates.length > 0
   const customSet = new Set(customDates)
+  // Auto-default the month to the latest one with data (avoids empty current month)
+  const effMonthKey = monthKey || latestMonthKey(records.map(r => r.date)) || currentMonthKey()
   const periodLabel = isCustom
     ? (customDates.length === 1 ? 'Custom day' : `${customDates.length} custom days`)
-    : periodLabelFor(periodId, monthKey)
+    : periodLabelFor(periodId, effMonthKey)
 
   if (loading) return <div className="text-center py-12 text-gray-400">Loading Booking Transactions from Fusioo…</div>
   if (error)   return <div className="text-center py-12 text-red-500">{error.message}</div>
 
   // Period filter. Prior = same-length window immediately before the current
   // one. Custom = exactly the picked days; no meaningful prior window.
-  const { start, end } = periodRange(periodId, monthKey)
+  const { start, end } = periodRange(periodId, effMonthKey)
   const lenMs = Math.max(86400000, end.getTime() - start.getTime())
   const priorStart = isCustom ? null : new Date(start.getTime() - lenMs - 1)
   const priorEnd   = isCustom ? null : new Date(start.getTime() - 1)
@@ -595,7 +597,7 @@ export default function AccountOfficersTab() {
         <div className="flex flex-col gap-2 items-end">
           <PeriodBar
             periodId={periodId} onPeriod={setPeriodId}
-            monthKey={monthKey} onMonth={setMonthKey}
+            monthKey={effMonthKey} onMonth={setMonthKey}
             customDates={customDates} isCustom={isCustom}
             onApplyCustom={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
           />
