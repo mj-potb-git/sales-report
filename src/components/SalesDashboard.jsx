@@ -266,8 +266,8 @@ export default function SalesDashboard({ bookings = [] }) {
     const leads     = dayLeadsBooked
     const cpl   = (spend > 0 && leads > 0)        ? Math.round(spend / leads)            : null
     const cac   = (spend > 0 && salesCount > 0)   ? Math.round(spend / salesCount)       : null
-    // ROAS in percentage form (3.54x → 354%) per user preference
-    const roas  = (spend > 0)                     ? Math.round((salesAmount / spend) * 100) : null
+    // ROAS as a multiplier (revenue ÷ spend), e.g. 3.54x — 2 decimal places
+    const roas  = (spend > 0)                     ? (salesAmount / spend) : null
     const arPct = (spend > 0 && salesAmount > 0)  ? Math.round((spend / salesAmount) * 100) : null
     const profit = salesAmount - spend // Total Gross Revenue − Total Ads Spent
 
@@ -326,7 +326,7 @@ export default function SalesDashboard({ bookings = [] }) {
     profit:      acc.profit      + (d.profit || 0),
   }), { bookings: 0, cancelled: 0, showed: 0, noShow: 0, sales: 0, salesCount: 0, spend: 0, leads: 0, metaLeads: 0, profit: 0 })
 
-  const totalROAS = totals.spend > 0 ? Math.round((totals.sales / totals.spend) * 100) : null
+  const totalROAS = totals.spend > 0 ? (totals.sales / totals.spend) : null
   const totalARPct = totals.sales > 0 ? Math.round((totals.spend / totals.sales) * 100) : null
   const totalCPL = totals.leads > 0 ? Math.round(totals.spend / totals.leads) : null
 
@@ -494,7 +494,7 @@ export default function SalesDashboard({ bookings = [] }) {
                 formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
               <MetricRow label="Return On Ads Spent"
                 values={perDay.map(d => d.roas)}
-                formatter={v => v === null ? '—' : `${v}%`} bold />
+                formatter={v => v === null ? '—' : `${v.toFixed(2)}x`} bold />
               <MetricRow label="AR% (Ads/Revenue)"
                 values={perDay.map(d => d.arPct)}
                 formatter={v => v === null ? '—' : `${v}%`} accent />
@@ -619,7 +619,7 @@ export default function SalesDashboard({ bookings = [] }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-4">
           <KpiCard icon={DollarSign} label="Total Ads Spent"    value={formatPHPCompact(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={compareLabel} />
           <KpiCard icon={DollarSign} label="Total Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={compareLabel} />
-          <KpiCard icon={TrendingUp} label="Return On Ads Spent" value={totalROAS === null ? '—' : `${totalROAS}%`} sub="revenue / spend" accent="#fef3c7" />
+          <KpiCard icon={TrendingUp} label="Return On Ads Spent" value={totalROAS === null ? '—' : `${totalROAS.toFixed(2)}x`} sub="revenue / spend" accent="#fef3c7" />
           <KpiCard icon={TrendingUp} label="AR% (Ads/Revenue)"   value={totalARPct === null ? '—' : `${totalARPct}%`} sub="ad cost / revenue" />
           <KpiCard icon={Users}      label="Total Leads"         value={String(totals.leads)} sub="bookings made" delta={delta.leads} compareLabel={compareLabel} />
           <KpiCard icon={DollarSign} label="Average CPL"         value={totalCPL === null ? '—' : formatPHPCompact(totalCPL)} sub="cost per lead" />

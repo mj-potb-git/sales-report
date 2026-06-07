@@ -60,18 +60,19 @@ export default function OpsAlerts({
     })
   }
 
-  // --- ROAS health ---------------------------------------------------------
+  // --- ROAS health (ROAS is a multiplier, e.g. 3.54x) ----------------------
   const validRoas = perDay.filter(d => d.roas !== null).map(d => d.roas)
   const avgRoas = validRoas.length > 0
-    ? Math.round(validRoas.reduce((a, b) => a + b, 0) / validRoas.length)
+    ? (validRoas.reduce((a, b) => a + b, 0) / validRoas.length)
     : null
   if (avgRoas !== null) {
-    if (avgRoas >= 300) {
-      alerts.push({ tone: 'good', Icon: Zap, title: `Excellent ROAS · ${avgRoas}% avg`, body: `For every ₱100 ad spend, returning ₱${avgRoas}. Scale this!` })
-    } else if (avgRoas >= 150) {
-      alerts.push({ tone: 'info', Icon: TrendingUp, title: `Healthy ROAS · ${avgRoas}% avg`, body: 'Profitable. Look for the days at peak to identify what to replicate.' })
+    const r = avgRoas.toFixed(2)
+    if (avgRoas >= 3) {
+      alerts.push({ tone: 'good', Icon: Zap, title: `Excellent ROAS · ${r}x avg`, body: `For every ₱1 ad spend, returning ₱${r}. Scale this!` })
+    } else if (avgRoas >= 1.5) {
+      alerts.push({ tone: 'info', Icon: TrendingUp, title: `Healthy ROAS · ${r}x avg`, body: 'Profitable. Look for the days at peak to identify what to replicate.' })
     } else if (avgRoas > 0) {
-      alerts.push({ tone: 'warn', Icon: TrendingDown, title: `Low ROAS · ${avgRoas}% avg`, body: 'Ad spend barely paying back. Check creative quality and audience.' })
+      alerts.push({ tone: 'warn', Icon: TrendingDown, title: `Low ROAS · ${r}x avg`, body: 'Ad spend barely paying back. Check creative quality and audience.' })
     }
   }
 
