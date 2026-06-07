@@ -36,6 +36,7 @@ import {
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
 import PeriodBar from './PeriodBar'
+import HeroBand from './ui/HeroBand'
 import { periodRange, periodLabelFor, currentMonthKey } from '../lib/periods'
 
 // Normalize a record's date to a local YYYY-MM-DD key (matches DateRangePicker's
@@ -615,6 +616,20 @@ export default function AccountOfficersTab() {
           </div>
         </div>
       </div>
+
+      {/* Hero band — instant read on officer/company performance */}
+      <HeroBand
+        label={`Company Revenue · ${periodLabel}`}
+        value={formatPHP(companyRevenue)}
+        delta={revenueDelta}
+        sub={`${companyDeals} deals${topAgent && topAgent.name !== 'Unassigned' ? ` · top officer: ${topAgent.name}` : ''}`}
+        stats={[
+          { label: 'Deals', value: String(companyDeals) },
+          { label: 'Avg Deal', value: formatPHPCompact(companyAvgDeal) },
+          { label: 'Top Officer', value: topAgent && topAgent.name !== 'Unassigned' ? topAgent.name.split(' ').slice(-1)[0] : '—' },
+          { label: 'Active', value: String(realAgents.length) },
+        ]}
+      />
 
       {/* Company snapshot */}
       <section>

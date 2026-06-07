@@ -16,7 +16,8 @@ import {
 import { subscribeAttendance } from '../lib/attendance'
 import LiveIndicator from './LiveIndicator'
 import PeriodBar from './PeriodBar'
-import { periodRange, currentMonthKey } from '../lib/periods'
+import HeroBand from './ui/HeroBand'
+import { periodRange, periodLabelFor, currentMonthKey } from '../lib/periods'
 
 // Parse a YYYY-MM-DD key into a local Date (for custom date selections)
 function dateFromKey(k) {
@@ -398,6 +399,19 @@ export default function AacioReportTab() {
         monthKey={monthKey} onMonth={setMonthKey}
         customDates={customDates} isCustom={isCustom}
         onApplyCustom={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
+      />
+
+      {/* Hero band — instant read on AACIO external-team activity */}
+      <HeroBand
+        label={`AACIO Bookings · ${isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)}`}
+        value={String(stats.active)}
+        sub={`${stats.unique} unique leads · ${salesStats.count} sales · ${formatPHPCompact(salesStats.revenue)} revenue`}
+        stats={[
+          { label: 'Bookings', value: String(stats.active) },
+          { label: 'Unique Leads', value: String(stats.unique) },
+          { label: 'Sales', value: String(salesStats.count) },
+          { label: 'Avg / Day', value: stats.perDay.toFixed(1) },
+        ]}
       />
 
       {/* KPI cards */}

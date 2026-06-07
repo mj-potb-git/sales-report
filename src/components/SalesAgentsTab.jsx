@@ -19,6 +19,7 @@ import ClusterHealth from './sales/ClusterHealth'
 import DeltaBadge from './sales/DeltaBadge'
 import SalesBreakdown from './sales/SalesBreakdown'
 import PeriodBar from './PeriodBar'
+import HeroBand from './ui/HeroBand'
 import { periodRange, periodLabelFor, currentMonthKey } from '../lib/periods'
 import { comparePeriods } from '../api/lakbay'
 import {
@@ -286,6 +287,19 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
           customDates={customDates} isCustom={isCustom} onApplyCustom={onCustomApply}
         />
       </div>
+
+      {/* Hero band — instant read on sales for the selected period */}
+      <HeroBand
+        label={`Total Sales · ${periodLabel}`}
+        value={formatPHP(sum(ranged, 'sales_amount'))}
+        sub={`${ranged.length} sales${topAgent ? ` · top closer: ${topAgent.name}` : ''}`}
+        stats={[
+          { label: '# Sales', value: String(ranged.length) },
+          { label: 'Top Closer', value: topAgent ? topAgent.name.split(' ').slice(-1)[0] : '—' },
+          { label: 'Conversion', value: `${conversionRate}%` },
+          { label: 'Active Closers', value: String(byAgent.length) },
+        ]}
+      />
 
       {/* Today's live snapshot + monthly target */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
