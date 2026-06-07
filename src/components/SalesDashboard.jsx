@@ -14,6 +14,7 @@ import {
 import { subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords, formatPHP, formatPHPCompact } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
+import { PRIMARY } from '../lib/theme'
 import OpsAlerts from './sales/OpsAlerts'
 import OpsHero from './sales/OpsHero'
 import InfoTip from './ui/InfoTip'
@@ -47,7 +48,6 @@ function ycbmAttendanceStats(bookings, nowMs) {
   return { showed, noShow, unset, tracked, total: bookings.length, showUpRate }
 }
 
-const PRIMARY = '#1B4F4F'
 const TIME_SLOTS = [10, 15, 19, 20, 21] // 10AM, 3PM, 7PM, 8PM, 9PM (typical POTB session times)
 
 

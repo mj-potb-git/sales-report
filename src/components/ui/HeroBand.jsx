@@ -3,8 +3,7 @@
 // consistent look. (Operations has its own OpsHero; this is for the rest.)
 
 import { TrendingUp, TrendingDown } from 'lucide-react'
-
-const TEAL = '#1B4F4F'
+import { PRIMARY as TEAL, PRIMARY_DARK } from '../../lib/theme'
 
 function Stat({ label, value }) {
   return (
@@ -19,7 +18,7 @@ export default function HeroBand({ label, value, sub, verdict = null, delta = nu
   return (
     <section
       className="rounded-2xl p-5 sm:p-6 shadow-sm text-white"
-      style={{ background: `linear-gradient(135deg, ${TEAL} 0%, #0f3a3a 100%)` }}
+      style={{ background: `linear-gradient(135deg, ${TEAL} 0%, ${PRIMARY_DARK} 100%)` }}
     >
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div>
