@@ -25,7 +25,7 @@ Combines real-time data from **4 sources** into one ops-monitoring console.
 |---|---|---|---|
 | **YouCanBook.me** (YCBM) | Bookings (session schedules) | HTTP Basic via Vite proxy `/api/ycbm` | 15s, paginated 90d back |
 | **YCBM — AACIO** (2nd acct) | External team bookings = their sales source (`support@pinoyonlinebiz.com`) | HTTP Basic via Vite proxy `/api/aacio` | 30s, paginated 90d back / 60d fwd |
-| **LakbayHub utilities API** | Sales records (sign-ups, packages, payments) | No auth (rate-limited) | 30s, shared cache + dedup |
+| **LakbayHub utilities API** | Sales records (sign-ups, packages, payments) | **`x-app-key` header — REQUIRED (`LAKBAYHUB_APP_KEY` in `.env`); API now 401s without it** + rate-limited | 30s, shared cache + dedup |
 | **Meta Marketing API** | Ad spend, leads, impressions | Bearer via Vite proxy | 60s, fetches 180d |
 | **Supabase** | sales_records (mock seed) + booking_attendance (real tracking) | Publishable key direct | live + 15s poll |
 
@@ -150,6 +150,7 @@ vite.config.js            — Three proxies: /api/ycbm, /api/lakbay, /api/meta
 
 ## Known constraints
 
+- **LakbayHub API now requires `LAKBAYHUB_APP_KEY`** (sent as `x-app-key`). Without it the API returns `401 invalid or missing app key`, and Sales/Reports silently fall back to stale Supabase/mock data (a yellow/red `DataSourceBanner` now warns when this happens). Set it in `.env` AND in Vercel env vars. All 3 proxies (Vite dev, Vercel `api/_proxy.js`, Express `server.js`) inject it. `getSalesSource()` in `lakbay.js` reports `'live' | 'cache' | 'mock'`.
 - **LakbayHub API rate-limits** at roughly 10 RPM. Don't poll faster than 30s and use the shared cache in `lakbay.js`.
 - **YCBM API paginates 10 records/page** — first fetch of 90d window takes 2-3 minutes. After that, module cache makes subsequent calls instant.
 - **Meta API token** is currently a 60-day user token (expires ~July 26, 2026). For permanent: needs a System User token (Meta's new UI hides System Users for some accounts — try Business Settings or use the 60-day token rotation).

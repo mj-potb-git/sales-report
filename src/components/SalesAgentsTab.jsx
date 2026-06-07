@@ -20,11 +20,12 @@ import DeltaBadge from './sales/DeltaBadge'
 import SalesBreakdown from './sales/SalesBreakdown'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
+import DataSourceBanner from './ui/DataSourceBanner'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 import { comparePeriods } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
-  dailyTrend, formatPHP, formatPHPCompact,
+  dailyTrend, formatPHP, formatPHPCompact, getSalesSource,
 } from '../api/lakbay'
 
 const PRIMARY = '#1B4F4F'
@@ -287,6 +288,9 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
           customDates={customDates} isCustom={isCustom} onApplyCustom={onCustomApply}
         />
       </div>
+
+      {/* Warn if we're not on live data (e.g. LakbayHub app key missing) */}
+      <DataSourceBanner source={getSalesSource()} />
 
       {/* Hero band — instant read on sales for the selected period */}
       <HeroBand

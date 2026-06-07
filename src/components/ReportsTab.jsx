@@ -10,13 +10,14 @@ import {
 } from 'lucide-react'
 import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
+import DataSourceBanner from './ui/DataSourceBanner'
 import DateRangePicker from './DateRangePicker'
 import { keyForRecord, setOverride, subscribeSaleOverrides } from '../lib/saleDateOverrides'
 import { CalendarClock, Check, X as XIcon } from 'lucide-react'
 import {
   formatPHP, formatPHPCompact, parseDate, sum,
   filterByRange, rangeFor, startOfWeek, startOfMonth,
-  endOfMonth, endOfWeek,
+  endOfMonth, endOfWeek, getSalesSource,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction } from '../api/fusioo'
 import {
@@ -870,6 +871,8 @@ export default function ReportsTab() {
           </div>
         </div>
       </div>
+
+      <DataSourceBanner source={getSalesSource()} />
 
       {/* At-a-glance KPI strip — Today, Week (Mon-Sun), Month, All-time */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

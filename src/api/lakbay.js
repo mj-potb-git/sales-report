@@ -31,6 +31,14 @@ let cachedAt     = 0
 let inFlight     = null      // shared promise so concurrent callers reuse one fetch
 let rateLimitedUntil = 0
 
+// Which source the most recent data actually came from, so the UI can warn
+// when it's showing stale/fallback data instead of live LakbayHub.
+//   'live'  — fresh from LakbayHub API
+//   'cache' — Supabase historical cache (LakbayHub unreachable/401)
+//   'mock'  — local seed (both live + Supabase failed/empty)
+let salesSource = 'live'
+export function getSalesSource() { return salesSource }
+
 // In-memory shadow of the last successful LakbayHub fetch — survives the
 // rate-limit window so the UI keeps showing real data instead of mock seed.
 let lastRealData = null
@@ -52,6 +60,7 @@ async function fetchFresh() {
           console.info(`[lakbay] Loaded ${mapped.length} records from LakbayHub API`)
           lastRealData = mapped
           _lastRealAt = Date.now()
+          salesSource = 'live'
           return mapped
         }
       }
@@ -82,6 +91,7 @@ async function fetchFresh() {
     if (error) throw error
     if (data && data.length > 0) {
       console.info(`[lakbay] Loaded ${data.length} records from Supabase cache`)
+      salesSource = 'cache'
       return data
     }
     console.warn('[lakbay] Supabase cache empty, using mock')
@@ -91,6 +101,7 @@ async function fetchFresh() {
 
   // 3. Mock fallback ---------------------------------------------------------
   console.info(`[lakbay] Loaded ${mockSalesRecords.length} mock records`)
+  salesSource = 'mock'
   return mockSalesRecords
 }
 

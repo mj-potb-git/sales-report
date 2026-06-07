@@ -64,6 +64,8 @@ app.use('/api/lakbay', createProxyMiddleware({
     proxyReq(proxyReq) {
       proxyReq.setHeader('Accept', 'application/json')
       proxyReq.setHeader('Content-Type', 'application/json')
+      // LakbayHub now requires an app key (returns 401 without it).
+      if (process.env.LAKBAYHUB_APP_KEY) proxyReq.setHeader('x-app-key', process.env.LAKBAYHUB_APP_KEY)
     },
   },
 }))

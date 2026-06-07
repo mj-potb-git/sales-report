@@ -63,7 +63,12 @@
       "Bash(npx eslint *)",
       "Bash(git commit -m 'Officers tab: auto-default month to latest with data \\(same as Sales\\) *)",
       "Bash(git commit -q -m ' *)",
-      "Bash(node -e \"console.log\\(require\\('./node_modules/recharts/package.json'\\).version\\)\")"
+      "Bash(node -e \"console.log\\(require\\('./node_modules/recharts/package.json'\\).version\\)\")",
+      "Read(//tmp/**)",
+      "Bash(grep -o \"LAKBAYHUB_APP_KEY=.\\\\{0,6\\\\}\" .env)",
+      "Bash(grep -n \"lakbay\\\\|x-app-key\\\\|app.key\\\\|LAKBAYHUB\" api/proxy.js)",
+      "Bash(grep -n \"lakbay\\\\|x-app-key\\\\|app.key\\\\|LAKBAYHUB\" server.js)",
+      "Bash(pkill -f \"vite\")"
     ]
   }
 }
