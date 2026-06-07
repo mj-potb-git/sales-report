@@ -59,7 +59,10 @@
       "Bash(taskkill //F //PID 16800)",
       "Bash(git add *)",
       "Bash(cat eslint.config.js)",
-      "Bash(cat .eslintrc*)"
+      "Bash(cat .eslintrc*)",
+      "Bash(npx eslint *)",
+      "Bash(git commit -m 'Officers tab: auto-default month to latest with data \\(same as Sales\\) *)",
+      "Bash(git commit -q -m ' *)"
     ]
   }
 }

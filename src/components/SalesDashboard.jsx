@@ -461,8 +461,42 @@ export default function SalesDashboard({ bookings = [] }) {
         totalAttendance={totalAttendance}
       />
 
-      {/* The spreadsheet-style matrix */}
-      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      {/* Mobile-only per-day summary (the wide matrix is unusable on phones) */}
+      <section className="md:hidden flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-gray-700">Daily Summary · {periodLabel}</h2>
+        {(() => {
+          const active = perDay.filter(d => d.totalBookings > 0 || d.salesCount > 0 || d.spend > 0)
+          if (active.length === 0) return (
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center text-sm text-gray-400">
+              Walang aktibidad sa period na ito.
+            </div>
+          )
+          return active.slice().reverse().map((d, i) => (
+            <div key={i} className="bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-gray-900">{formatDayLabel(d.day)}</span>
+                <span className="text-sm font-extrabold" style={{ color: PRIMARY }}>{d.salesAmount === 0 ? '—' : formatPHPCompact(d.salesAmount)}</span>
+              </div>
+              <div className="grid grid-cols-4 gap-2 mt-2 text-center">
+                {[
+                  { l: 'Sales', v: d.salesCount },
+                  { l: 'Bookings', v: d.totalBookings },
+                  { l: 'Show-Up', v: d.showUpPct === null ? '—' : `${d.showUpPct}%` },
+                  { l: 'ROAS', v: d.roas === null ? '—' : `${d.roas.toFixed(2)}x` },
+                ].map(s => (
+                  <div key={s.l}>
+                    <div className="text-sm font-bold text-gray-900">{s.v}</div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">{s.l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        })()}
+      </section>
+
+      {/* The spreadsheet-style matrix (desktop / tablet — too wide for phones) */}
+      <section className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="font-semibold text-gray-900">Daily Performance Matrix</h2>
