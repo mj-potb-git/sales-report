@@ -20,7 +20,7 @@ import DeltaBadge from './sales/DeltaBadge'
 import SalesBreakdown from './sales/SalesBreakdown'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
-import { periodRange, periodLabelFor, currentMonthKey } from '../lib/periods'
+import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 import { comparePeriods } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
@@ -519,7 +519,8 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
 export default function SalesAgentsTab() {
   const { records, loading, refreshing, error, lastFetched, refresh } = useSalesData()
   const [periodId, setPeriodId] = useState('month')
-  const [monthKey, setMonthKey] = useState(currentMonthKey())
+  // null = auto: open on the most recent month that actually has sales
+  const [monthKey, setMonthKey] = useState(null)
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const [view,   setView]   = useState('agents')
   const [search, setSearch] = useState('')
@@ -539,12 +540,16 @@ export default function SalesAgentsTab() {
                        onAgentClick={setSelectedAgent} />
   }
 
+  // Auto-default the month to the latest one with actual sales (so the tab
+  // doesn't open empty when the current calendar month has no sign-ups yet).
+  const effMonthKey = monthKey || latestMonthKey(records.map(r => r.date)) || currentMonthKey()
+
   return (
     <div className="pb-24 sm:pb-6">
       <Overview
         records={records}
         periodId={periodId} onPeriod={setPeriodId}
-        monthKey={monthKey} onMonth={setMonthKey}
+        monthKey={effMonthKey} onMonth={setMonthKey}
         customDates={customDates}
         onCustomApply={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
         view={view} onViewChange={setView}

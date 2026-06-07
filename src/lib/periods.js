@@ -41,6 +41,19 @@ export function monthOptions(count = 12, anchor = new Date()) {
 
 export const currentMonthKey = () => ymKey(new Date())
 
+/**
+ * Latest 'YYYY-MM' that actually has data, from a list of 'YYYY-MM-DD' date
+ * strings. Lets a tab open on the most recent month WITH activity instead of a
+ * possibly-empty current month. Returns null if none.
+ */
+export function latestMonthKey(dateStrings = []) {
+  let max = null
+  for (const d of dateStrings) {
+    if (d && typeof d === 'string' && (!max || d > max)) max = d
+  }
+  return max ? max.slice(0, 7) : null
+}
+
 /** { start, end } Date range for a period (monthKey only used when id==='month'). */
 export function periodRange(periodId, monthKey, anchor = new Date()) {
   if (periodId === 'yesterday') {
