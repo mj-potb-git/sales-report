@@ -116,7 +116,7 @@ function MetricRow({ label, values, formatter = String, accent = false, bold = f
   )
 }
 
-function SectionHeaderRow({ label, span, color = '#1B4F4F' }) {
+function SectionHeaderRow({ label, span, color = PRIMARY }) {
   return (
     <tr>
       <th colSpan={span} className="px-3 py-1.5 text-left text-[11px] uppercase tracking-widest font-bold text-white sticky left-0"
