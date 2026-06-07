@@ -15,6 +15,8 @@ import { subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords, formatPHP, formatPHPCompact } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 import OpsAlerts from './sales/OpsAlerts'
+import OpsHero from './sales/OpsHero'
+import InfoTip from './ui/InfoTip'
 import SchedulingInsights from './sales/SchedulingInsights'
 import PeriodBar from './PeriodBar'
 import {
@@ -95,13 +97,13 @@ function groupSalesByDate(records) {
 // ---------------------------------------------------------------------------
 // Sub-components
 
-function MetricRow({ label, values, formatter = String, accent = false, bold = false }) {
+function MetricRow({ label, values, formatter = String, accent = false, bold = false, tip = null }) {
   return (
     <tr className={accent ? 'bg-gray-50' : ''}>
       <th className={`px-3 py-2 text-left text-xs uppercase tracking-wide whitespace-nowrap sticky left-0 z-10 ${
         accent ? 'bg-gray-50 text-gray-700 font-bold' : 'bg-white text-gray-600 font-semibold'
       }`}>
-        {label}
+        {label}{tip && <InfoTip term={tip} className="ml-1" />}
       </th>
       {values.map((v, i) => (
         <td key={i} className={`px-3 py-2 text-sm whitespace-nowrap text-center ${
@@ -388,6 +390,15 @@ export default function SalesDashboard({ bookings = [] }) {
         />
       </div>
 
+      {/* Hero band — instant read on the period's health */}
+      <OpsHero
+        periodLabel={periodLabel}
+        revenue={totals.sales} spend={totals.spend} profit={totals.profit}
+        roas={totalROAS} salesCount={totals.salesCount}
+        showUpRate={overallShowUpRate} bookings={totals.bookings}
+        deltaSales={isCustom ? null : delta.sales}
+      />
+
       {/* Section 1: Marketing Funnel KPIs (combined Meta + YCBM + Attendance) */}
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -485,26 +496,26 @@ export default function SalesDashboard({ bookings = [] }) {
             </thead>
             <tbody>
               {/* SPEND & REVENUE — Meta Ads × LakbayHub revenue */}
-              <SectionHeaderRow label="SPEND & REVENUE" span={days.length + 1} color="#3B82F6" />
+              <SectionHeaderRow label="SPEND & REVENUE" span={days.length + 1} color="#1B4F4F" />
               <MetricRow label="Total Ads Spent"
                 values={perDay.map(d => d.spend)}
                 formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
-              <MetricRow label="Total Gross Revenue (by paid date)"
+              <MetricRow label="Total Gross Revenue (by paid date)" tip="revenue"
                 values={perDay.map(d => d.salesAmount)}
                 formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
-              <MetricRow label="Return On Ads Spent"
+              <MetricRow label="Return On Ads Spent" tip="roas"
                 values={perDay.map(d => d.roas)}
                 formatter={v => v === null ? '—' : `${v.toFixed(2)}x`} bold />
-              <MetricRow label="AR% (Ads/Revenue)"
+              <MetricRow label="AR% (Ads/Revenue)" tip="ar"
                 values={perDay.map(d => d.arPct)}
                 formatter={v => v === null ? '—' : `${v}%`} accent />
               <MetricRow label="Total # of Leads (= Book an Appt, booked this day)"
                 values={perDay.map(d => d.leads)}
                 formatter={v => v === 0 ? '—' : String(v)} bold />
-              <MetricRow label="Average CPL (Cost Per Lead)"
+              <MetricRow label="Average CPL (Cost Per Lead)" tip="cpl"
                 values={perDay.map(d => d.cpl)}
                 formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
-              <MetricRow label="Profit"
+              <MetricRow label="Profit" tip="profit"
                 values={perDay.map(d => d.profit)}
                 formatter={v => v === 0 ? '—' : (v >= 0 ? formatPHPCompact(v) : `−${formatPHPCompact(-v)}`)}
                 bold />
@@ -514,16 +525,16 @@ export default function SalesDashboard({ bookings = [] }) {
                   attendance = startsAt, sales = date_paid) — labels make it explicit.
                   Reconciles: Scheduled = Show Up + No-Show + Unmarked. */}
               <SectionHeaderRow label="# OF LEADS — APPOINTMENT FUNNEL" span={days.length + 1} color="#1B4F4F" />
-              <MetricRow label="Book an Appointment (booked this day)"
+              <MetricRow label="Book an Appointment (booked this day)" tip="leads"
                 values={perDay.map(d => d.leads)}
                 formatter={v => v === 0 ? '—' : String(v)} bold />
-              <MetricRow label="YCBM Scheduled (appointment this day)"
+              <MetricRow label="YCBM Scheduled (appointment this day)" tip="scheduled"
                 values={perDay.map(d => d.totalBookings)} bold />
-              <MetricRow label="↳ Show Up (by appt date)"
+              <MetricRow label="↳ Show Up (by appt date)" tip="showUp"
                 values={perDay.map(d => d.showed)} accent />
-              <MetricRow label="↳ No-Show (by appt date)"
+              <MetricRow label="↳ No-Show (by appt date)" tip="noShow"
                 values={perDay.map(d => d.noShow)} accent />
-              <MetricRow label="↳ Unmarked (not yet tracked)"
+              <MetricRow label="↳ Unmarked (not yet tracked)" tip="unmarked"
                 values={perDay.map(d => d.unset)}
                 formatter={v => v === 0 ? '—' : String(v)} accent />
               <MetricRow label="Cancelled (excluded from scheduled)"
@@ -534,18 +545,18 @@ export default function SalesDashboard({ bookings = [] }) {
                 formatter={v => v === 0 ? '—' : String(v)} bold />
 
               {/* EFFICIENCY — derived rates */}
-              <SectionHeaderRow label="EFFICIENCY" span={days.length + 1} color="#F5A623" />
-              <MetricRow label="Actual CAC (Customer Acquisition Cost)"
+              <SectionHeaderRow label="EFFICIENCY" span={days.length + 1} color="#1B4F4F" />
+              <MetricRow label="Actual CAC (Customer Acquisition Cost)" tip="cac"
                 values={perDay.map(d => d.cac)}
                 formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
-              <MetricRow label="Actual SUR (Showed ÷ tracked)"
+              <MetricRow label="Actual SUR (Showed ÷ tracked)" tip="sur"
                 values={perDay.map(d => d.showUpPct)}
                 formatter={v => v === null ? '—' : `${v}%`} bold />
-              <MetricRow label="Closing Rate (Sales ÷ Show-Ups)"
+              <MetricRow label="Closing Rate (Sales ÷ Show-Ups)" tip="closingRate"
                 values={perDay.map(d => d.showToSalePct)}
                 formatter={v => v === null ? '—' : `${v}%`} bold />
 
-              <SectionHeaderRow label="TIME SLOTS (attendees / bookings)" span={days.length + 1} color="#4ECDC4" />
+              <SectionHeaderRow label="TIME SLOTS (attendees / bookings)" span={days.length + 1} color="#1B4F4F" />
               {TIME_SLOTS.map((h, slotIdx) => (
                 <tr key={h}>
                   <th className="px-3 py-1.5 text-left text-xs font-semibold text-gray-700 whitespace-nowrap sticky left-0 bg-white z-10">
