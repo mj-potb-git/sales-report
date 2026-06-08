@@ -488,8 +488,17 @@ export default function AccountOfficersTab() {
     },
   }
 
-  // Per-agent totals
-  const allAgents = totalsByAgent(ranged)
+  // Per-agent totals. An officer's displayed cluster = their DOMINANT team
+  // across ALL history (hybrid model: they can cross-sell, but their "home"
+  // team is where most of their bookings sit). Computing it over the full
+  // record set — not the period — keeps it stable (e.g. Mike Jomel stays
+  // International even in a month where his lone Domestic deal would tie).
+  const globalTeamByName = Object.fromEntries(totalsByAgent(records).map(a => [a.name, a.team]))
+  const allAgents = totalsByAgent(ranged).map(a => ({
+    ...a,
+    periodTeam: a.team,
+    team: globalTeamByName[a.name] || a.team,
+  }))
   const priorAgents = totalsByAgent(priorRanged)
   const priorByName = Object.fromEntries(priorAgents.map(a => [a.name, a]))
 
@@ -823,11 +832,19 @@ export default function AccountOfficersTab() {
                       </td>
                       <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">{a.name}</td>
                       <td className="px-3 py-2.5">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setFilterCluster(a.team) }}
-                          title={`Filter to ${a.team}`}
-                          className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded-md text-[11px] whitespace-nowrap hover:bg-teal-100 transition-colors"
-                        >{a.team}</button>
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setFilterCluster(a.team) }}
+                            title={`Filter to ${a.team}`}
+                            className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded-md text-[11px] hover:bg-teal-100 transition-colors"
+                          >{a.team}</button>
+                          {a.crossTeam && (
+                            <span
+                              className="text-[10px] text-amber-600 cursor-help"
+                              title={`Cross-sell this period: ${(a.teamMix || []).map(m => `${m.name} (${m.count})`).join(' · ')}`}
+                            >+cross</span>
+                          )}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 font-semibold text-gray-900">{formatPHP(a.sales)}</td>
                       <td className="px-3 py-2.5 text-gray-700">{a.txnCount}</td>

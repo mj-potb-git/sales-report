@@ -88,7 +88,9 @@ function firstStr(val) {
  */
 export function mapBookingTransaction(raw) {
   const agent = firstStr(raw.agent_name) || 'Unassigned'
-  const team  = firstStr(raw.team_name)  || 'No Team'
+  // Normalize whitespace — Fusioo has inconsistent values like "POTB  International"
+  // (double space) that would otherwise group/display as a separate team.
+  const team  = (firstStr(raw.team_name) || 'No Team').replace(/\s+/g, ' ').trim()
   const status = firstStr(raw.status) || ''
   const txnType = firstStr(raw.transaction_type) || ''
   return {
@@ -118,19 +120,39 @@ export function mapBookingTransaction(raw) {
 
 // --- Aggregation helpers --------------------------------------------------
 
-/** Group records by agent and compute totals */
+/**
+ * Group records by agent and compute totals.
+ *
+ * An officer's `team` is their DOMINANT team (the one most of their bookings
+ * fall under) — NOT whichever record happened to be first. Fusioo `team_name`
+ * is per-booking, so a mostly-International officer with one stray Domestic
+ * deal (e.g. Mike Jomel: 23 Intl / 1 Domestic) should still read International.
+ * `teamMix` keeps the per-division split for hybrid (cross-selling) views.
+ */
 export function totalsByAgent(records) {
   const map = new Map()
   for (const r of records) {
     const name = r.sales_agent || 'Unassigned'
-    if (!map.has(name)) map.set(name, { name, team: r.team || '—', sales: 0, profit: 0, txnCount: 0, records: [] })
+    if (!map.has(name)) map.set(name, { name, team: '—', sales: 0, profit: 0, txnCount: 0, records: [], _teams: {} })
     const entry = map.get(name)
     entry.sales    += r.sales_amount || 0
     entry.profit   += r.profit || 0
     entry.txnCount += 1
     entry.records.push(r)
+    const t = r.team || 'No Team'
+    entry._teams[t] = (entry._teams[t] || 0) + 1
   }
-  return [...map.values()].sort((a, b) => b.sales - a.sales)
+  return [...map.values()].map(e => {
+    // dominant team = most bookings; tie-break by name for stability
+    const mix = Object.entries(e._teams)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    e.team = mix[0]?.name || '—'
+    e.teamMix = mix                       // [{name, count}] per division
+    e.crossTeam = mix.length > 1          // sold across >1 division
+    delete e._teams
+    return e
+  }).sort((a, b) => b.sales - a.sales)
 }
 
 /** Group records by team and compute totals */
