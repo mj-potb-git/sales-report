@@ -18,6 +18,40 @@ export default defineConfig(({ mode }) => {
 
   const fusiooToken = env.FUSIOO_ACCESS_TOKEN || ''
 
+  // LakbayHub now requires an x-app-key (401 without it). If we have the key
+  // locally, hit LakbayHub directly. If NOT, borrow the live Vercel deployment's
+  // proxy (which has the key set server-side) so local dev still shows real,
+  // current sales data instead of stale fallback. Set LAKBAYHUB_APP_KEY in .env
+  // to switch back to a direct connection.
+  const lakbayHasKey = !!env.LAKBAYHUB_APP_KEY
+  const LIVE_PROXY_ORIGIN = env.LIVE_PROXY_ORIGIN || 'https://potb-sales-report.vercel.app'
+  const lakbayProxy = lakbayHasKey
+    ? {
+        target: 'https://potb-utilities-api.lakbayhub.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/api\/lakbay/, '/api/v1'),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('Accept', 'application/json')
+            proxyReq.setHeader('Content-Type', 'application/json')
+            proxyReq.setHeader('x-app-key', env.LAKBAYHUB_APP_KEY)
+          })
+        },
+      }
+    : {
+        // No local key → route through the live deployment's /api/lakbay proxy.
+        target: LIVE_PROXY_ORIGIN,
+        changeOrigin: true,
+        secure: true,
+        // keep the /api/lakbay/* path so the live serverless proxy handles it
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('Accept', 'application/json')
+          })
+        },
+      }
+
   // Dev-only middleware for /api/admin (user management). In production this is
   // a Vercel function (api/admin.js) or an Express route (server.js); locally
   // the Vite proxy can't run serverless code, so we mount it here.
@@ -98,21 +132,10 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
-        // LakbayHub utilities API — no auth currently, but proxying keeps a
-        // clean swap-point if they add auth later (just set headers here)
-        '/api/lakbay': {
-          target: 'https://potb-utilities-api.lakbayhub.com',
-          changeOrigin: true,
-          secure: true,
-          rewrite: (path) => path.replace(/^\/api\/lakbay/, '/api/v1'),
-          configure: (proxy) => {
-            proxy.on('proxyReq', (proxyReq) => {
-              proxyReq.setHeader('Accept', 'application/json')
-              proxyReq.setHeader('Content-Type', 'application/json')
-              if (env.LAKBAYHUB_APP_KEY) proxyReq.setHeader('x-app-key', env.LAKBAYHUB_APP_KEY)
-            })
-          },
-        },
+        // LakbayHub utilities API. Requires x-app-key. Uses a direct connection
+        // when LAKBAYHUB_APP_KEY is set locally, otherwise borrows the live
+        // deployment's proxy (see lakbayProxy definition above).
+        '/api/lakbay': lakbayProxy,
         // Fusioo Booking Transactions — for Account Officer tracking.
         // 10-year Bearer token from Credentials Grant lives in .env.
         // Workspace slug is required in the URL path: /v3/{workspace}/...
