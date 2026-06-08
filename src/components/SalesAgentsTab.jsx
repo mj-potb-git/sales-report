@@ -18,6 +18,7 @@ import LiveActivityFeed from './sales/LiveActivityFeed'
 import ClusterHealth from './sales/ClusterHealth'
 import DeltaBadge from './sales/DeltaBadge'
 import SalesBreakdown from './sales/SalesBreakdown'
+import NeedsReview from './sales/NeedsReview'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
 import DataSourceBanner from './ui/DataSourceBanner'
@@ -25,7 +26,7 @@ import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '..
 import { comparePeriods } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
-  dailyTrend, formatPHP, formatPHPCompact, getSalesSource,
+  dailyTrend, formatPHP, formatPHPCompact, getSalesSource, getReviewRecords,
 } from '../api/lakbay'
 
 const PRIMARY = '#1B4F4F'
@@ -331,6 +332,9 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
 
       {/* Detailed sales breakdown — how much each closer/cluster sold this period */}
       <SalesBreakdown records={ranged} periodLabel={periodLabel} />
+
+      {/* Incomplete LakbayHub records (missing date / amount / closer) */}
+      <NeedsReview records={getReviewRecords()} />
 
       {/* Period-vs-prior period comparison strip */}
       {(() => {

@@ -68,7 +68,14 @@
       "Bash(grep -o \"LAKBAYHUB_APP_KEY=.\\\\{0,6\\\\}\" .env)",
       "Bash(grep -n \"lakbay\\\\|x-app-key\\\\|app.key\\\\|LAKBAYHUB\" api/proxy.js)",
       "Bash(grep -n \"lakbay\\\\|x-app-key\\\\|app.key\\\\|LAKBAYHUB\" server.js)",
-      "Bash(pkill -f \"vite\")"
+      "Bash(pkill -f \"vite\")",
+      "Read(//c/Users/Lenovo/.local/share/com.vercel.cli/**)",
+      "Read(//c/Users/Lenovo/AppData/Roaming/com.vercel.cli/**)",
+      "Bash(pkill -f \"vercel\")",
+      "Bash(grep -rniE \"app.?key|lakbay.*key|x-app-key\" src/lib/settings.js)",
+      "Bash(ls api/)",
+      "Bash(grep -n \"LAKBAYHUB_APP_KEY\\\\|x-app-key\" api/_proxy.js api/proxy.js)",
+      "Bash(pkill -f vite)"
     ]
   }
 }

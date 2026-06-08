@@ -39,6 +39,27 @@ let rateLimitedUntil = 0
 let salesSource = 'live'
 export function getSalesSource() { return salesSource }
 
+// Records LakbayHub left incomplete (missing date / zero amount / no closer).
+// Surfaced in a "Needs Review" panel instead of being silently dropped.
+let reviewRecords = []
+export function getReviewRecords() { return reviewRecords }
+
+function buildReview(records) {
+  return records
+    .map((r) => {
+      const reasons = Array.isArray(r.reviewReasons) ? r.reviewReasons.slice() : []
+      if (reasons.length === 0) {
+        const noCloser = !r.sales_agent || r.sales_agent === 'Unassigned'
+        const noTeam   = !r.team || r.team === 'No Cluster'
+        if (!r.date) reasons.push('no date')
+        if (!Number(r.sales_amount)) reasons.push('zero amount')
+        if (noCloser && noTeam) reasons.push('no attribution')
+      }
+      return reasons.length ? { ...r, reviewReasons: reasons } : null
+    })
+    .filter(Boolean)
+}
+
 // In-memory shadow of the last successful LakbayHub fetch — survives the
 // rate-limit window so the UI keeps showing real data instead of mock seed.
 let lastRealData = null
@@ -53,11 +74,11 @@ async function fetchFresh() {
     try {
       const raw = await fetchSignupsReport()
       if (Array.isArray(raw) && raw.length > 0) {
-        const mapped = raw
-          .map((r, i) => mapLakbayHubRecord(r, i))
-          .filter(r => r.date)
+        const all = raw.map((r, i) => mapLakbayHubRecord(r, i))
+        reviewRecords = buildReview(all)          // incl. records with no date
+        const mapped = all.filter(r => r.date)     // only dated records feed aggregations
         if (mapped.length > 0) {
-          console.info(`[lakbay] Loaded ${mapped.length} records from LakbayHub API`)
+          console.info(`[lakbay] Loaded ${mapped.length} records from LakbayHub API (${reviewRecords.length} need review)`)
           lastRealData = mapped
           _lastRealAt = Date.now()
           salesSource = 'live'
@@ -92,6 +113,7 @@ async function fetchFresh() {
     if (data && data.length > 0) {
       console.info(`[lakbay] Loaded ${data.length} records from Supabase cache`)
       salesSource = 'cache'
+      reviewRecords = buildReview(data)
       return data
     }
     console.warn('[lakbay] Supabase cache empty, using mock')

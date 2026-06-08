@@ -33,15 +33,31 @@ export const fetchSignupsReport = () => get('/signups/sales-report')
 // Extra LakbayHub fields are preserved on the mapped record under `meta` so
 // drill-down views can surface them without re-fetching.
 export function mapLakbayHubRecord(r, idx) {
-  const date = r.date_paid || r.sales_call_date || null
+  const date    = r.date_paid || r.sales_call_date || null
+  const amount  = Number(r.amount_paid) || 0
+  const closer  = r.sales_closer?.trim() || ''
+  const cluster = r.cluster_name?.trim() || ''
+
+  // Data-quality flags so the dashboard can surface (instead of silently
+  // dropping) records that LakbayHub left incomplete.
+  // NOTE: sales_closer is null on ~100% of records (attribution lives in
+  // cluster_name), so we only flag truly unattributed rows — no closer AND
+  // no cluster — not every missing closer.
+  const reviewReasons = []
+  if (!date)              reviewReasons.push('no date')         // can't be placed in any period
+  if (!amount)            reviewReasons.push('zero amount')     // paid record with no amount
+  if (!closer && !cluster) reviewReasons.push('no attribution') // no closer AND no cluster
+
   return {
-    sales_agent: r.sales_closer?.trim() || 'Unassigned',
+    sales_agent: closer || 'Unassigned',
     team:        r.cluster_name?.trim() || 'No Cluster',
     date,
-    sales_amount: Number(r.amount_paid) || 0,
+    sales_amount: amount,
     signup_count: 1,
     transaction_id: `LBH-${idx}-${(r.email || 'unknown').replace(/[^a-z0-9]/gi, '')}`,
     customer_name: r.lead_name || 'Unknown',
+    needsReview:   reviewReasons.length > 0,
+    reviewReasons,
     meta: {
       email:          r.email,
       payment_status: r.payment_status,
