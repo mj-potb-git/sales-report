@@ -19,7 +19,7 @@ import {
 import {
   parseDate, sum, startOfDay, startOfWeek, endOfWeek,
   filterByRange, rangeFor, sameDayLastWeek,
-  paceProjection, formatPHP, formatPHPCompact,
+  paceProjection, formatPHP, formatPHPCompact, fetchSalesRecords,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent } from '../api/fusioo'
 import { getSettings } from '../lib/settings'
@@ -356,6 +356,18 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
+  // --- Load Acquisition sales (LakbayHub sign-ups) for the combined company view ---
+  const [acqRecords, setAcqRecords] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    const load = () => fetchSalesRecords()
+      .then(recs => { if (!cancelled) setAcqRecords(Array.isArray(recs) ? recs : []) })
+      .catch(() => {})
+    load()
+    const id = setInterval(load, 60_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
+
   // --- Date windows ---
   const now = new Date()
   const today    = rangeFor('daily',   now)
@@ -379,6 +391,17 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
   const weekSales  = sum(weekRecs,  'sales_amount')
   const lastWeekSales = sum(lastWeekRecs, 'sales_amount')
   const mthSales   = sum(mthRecs,   'sales_amount')
+
+  // --- Combined company revenue: Acquisition (LakbayHub) + Account Officers (Fusioo) ---
+  // Both are money coming in; this is the CEO's "total pera na pumapasok" view.
+  const acqToday = sum(filterByRange(acqRecords, today.start,    today.end),    'sales_amount')
+  const acqWeek  = sum(filterByRange(acqRecords, thisWeek.start, thisWeek.end), 'sales_amount')
+  const acqMonth = sum(filterByRange(acqRecords, thisMth.start,  thisMth.end),  'sales_amount')
+  const company = {
+    today: { acq: acqToday, off: todaySales, total: acqToday + todaySales },
+    week:  { acq: acqWeek,  off: weekSales,  total: acqWeek  + weekSales  },
+    month: { acq: acqMonth, off: mthSales,   total: acqMonth + mthSales   },
+  }
 
   const pct = (cur, prev) => prev === 0 ? (cur > 0 ? 100 : 0) : Math.round(((cur - prev) / prev) * 100)
   const dVsYest    = pct(todaySales, yestSales)
@@ -476,8 +499,55 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
   const activeAgentsMth = realAgents.length
   const totalSales = sum(records, 'sales_amount')
 
+  const cMonth = company.month
+  const acqShare = cMonth.total > 0 ? Math.round((cMonth.acq / cMonth.total) * 100) : 0
+  const offShare = cMonth.total > 0 ? 100 - acqShare : 0
+
   return (
     <div className="flex flex-col gap-5 pb-24 sm:pb-6">
+      {/* TOTAL COMPANY REVENUE — Acquisition (sign-ups) + Account Officers (agency bookings) */}
+      <section className="rounded-2xl p-5 sm:p-6 text-white shadow-sm"
+               style={{ background: `linear-gradient(135deg, ${PRIMARY} 0%, #0f3a3a 100%)` }}>
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+          <div>
+            <span className="text-[11px] uppercase tracking-widest text-white/70">Total Company Revenue · This Month</span>
+            <p className="text-4xl sm:text-5xl font-extrabold tracking-tight mt-1">{formatPHP(cMonth.total)}</p>
+            <p className="text-sm text-white/70 mt-1">Lahat ng pumapasok na pera — acquisition + account officers</p>
+          </div>
+          {/* Stream split */}
+          <div className="flex gap-3">
+            <div className="bg-white/10 rounded-xl px-4 py-3 min-w-[8.5rem]">
+              <p className="text-[10px] uppercase tracking-wide text-white/60">Acquisition</p>
+              <p className="text-lg font-bold leading-tight">{formatPHPCompact(cMonth.acq)}</p>
+              <p className="text-[11px] text-white/60">{acqShare}% · sign-ups</p>
+            </div>
+            <div className="bg-white/10 rounded-xl px-4 py-3 min-w-[8.5rem]">
+              <p className="text-[10px] uppercase tracking-wide text-white/60">Account Officers</p>
+              <p className="text-lg font-bold leading-tight">{formatPHPCompact(cMonth.off)}</p>
+              <p className="text-[11px] text-white/60">{offShare}% · agency bookings</p>
+            </div>
+          </div>
+        </div>
+        {/* Share bar */}
+        <div className="mt-4 h-2 rounded-full overflow-hidden bg-white/15 flex">
+          <div style={{ width: `${acqShare}%`, backgroundColor: '#F5A623' }} title={`Acquisition ${acqShare}%`} />
+          <div style={{ width: `${offShare}%`, backgroundColor: '#4ECDC4' }} title={`Account Officers ${offShare}%`} />
+        </div>
+        {/* Today / Week / Month */}
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          {[
+            { l: 'Today',      v: company.today.total },
+            { l: 'This Week',  v: company.week.total },
+            { l: 'This Month', v: company.month.total },
+          ].map(s => (
+            <div key={s.l} className="bg-white/5 rounded-xl px-3 py-2 text-center">
+              <p className="text-[10px] uppercase tracking-wide text-white/60">{s.l}</p>
+              <p className="text-base font-bold">{formatPHPCompact(s.v)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Hero + Target side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <HeroCard
