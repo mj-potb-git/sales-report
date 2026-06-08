@@ -315,7 +315,6 @@ function QuickLinks({ onJump }) {
     { id: 'dashboard', label: 'Operations',  Icon: BarChart3, desc: 'Daily matrix · time slots · funnel' },
     { id: 'officers',  label: 'Officers',    Icon: Briefcase, desc: 'Per-agent drill-down · CSV' },
     { id: 'sales',     label: 'Sales',       Icon: Flame,     desc: 'Cluster analytics · trends' },
-    { id: 'reports',   label: 'Reports',     Icon: Calendar,  desc: 'Raw signups · export' },
   ]
   return (
     <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">

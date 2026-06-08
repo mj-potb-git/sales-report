@@ -3,13 +3,12 @@ import { LogOut, Loader2, ShieldAlert } from 'lucide-react'
 import TabNav from './components/TabNav'
 import LiveIndicator from './components/LiveIndicator'
 
-const OverviewTab       = lazy(() => import('./components/OverviewTab'))
+const InsightsTab       = lazy(() => import('./components/InsightsTab'))
 const BookingsTab       = lazy(() => import('./components/BookingsTab'))
 const SalesDashboard    = lazy(() => import('./components/SalesDashboard'))
 const SalesAgentsTab    = lazy(() => import('./components/SalesAgentsTab'))
 const AccountOfficersTab = lazy(() => import('./components/AccountOfficersTab'))
 const AacioReportTab    = lazy(() => import('./components/AacioReportTab'))
-const ReportsTab        = lazy(() => import('./components/ReportsTab'))
 const UserManagementTab = lazy(() => import('./components/UserManagementTab'))
 const SettingsTab       = lazy(() => import('./components/SettingsTab'))
 const LandingPage       = lazy(() => import('./components/LandingPage'))
@@ -100,7 +99,7 @@ function NoAccess({ email, onSignOut }) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('insights')
   const { bookings, loading, refreshing, error, lastFetched, refresh } = useYcbmData()
 
   // Re-read settings on change so header updates live
@@ -184,7 +183,7 @@ export default function App() {
                 <span className="text-lg font-bold truncate" style={{ color: '#1B4F4F' }}>
                   {settings.dashboardTitle}
                 </span>
-                {(currentTab === 'overview' || currentTab === 'bookings' || currentTab === 'dashboard') && (
+                {(currentTab === 'bookings' || currentTab === 'dashboard') && (
                   <LiveIndicator
                     lastFetched={lastFetched}
                     refreshing={refreshing}
@@ -216,15 +215,14 @@ export default function App() {
             <AccountOfficersTab />
           ) : currentTab === 'aacio' ? (
             <AacioReportTab />
-          ) : currentTab === 'reports' ? (
-            <ReportsTab />
+          ) : currentTab === 'insights' ? (
+            <InsightsTab userName={settings.userName} onJumpTab={setActiveTab} />
           ) : loading ? (
             <SkeletonLoader />
           ) : error ? (
             <ErrorState error={error} />
           ) : (
             <div key={currentTab} className="tab-content">
-              {currentTab === 'overview'  && <OverviewTab bookings={bookings} userName={settings.userName} onJumpTab={setActiveTab} />}
               {currentTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
               {currentTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
             </div>
