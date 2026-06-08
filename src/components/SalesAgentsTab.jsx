@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, Users, Award, Target,
-  ChevronRight, ArrowLeft, Search,
+  ChevronRight, ArrowLeft, Search, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
@@ -230,6 +230,7 @@ function TeamDetail({ team, allRecords, onBack, onAgentClick }) {
 function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates = [], onCustomApply, view, onViewChange,
                     onAgentClick, onTeamClick, search, onSearchChange,
                     lastFetched, refreshing, onRefresh }) {
+  const [showMore, setShowMore] = useState(false)  // collapse deep analytics by default
   const today = new Date()
   const isCustom = periodId === 'custom' && customDates.length > 0
   const { start, end } = periodRange(periodId, monthKey)
@@ -312,9 +313,6 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
         <TargetProgress records={records} />
       </div>
 
-      {/* Smart insights */}
-      <SmartInsights records={records} />
-
       {/* Summary cards with period-over-period comparison */}
       <div>
         <h2 className="text-base font-semibold text-gray-800 mb-3">{periodLabel} Overview</h2>
@@ -335,6 +333,20 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
 
       {/* Incomplete LakbayHub records (missing date / amount / closer) */}
       <NeedsReview records={getReviewRecords()} />
+
+      {/* Deep analytics — collapsed by default to keep the tab scannable */}
+      <button
+        onClick={() => setShowMore(s => !s)}
+        className="self-center flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-[#1B4F4F] bg-white border border-gray-200 rounded-full px-4 py-2 shadow-sm transition-colors"
+        aria-expanded={showMore}
+      >
+        {showMore ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        {showMore ? 'Hide analytics & charts' : 'Show more analytics & charts'}
+      </button>
+
+      {showMore && (<>
+      {/* Smart insights */}
+      <SmartInsights records={records} />
 
       {/* Period-vs-prior period comparison strip */}
       {(() => {
@@ -417,8 +429,9 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
         <LiveActivityFeed records={records} limit={10} />
         <ClusterHealth records={records} onTeamClick={onTeamClick} />
       </div>
+      </>)}
 
-      {/* Tabs: Agents / Teams */}
+      {/* Tabs: Agents / Teams — primary drill-down, always visible */}
       <div>
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
