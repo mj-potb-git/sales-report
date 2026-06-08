@@ -9,7 +9,7 @@ const tabs = [
   { id: 'insights',  label: 'Insights',  Icon: LayoutDashboard, group: 'Live' },
   { id: 'dashboard', label: 'Operations',Icon: BarChart2,       group: 'Live' },
   { id: 'bookings',  label: 'Bookings',  Icon: CalendarDays,    group: 'Live' },
-  { id: 'sales',     label: 'Sales',     Icon: Users,           group: 'Analytics' },
+  { id: 'sales',     label: 'Acquisition',Icon: Users,          group: 'Analytics' },
   { id: 'officers',  label: 'Officers',  Icon: Briefcase,       group: 'Analytics' },
   { id: 'aacio',     label: 'AACIO',     Icon: Globe,           group: 'External' },
   { id: 'users',     label: 'Users',     Icon: UserCog,         group: 'Admin' },

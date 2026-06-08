@@ -41,8 +41,10 @@ server-side so the browser never sees the secrets.
 1. **Insights → Summary** — Daily hero, smart alerts, target progress, top clusters, live activity. The "morning coffee" view. (formerly the Overview tab)
 2. **Bookings** — Full YCBM table + CSV export + **Auto-fill attendance** (matches YCBM bookings to LakbayHub sales by name).
 3. **Operations** (the main dashboard) — Spreadsheet-style daily matrix matching MJ's POTB Meta Ads spreadsheet. Has period selector (Today / Week / 14d / Month / 60d / 90d) + Smart Alerts + Funnel viz + Time Slots heatmap.
-4. **Sales** — Per-agent / per-team analytics, packages, smart insights.
-5. **Officers** — Sales Skills Development view: company overview, performance leaderboard with tier badges (Top Performer / Strong / Average / Needs Coaching), coaching priorities, individual drill-down with trends + recent deals. **Currently sources from LakbayHub `sales_closer` field — but 100% of revenue is currently unassigned**. Will be fixed when Fusioo BookingTransactions is integrated (credentials pending).
+4. **Acquisition** (tab id still `sales`) — The **sign-up team**: people signing up to *become* travel agencies. Per-agent/cluster analytics, packages, smart insights. Source: LakbayHub. (Label was "Sales" — renamed for clarity; the id stays `sales` for RBAC.)
+5. **Officers** (page heading "Account Officers") — Once a sign-up **becomes a travel agency**, their ongoing **booking sales** are tracked here. Performance leaderboard with tier badges, coaching priorities, drill-down. Source: **Fusioo BookingTransactions** (`agent_name`/`team_name`).
+
+> **Business model (lifecycle):** Sign-up team acquires members → **Acquisition** tab (LakbayHub). Member becomes a travel agency → their bookings → **Officers / Account Officers** tab (Fusioo). Two stages of one funnel; different data sources.
 6. **AACIO** — Sales report for the **second YCBM account** (external team). Bookings here ARE their sales source. KPIs (Total Bookings / Active Sales / Unique Leads / Avg per Day), daily trend, time-slot bar, bookings table + CSV. Own data source (`useAacioData` → `api/ycbmAacio.js` → `/api/aacio` proxy) so it renders independently of POTB's slow load. Files: `components/AacioReportTab.jsx`, `hooks/useAacioData.js`, `api/ycbmAacio.js`.
 7. **Insights → Reports** — Comprehensive LakbayHub reports hub (sign-ups + by closer/package + officers) with range filter, charts + CSV export. (sub-view of Insights)
 8. **Settings** — Personalization + credential health + Meta connection test.

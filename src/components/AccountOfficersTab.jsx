@@ -590,7 +590,7 @@ export default function AccountOfficersTab() {
             Account Officers
           </h1>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <p className="text-sm text-gray-500">Sales Skills Development view · {filteredAgents.length} agent{filteredAgents.length === 1 ? '' : 's'}</p>
+            <p className="text-sm text-gray-500">Booking sales ng mga naging travel agency · {filteredAgents.length} agent{filteredAgents.length === 1 ? '' : 's'}</p>
             <LiveIndicator lastFetched={lastFetched} refreshing={refreshing} onRefresh={() => load({ background: true })} label="Fusioo" />
           </div>
         </div>

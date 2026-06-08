@@ -276,7 +276,8 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
       {/* Header: title + live indicator + period filter */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-bold text-gray-900">Sales Performance</h1>
+          <h1 className="text-xl font-bold text-gray-900">Acquisition</h1>
+          <p className="text-xs text-gray-500 -mt-0.5">Sign-up team · mga nagsa-sign up para maging travel agency</p>
           <LiveIndicator
             lastFetched={lastFetched}
             refreshing={refreshing}
