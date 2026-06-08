@@ -32,13 +32,49 @@ function toISO(date) {
 // Stores the most-recent fetch result and the cursor we ended at.
 let _bookingsCache = null  // { seen: Map, endedAt: number, window: { start, end } }
 
+// Persist the cache to localStorage so a page reload renders instantly from
+// the last successful fetch (then refreshes in the background) instead of
+// re-paginating the full window — which can take 2-3 minutes on a cold load.
+const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v1'
+
+function persistCache() {
+  try {
+    if (!_bookingsCache) return
+    localStorage.setItem(LS_CACHE_KEY, JSON.stringify({
+      bookings: [..._bookingsCache.seen.values()],
+      endedAt:  _bookingsCache.endedAt,
+      window:   _bookingsCache.window,
+    }))
+  } catch { /* localStorage unavailable / quota — non-fatal */ }
+}
+
+function hydrateCache() {
+  if (_bookingsCache) return
+  try {
+    const raw = localStorage.getItem(LS_CACHE_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    if (!Array.isArray(saved?.bookings)) return
+    _bookingsCache = {
+      seen:    new Map(saved.bookings.map(b => [b.id, b])),
+      endedAt: saved.endedAt || 0,
+      window:  saved.window || { start: 0, end: 0 },
+    }
+  } catch { /* corrupt cache — ignore */ }
+}
+
 export async function fetchBookings({
   fromDaysBack    = DEFAULT_FROM_DAYS_BACK,
   toDaysForward   = DEFAULT_TO_DAYS_FORWARD,
 } = {}) {
-  const now      = new Date()
-  const startOfWindow = new Date(now.getTime() - fromDaysBack    * 86400000)
-  const endOfWindow   = new Date(now.getTime() + toDaysForward   * 86400000)
+  hydrateCache()  // seed from localStorage on first call after a reload
+
+  // Round to start-of-day so the window (and thus the cache key) is stable
+  // across calls within the same day — otherwise the ms-level drift in `now`
+  // would invalidate the cache on every poll and force a full re-paginate.
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0)
+  const startOfWindow = new Date(dayStart.getTime() - fromDaysBack  * 86400000)
+  const endOfWindow   = new Date(dayStart.getTime() + (toDaysForward + 1) * 86400000 - 1)
 
   // Seed from cache when the window matches (subsequent polls). We'll still
   // re-fetch the "tail" (from latest-seen + 1s onward) to pick up new bookings.
@@ -83,11 +119,19 @@ export async function fetchBookings({
     endedAt: latestSeenMs,
     window: { start: startOfWindow.getTime(), end: endOfWindow.getTime() },
   }
+  persistCache()
 
   return [...seen.values()].filter(b => {
     const t = new Date(b.startsAt).getTime()
     return t >= startOfWindow.getTime() && t <= endOfWindow.getTime()
   })
+}
+
+// Synchronously return the last cached bookings (from localStorage) so the UI
+// can render instantly on load while a fresh fetch runs in the background.
+export function getCachedBookings() {
+  hydrateCache()
+  return _bookingsCache ? [..._bookingsCache.seen.values()] : []
 }
 
 export const fetchProfiles = () => get('/profiles')
