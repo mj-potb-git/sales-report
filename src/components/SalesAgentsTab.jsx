@@ -460,8 +460,9 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
           </div>
         </div>
 
-        {view === 'agents' ? (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        {view === 'agents' ? (<>
+          {/* Desktop: full leaderboard table */}
+          <div className="hidden sm:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -502,7 +503,35 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
               </table>
             </div>
           </div>
-        ) : (
+
+          {/* Mobile: tappable leaderboard cards */}
+          <div className="sm:hidden flex flex-col gap-2">
+            {filteredAgents.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center text-sm text-gray-400">No agents match</div>
+            ) : filteredAgents.map((a, i) => (
+              <button
+                key={a.name}
+                onClick={() => onAgentClick(a)}
+                className="w-full text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-3.5 flex items-center gap-3"
+              >
+                <span className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 ${
+                  i === 0 ? 'bg-amber-100 text-amber-700' :
+                  i === 1 ? 'bg-gray-200 text-gray-700' :
+                  i === 2 ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-100 text-gray-500'
+                }`}>{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-gray-900 truncate">{a.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{a.team} · {a.signups} sign-ups · {a.txnCount} txns</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="font-bold text-gray-900">{formatPHPCompact(a.sales)}</p>
+                </div>
+                <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </>) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {filteredTeams.length === 0 ? (
               <div className="col-span-full text-center py-8 text-gray-400">No teams match</div>
