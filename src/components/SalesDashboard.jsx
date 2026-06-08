@@ -17,6 +17,7 @@ import { fetchMetaDailyMap } from '../api/meta'
 import { PRIMARY } from '../lib/theme'
 import OpsAlerts from './sales/OpsAlerts'
 import OpsHero from './sales/OpsHero'
+import ExecutiveSummary from './sales/ExecutiveSummary'
 import InfoTip from './ui/InfoTip'
 import SchedulingInsights from './sales/SchedulingInsights'
 import PeriodBar from './PeriodBar'
@@ -397,6 +398,13 @@ export default function SalesDashboard({ bookings = [] }) {
         roas={totalROAS} salesCount={totals.salesCount}
         showUpRate={overallShowUpRate} bookings={totals.bookings}
         deltaSales={isCustom ? null : delta.sales}
+      />
+
+      {/* Executive summary — CEO view: what changed + money funnel + profit/ROAS trend */}
+      <ExecutiveSummary
+        totals={totals} prior={prior} totalROAS={totalROAS}
+        perDay={perDay} periodLabel={periodLabel}
+        compareLabel={isCustom ? null : compareLabel}
       />
 
       {/* Section 1: Marketing Funnel KPIs (combined Meta + YCBM + Attendance) */}

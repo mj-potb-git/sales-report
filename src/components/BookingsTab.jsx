@@ -103,9 +103,14 @@ export default function BookingsTab({ bookings = [] }) {
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-bold text-gray-900">
-          {activeFilter === 'Past' ? 'Past Bookings' : 'Upcoming Bookings'}
-        </h1>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">
+            Bookings Roster
+          </h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {activeFilter === 'Past' ? 'Past appointments' : activeFilter === 'Date Range' ? 'Selected date range' : 'Upcoming appointments'} · who’s booked &amp; when
+          </p>
+        </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
@@ -144,8 +149,8 @@ export default function BookingsTab({ bookings = [] }) {
             {autoFillOpen && (
               <div className="absolute right-0 top-12 z-30 bg-white border border-gray-100 rounded-2xl shadow-xl min-w-[300px] py-1.5">
                 <div className="px-3 py-2 border-b border-gray-100">
-                  <p className="text-xs font-bold text-gray-900">Auto-fill Attendance</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">Past bookings only · skips cancelled & future</p>
+                  <p className="text-xs font-bold text-gray-900">Auto-fill Attendance <span className="font-normal text-amber-600">· fallback</span></p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">Reports now use YCBM’s own No-Show marking. Use this only if YCBM isn’t marked. Past bookings only · skips cancelled &amp; future.</p>
                 </div>
                 <button
                   onClick={() => runAutoFill('sales_then_no_show')}
