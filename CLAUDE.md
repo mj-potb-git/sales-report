@@ -34,16 +34,19 @@ server-side so the browser never sees the secrets.
 
 ---
 
-## The 8 tabs (in nav order)
+## The tabs (in nav order)
 
-1. **Overview** — Daily hero, smart alerts, target progress, top clusters, live activity. The "morning coffee" view.
+> Nav is grouped (Live / Analytics / External / Admin) in `TabNav.jsx`. **Overview + Reports were merged into a single admin-only "Insights" tab** (`InsightsTab.jsx`) with a Summary | Reports sub-view toggle — both were admin-only so RBAC is unchanged. Items 1 & 7 below now live inside Insights.
+
+1. **Insights → Summary** — Daily hero, smart alerts, target progress, top clusters, live activity. The "morning coffee" view. (formerly the Overview tab)
 2. **Bookings** — Full YCBM table + CSV export + **Auto-fill attendance** (matches YCBM bookings to LakbayHub sales by name).
 3. **Operations** (the main dashboard) — Spreadsheet-style daily matrix matching MJ's POTB Meta Ads spreadsheet. Has period selector (Today / Week / 14d / Month / 60d / 90d) + Smart Alerts + Funnel viz + Time Slots heatmap.
 4. **Sales** — Per-agent / per-team analytics, packages, smart insights.
 5. **Officers** — Sales Skills Development view: company overview, performance leaderboard with tier badges (Top Performer / Strong / Average / Needs Coaching), coaching priorities, individual drill-down with trends + recent deals. **Currently sources from LakbayHub `sales_closer` field — but 100% of revenue is currently unassigned**. Will be fixed when Fusioo BookingTransactions is integrated (credentials pending).
 6. **AACIO** — Sales report for the **second YCBM account** (external team). Bookings here ARE their sales source. KPIs (Total Bookings / Active Sales / Unique Leads / Avg per Day), daily trend, time-slot bar, bookings table + CSV. Own data source (`useAacioData` → `api/ycbmAacio.js` → `/api/aacio` proxy) so it renders independently of POTB's slow load. Files: `components/AacioReportTab.jsx`, `hooks/useAacioData.js`, `api/ycbmAacio.js`.
-7. **Reports** — Raw LakbayHub sign-ups report with daily/weekly/monthly toggle + CSV export.
+7. **Insights → Reports** — Comprehensive LakbayHub reports hub (sign-ups + by closer/package + officers) with range filter, charts + CSV export. (sub-view of Insights)
 8. **Settings** — Personalization + credential health + Meta connection test.
+- **Users** — admin-only user/role management.
 
 > **Vite proxy gotcha:** the AACIO route MUST be `/api/aacio`, NOT `/api/ycbm-aacio` — http-proxy prefix-matches `/api/ycbm` first and would route AACIO requests to the POTB account (→ 404 "account not found"). Tabs with their own data source (Sales / Officers / AACIO / Reports) bypass the global POTB YCBM loading gate in `App.jsx`.
 
