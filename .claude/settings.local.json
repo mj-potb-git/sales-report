@@ -75,7 +75,32 @@
       "Bash(grep -rniE \"app.?key|lakbay.*key|x-app-key\" src/lib/settings.js)",
       "Bash(ls api/)",
       "Bash(grep -n \"LAKBAYHUB_APP_KEY\\\\|x-app-key\" api/_proxy.js api/proxy.js)",
-      "Bash(pkill -f vite)"
+      "Bash(pkill -f vite)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)",
+      "Bash(git ls-remote *)",
+      "Bash(npx vercel *)",
+      "Bash(find \"$HOME/AppData/Roaming/com.vercel.cli\" \"$HOME/.local/share/com.vercel.cli\" \"$HOME/.config/com.vercel.cli\" -name \"auth.json\" 2>/dev/null | head; echo \"---\"; ls \"$HOME/AppData/Roaming/com.vercel.cli\" 2>/dev/null; ls \"$HOME/.local/share/com.vercel.cli\" 2>/dev/null)",
+      "PowerShell($v = Get-Command vercel -ErrorAction SilentlyContinue; if \\($v\\) { $v.Source } else { \"not installed\" }; npx --no-install vercel --version 2>$null)",
+      "Bash(python -c ' *)",
+      "Bash(rm /tmp/lbh.json)",
+      "Bash(rm lbh-check.json)",
+      "PowerShell(npx vite build 2>&1)",
+      "Bash(cd \"/c/Users/Lenovo/Desktop/My Projects/Sales Dashboard\" && cat package.json | head -40)",
+      "Bash(npx vite *)",
+      "Bash(curl -s \"http://localhost:5173/api/lakbay/signups/sales-report\" -o lbh.json)",
+      "Bash(rm lbh.json)",
+      "Bash(cd \"/c/Users/Lenovo/Desktop/My Projects/Sales Dashboard\")",
+      "Bash(echo \"=== sales-report: lahat ng keys per record \\(may cluster_group ba?\\) ===\")",
+      "Bash(rm sr.json)",
+      "Bash(echo \"\")",
+      "Bash(wc -c)",
+      "Bash(echo \"bytes: $\\(wc -c < aacio-audit.json\\)\")",
+      "Bash(rm aacio-audit.json)",
+      "Bash(date)",
+      "Bash(echo \"bytes: $\\(wc -c < aud.json\\) | fetched: $\\(date\\)\")",
+      "Bash(rm aud.json)",
+      "Bash(cd \"/c/Users/Lenovo/Desktop/My Projects/Sales Dashboard\" *)"
     ]
   }
 }

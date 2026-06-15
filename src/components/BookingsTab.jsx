@@ -3,8 +3,10 @@ import { Filter, Download, ChevronLeft, ChevronRight, MoreVertical, Sparkles, Wa
 import BookingCard from './BookingCard'
 
 import AttendanceToggle from './AttendanceToggle'
-import { getStatus, bulkSet, clearAll, inferAttendance } from '../lib/attendance'
+import { getStatus, bulkSet, clearAll, inferAttendance, subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords } from '../api/lakbay'
+import PeriodBar from './PeriodBar'
+import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 function downloadCSV(filename, rows) {
   const csv = rows.map(row => row.map(cell => {
@@ -23,6 +25,28 @@ function downloadCSV(filename, rows) {
 
 const VIEW_FILTERS = ['Upcoming', 'Past', 'Date Range']
 const PER_PAGE = 10
+
+// Official POTB session time slots (confirmed by MJ — the 6 high-volume slots).
+// Every booking is bucketed into the NEAREST of these by hour, so odd-hour
+// bookings (reschedules / off-schedule) fold into a real slot — no "Other".
+const SLOTS = [
+  { h: 10, label: '10AM' },
+  { h: 14, label: '2PM'  },
+  { h: 15, label: '3PM'  },
+  { h: 19, label: '7PM'  },
+  { h: 20, label: '8PM'  },
+  { h: 21, label: '9PM'  },
+]
+const SLOT_HOURS = SLOTS.map(s => s.h)
+// Nearest official slot hour to `h` (ties → earlier slot, since we scan ascending).
+const nearestSlotHour = (h) =>
+  SLOT_HOURS.reduce((best, sh) => (Math.abs(sh - h) < Math.abs(best - h) ? sh : best), SLOT_HOURS[0])
+// Hour parsed from the startsAt string (Manila-local as stored) — avoids any
+// browser-timezone drift from new Date().getHours().
+const hourOf = (startsAt) => {
+  const m = (startsAt || '').match(/T(\d{2}):/)
+  return m ? Number(m[1]) : null
+}
 
 export default function BookingsTab({ bookings = [] }) {
   const [activeFilter, setActiveFilter] = useState('Upcoming')
@@ -89,6 +113,76 @@ export default function BookingsTab({ bookings = [] }) {
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
   const startIdx = filtered.length === 0 ? 0 : (page - 1) * PER_PAGE + 1
   const endIdx = Math.min(page * PER_PAGE, filtered.length)
+
+  // Re-render the summary when attendance markings change
+  const [attBump, setAttBump] = useState(0)
+  useEffect(() => subscribeAttendance(() => setAttBump(n => n + 1)), [])
+
+  // Period filter for the summary (standard selector, like the other dashboards)
+  const [periodId, setPeriodId] = useState('all')
+  const [monthKey, setMonthKey] = useState(currentMonthKey())
+  const [customDates, setCustomDates] = useState([])
+  const isCustom = periodId === 'custom' && customDates.length > 0
+  const customSet = useMemo(() => new Set(customDates), [customDates])
+  const dKey = (d) => {
+    const x = new Date(d)
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+  }
+  const [sumFrom, sumTo] = useMemo(() => {
+    if (isCustom) {
+      const sorted = [...customDates].sort()
+      const a = new Date(sorted[0] + 'T00:00:00')
+      const b = new Date(sorted[sorted.length - 1] + 'T23:59:59')
+      return [a, b]
+    }
+    const { start, end } = periodRange(periodId, monthKey)
+    return [start, end]
+  }, [isCustom, customDates, periodId, monthKey])
+  const summaryLabel = isCustom
+    ? `${customDates.length} custom days`
+    : periodLabelFor(periodId, monthKey)
+
+  // Booking funnel summary scoped to the selected period (by scheduled date):
+  // booked / showed / no-show, per slot. Attendance = manual mark if set, else
+  // YCBM No-Show flag, else past→showed.
+  const summary = useMemo(() => {
+    const now = Date.now()
+    const a = sumFrom.getTime(), b2 = sumTo.getTime()
+    const scoped = bookings.filter(bk => {
+      const t = new Date(bk.startsAt).getTime()
+      if (t < a || t > b2) return false
+      return !isCustom || customSet.has(dKey(bk.startsAt))
+    })
+    const att = (b) => {
+      const m = getStatus(b.id)
+      if (m === 'showed' || m === 'no_show') return m
+      if (b.noShow === true) return 'no_show'
+      if (new Date(b.startsAt).getTime() < now) return 'showed'
+      return 'upcoming'
+    }
+    let booked = 0, showed = 0, noShow = 0, upcoming = 0, cancelled = 0
+    const slots = SLOTS.map(s => ({ ...s, bookings: 0, showed: 0 }))
+    const slotByHour = new Map(slots.map(s => [s.h, s]))
+    for (const b of scoped) {
+      if (b.status === 'Cancelled') { cancelled++; continue }
+      booked++
+      const a = att(b)
+      if (a === 'showed') showed++
+      else if (a === 'no_show') noShow++
+      else upcoming++
+      const hr = hourOf(b.startsAt)
+      if (hr == null) continue
+      const slot = slotByHour.get(nearestSlotHour(hr))
+      slot.bookings++
+      if (a === 'showed') slot.showed++
+    }
+    const tracked = showed + noShow
+    const rows = slots   // always the 6 official slots, in order
+    return {
+      booked, showed, noShow, upcoming, cancelled, rows,
+      showUpRate: tracked > 0 ? Math.round((showed / tracked) * 100) : null,
+    }
+  }, [bookings, attBump, sumFrom, sumTo, isCustom, customSet]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col gap-4">
@@ -228,6 +322,78 @@ export default function BookingsTab({ bookings = [] }) {
           </button>
         </div>
       </div>
+
+      {/* Booking funnel summary — booked / showed / no-show + per time slot */}
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-semibold text-gray-900">Booking Summary · {summaryLabel}</h2>
+              <p className="text-[11px] text-gray-500 mt-0.5">Show-up galing sa manual mark o YCBM No-Show flag · by scheduled date</p>
+            </div>
+            {summary.showUpRate != null && (
+              <span className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700">
+                Show-Up Rate: {summary.showUpRate}%
+              </span>
+            )}
+          </div>
+          <PeriodBar
+            periods={PERIODS_WITH_ALL}
+            periodId={periodId} onPeriod={setPeriodId}
+            monthKey={monthKey} onMonth={setMonthKey}
+            customDates={customDates} isCustom={isCustom}
+            onApplyCustom={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
+          />
+        </div>
+        {/* Stat tiles */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-gray-100">
+          {[
+            { label: 'Nag-book',   value: summary.booked,    color: '#1B4F4F' },
+            { label: 'Nag-show up', value: summary.showed,    color: '#16a34a' },
+            { label: 'No-Show',    value: summary.noShow,    color: '#dc2626' },
+            { label: 'Upcoming',   value: summary.upcoming,  color: '#64748b' },
+            { label: 'Cancelled',  value: summary.cancelled, color: '#94a3b8' },
+          ].map(s => (
+            <div key={s.label} className="bg-white px-4 py-3 flex flex-col gap-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{s.label}</span>
+              <span className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</span>
+            </div>
+          ))}
+        </div>
+        {/* Per time-slot breakdown */}
+        <div className="px-5 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">Per Time Slot</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-400 text-xs uppercase tracking-wide border-b border-gray-100">
+                  <th className="py-2 pr-4 font-semibold">Slot</th>
+                  <th className="py-2 px-3 font-semibold text-center">Bookings</th>
+                  <th className="py-2 px-3 font-semibold text-center">Showed</th>
+                  <th className="py-2 px-3 font-semibold text-center">Show-Up %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.rows.map(r => {
+                  const pct = r.bookings > 0 ? Math.round((r.showed / r.bookings) * 100) : null
+                  return (
+                    <tr key={r.label} className="border-b border-gray-50">
+                      <td className="py-2 pr-4 font-medium text-gray-700">{r.label}</td>
+                      <td className="py-2 px-3 text-center text-gray-700">{r.bookings || '—'}</td>
+                      <td className="py-2 px-3 text-center text-gray-700">{r.showed || '—'}</td>
+                      <td className="py-2 px-3 text-center">
+                        {pct == null ? <span className="text-gray-300">—</span> : (
+                          <span className={`font-semibold ${pct >= 70 ? 'text-emerald-600' : pct >= 40 ? 'text-amber-600' : 'text-red-600'}`}>{pct}%</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
 
       {/* Desktop table */}
       <div className="hidden sm:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

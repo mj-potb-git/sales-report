@@ -9,13 +9,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Globe, CalendarCheck, Wallet, Receipt, ArrowRight } from 'lucide-react'
 import useAacioData from '../hooks/useAacioData'
 import {
-  fetchSalesRecords, filterByRange, sum, startOfMonth, endOfMonth,
-  startOfDay, formatPHP, formatPHPCompact,
+  fetchSalesRecords, getExternalSalesRecords, filterByRange, sum,
+  startOfMonth, endOfMonth, startOfDay, formatPHP, formatPHPCompact,
 } from '../api/lakbay'
 
 const PRIMARY = '#1B4F4F'
 const ACCENT  = '#F5A623'
-const isExternalCluster = (team) => /external/i.test(team || '')
 
 function Stat({ icon: Icon, label, value, sub, accent = PRIMARY }) {
   return (
@@ -38,8 +37,9 @@ export default function AacioOverviewCard({ onJumpTab }) {
     let alive = true
     const load = async () => {
       try {
-        const recs = await fetchSalesRecords()
-        if (alive) setExtSales(recs.filter(r => isExternalCluster(r.team)))
+        await fetchSalesRecords()   // warm the shared cache (POTB split)
+        // dated only — filterByRange/parseDate below can't take null dates
+        if (alive) setExtSales(getExternalSalesRecords().filter(r => r.date))
       } catch { /* shared cache logs */ }
     }
     load()

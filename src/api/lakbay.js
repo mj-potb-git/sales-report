@@ -10,10 +10,14 @@
 // Shared cache + in-flight dedup so multiple components calling
 // fetchSalesRecords() concurrently only hit LakbayHub once. This prevents
 // rate limiting when Overview, Sales, and Dashboard tabs are all open.
+//
+// AUDIENCE SPLIT: fetchSalesRecords() returns POTB-internal records only.
+// EXTERNAL COACH cluster sales are split out of the same fetch and exposed
+// via getExternalSalesRecords() — consumed by the AACIO tab + overview card.
 
 import { getSupabase } from './supabase'
 import { mockSalesRecords } from '../data/mockSalesData'
-import { fetchSignupsReport, mapLakbayHubRecord } from './lakbayhub'
+import { fetchSignupsReport, mapLakbayHubRecord, isExternalRecord } from './lakbayhub'
 import {
   applyOverrides, startSaleOverridePoller, subscribeSaleOverrides,
 } from '../lib/saleDateOverrides'
@@ -43,6 +47,13 @@ export function getSalesSource() { return salesSource }
 // Surfaced in a "Needs Review" panel instead of being silently dropped.
 let reviewRecords = []
 export function getReviewRecords() { return reviewRecords }
+
+// EXTERNAL COACH cluster sales — these belong to the AACIO tab, NOT to any
+// POTB view. fetchSalesRecords() returns POTB-only records; the external
+// split rides the same fetch (one API hit, two audiences) and is read via
+// this getter. Overrides re-apply on read so date corrections stay in sync.
+let externalRecords = []
+export function getExternalSalesRecords() { return applyOverrides(externalRecords) }
 
 function buildReview(records) {
   return records
@@ -74,11 +85,15 @@ async function fetchFresh() {
     try {
       const raw = await fetchSignupsReport()
       if (Array.isArray(raw) && raw.length > 0) {
-        const all = raw.map((r, i) => mapLakbayHubRecord(r, i))
-        reviewRecords = buildReview(all)          // incl. records with no date
-        const mapped = all.filter(r => r.date)     // only dated records feed aggregations
+        const all  = raw.map((r, i) => mapLakbayHubRecord(r, i))
+        // External sales (AACIO cluster name OR known AACIO payment link) → AACIO
+        // only; everything POTB sees is internal.
+        externalRecords = all.filter(isExternalRecord)
+        const potb = all.filter(r => !isExternalRecord(r))
+        reviewRecords = buildReview(potb)          // incl. records with no date
+        const mapped = potb.filter(r => r.date)    // only dated records feed aggregations
         if (mapped.length > 0) {
-          console.info(`[lakbay] Loaded ${mapped.length} records from LakbayHub API (${reviewRecords.length} need review)`)
+          console.info(`[lakbay] Loaded ${mapped.length} POTB + ${externalRecords.length} external records from LakbayHub API (${reviewRecords.length} need review)`)
           lastRealData = mapped
           _lastRealAt = Date.now()
           salesSource = 'live'
@@ -113,8 +128,10 @@ async function fetchFresh() {
     if (data && data.length > 0) {
       console.info(`[lakbay] Loaded ${data.length} records from Supabase cache`)
       salesSource = 'cache'
-      reviewRecords = buildReview(data)
-      return data
+      externalRecords = data.filter(isExternalRecord)
+      const potb = data.filter(r => !isExternalRecord(r))
+      reviewRecords = buildReview(potb)
+      return potb
     }
     console.warn('[lakbay] Supabase cache empty, using mock')
   } catch (err) {
@@ -124,7 +141,8 @@ async function fetchFresh() {
   // 3. Mock fallback ---------------------------------------------------------
   console.info(`[lakbay] Loaded ${mockSalesRecords.length} mock records`)
   salesSource = 'mock'
-  return mockSalesRecords
+  externalRecords = mockSalesRecords.filter(isExternalRecord)
+  return mockSalesRecords.filter(r => !isExternalRecord(r))
 }
 
 /**

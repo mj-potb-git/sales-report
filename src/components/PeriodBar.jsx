@@ -8,12 +8,13 @@ export default function PeriodBar({
   periodId, onPeriod,
   monthKey, onMonth,
   customDates = [], isCustom = false, onApplyCustom,
+  periods = UNIFORM_PERIODS,   // tabs can pass PERIODS_WITH_ALL to expose 'All Time'
 }) {
   const months = monthOptions(12)
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
-        {UNIFORM_PERIODS.map(p => {
+        {periods.map(p => {
           const active = !isCustom && periodId === p.id
           return (
             <button

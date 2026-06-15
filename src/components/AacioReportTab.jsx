@@ -5,29 +5,39 @@ import {
 } from 'recharts'
 import {
   CalendarCheck, TrendingUp, Clock, XCircle, Download, Users, CalendarRange,
-  Wallet, Receipt, BadgeDollarSign,
+  Wallet, Receipt, BadgeDollarSign, ExternalLink,
 } from 'lucide-react'
 import useAacioData from '../hooks/useAacioData'
 import { dateKey } from '../api/ycbmAacio'
 import {
-  fetchSalesRecords, filterByRange, sum, formatPHP, formatPHPCompact,
+  fetchSalesRecords, getExternalSalesRecords, getSalesSource,
+  filterByRange, sum, formatPHP, formatPHPCompact,
   totalsByAgent, totalsByTeam,
 } from '../api/lakbay'
+import { subscribeSaleOverrides } from '../lib/saleDateOverrides'
 import { subscribeAttendance } from '../lib/attendance'
+import DataSourceBanner from './ui/DataSourceBanner'
 import LiveIndicator from './LiveIndicator'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
-import { periodRange, periodLabelFor, currentMonthKey } from '../lib/periods'
+// Acquisition-style monitoring blocks (same presentational components the
+// Acquisition tab uses), scoped here to external-cluster records only.
+// TargetProgress/SmartInsights are intentionally NOT included — they pace
+// against the global POTB monthly target, which doesn't apply to AACIO.
+import TodaySnapshot from './sales/TodaySnapshot'
+import FunnelHealth from './sales/FunnelHealth'
+import PackagePerformance from './sales/PackagePerformance'
+import LiveActivityFeed from './sales/LiveActivityFeed'
+import ClusterHealth from './sales/ClusterHealth'
+import NeedsReview from './sales/NeedsReview'
+import SalesReportPanel from './sales/SalesReportPanel'
+import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 // Parse a YYYY-MM-DD key into a local Date (for custom date selections)
 function dateFromKey(k) {
   const [y, m, d] = k.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
-
-// AACIO external-team sales live in LakbayHub under "EXTERNAL COACH - ..."
-// clusters. Match by keyword so any future external coach is auto-included.
-const isExternalCluster = (team) => /external/i.test(team || '')
 
 const TEAL = '#1B4F4F'
 const GOLD = '#F5A623'
@@ -121,6 +131,33 @@ function KpiCard({ icon: Icon, label, value, sub, accent = TEAL }) {
   )
 }
 
+function PaymentBadge({ status }) {
+  if (!status) return <span className="text-gray-300 text-xs">—</span>
+  const styles =
+    status === 'PAID'    ? 'bg-emerald-100 text-emerald-700' :
+    status === 'PENDING' ? 'bg-amber-100 text-amber-700'    :
+                           'bg-gray-100 text-gray-600'
+  return (
+    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${styles}`}>
+      {status}
+    </span>
+  )
+}
+
+function AccountBadge({ status }) {
+  if (!status) return <span className="text-gray-300 text-xs">—</span>
+  const styles =
+    status === 'ACTIVATED'    ? 'bg-blue-100 text-blue-700'    :
+    status === 'PENDING'      ? 'bg-amber-100 text-amber-700'  :
+    status === 'FOR APPROVAL' ? 'bg-purple-100 text-purple-700':
+                                'bg-gray-100 text-gray-600'
+  return (
+    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${styles}`}>
+      {status}
+    </span>
+  )
+}
+
 function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -132,7 +169,7 @@ function fmtTime(iso) {
 
 export default function AacioReportTab() {
   const { bookings, loading, refreshing, error, lastFetched, refresh } = useAacioData()
-  const [periodId, setPeriodId] = useState('month')
+  const [periodId, setPeriodId] = useState('all')   // default: show ALL AACIO sales across months
   const [monthKey, setMonthKey] = useState(currentMonthKey())
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
   const isCustom = periodId === 'custom' && customDates.length > 0
@@ -140,19 +177,41 @@ export default function AacioReportTab() {
   // Stable "now" for past/future attendance derivation (set once on mount)
   const [nowMs] = useState(() => Date.now())
 
-  // LakbayHub sales tagged to AACIO external clusters (polled, shared cache)
+  // LakbayHub sales — rides the shared lakbay.js pipeline (one API hit serves
+  // both audiences): fetchSalesRecords() warms the cache (TTL + dedup + 429
+  // backoff + Supabase/mock fallbacks), then getExternalSalesRecords() reads
+  // the EXTERNAL COACH split. Dated records feed the aggregations; flagged
+  // ones (no date / zero amount) surface in NeedsReview instead of being
+  // silently dropped.
   const [extSales, setExtSales] = useState([])
+  const [extReview, setExtReview] = useState([])
+  const [salesLoading, setSalesLoading] = useState(true)
+  const [salesError, setSalesError] = useState(null)
   useEffect(() => {
     let alive = true
+    const readExternal = () => {
+      const ext = getExternalSalesRecords()
+      setExtSales(ext.filter(r => r.date))
+      setExtReview(ext.filter(r => r.needsReview))
+    }
     const load = async () => {
       try {
-        const recs = await fetchSalesRecords()
-        if (alive) setExtSales(recs.filter(r => isExternalCluster(r.team)))
-      } catch { /* shared cache layer logs failures */ }
+        await fetchSalesRecords()       // warm/refresh the shared cache
+        if (!alive) return
+        readExternal()
+        setSalesError(null)
+      } catch (err) {
+        if (alive) setSalesError(err)
+      } finally {
+        if (alive) setSalesLoading(false)
+      }
     }
     load()
-    const id = setInterval(load, 30_000)
-    return () => { alive = false; clearInterval(id) }
+    // Pause polling while the browser tab is hidden (matches usePolling.js)
+    const id = setInterval(() => { if (!document.hidden) load() }, 30_000)
+    // Manager date corrections re-apply on read — refresh the split right away
+    const unsub = subscribeSaleOverrides(() => { if (alive) readExternal() })
+    return () => { alive = false; clearInterval(id); unsub() }
   }, [])
 
   // Re-render when attendance markings change (shared with POTB Bookings tab)
@@ -220,10 +279,46 @@ export default function AacioReportTab() {
     const cancelled = inRange.filter(b => b.cancelled).length
     const active    = total - cancelled
     const names     = new Set(inRange.map(b => b.name.toLowerCase()))
-    const daysSpan  = Math.max(1, Math.round((to - from) / 86400000))
-    const perDay    = (active / daysSpan)
+    // For 'All Time', the from→to window is decades wide, so base the per-day
+    // average on the actual activity span (earliest booking → today) instead.
+    let spanFrom = from, spanTo = to
+    if (periodId === 'all' && inRange.length > 0) {
+      const times = inRange.map(b => new Date(b.startsAt).getTime())
+      spanFrom = new Date(Math.min(...times))
+      spanTo   = new Date(Math.max(Math.max(...times), nowMs))
+    }
+    const daysSpan = Math.max(1, Math.round((spanTo - spanFrom) / 86400000))
+    const perDay   = (active / daysSpan)
     return { total, cancelled, active, unique: names.size, perDay }
-  }, [inRange, from, to])
+  }, [inRange, from, to, periodId, nowMs])
+
+  // Sales funnel: Booked (created) → Presented (scheduled) → Showed → Closed
+  const funnel = useMemo(() => {
+    const a = from.getTime(), b = to.getTime()
+    // Booked = bookings CREATED in range (lead booked an appointment)
+    const booked = bookings.filter(bk => {
+      if (!bk.createdAt || bk.cancelled) return false
+      const t = new Date(bk.createdAt).getTime()
+      if (t < a || t > b) return false
+      return inCustom(dateKey(bk.createdAt))
+    }).length
+    // Presented = active scheduled bookings (inRange already startsAt-filtered)
+    const active = inRange.filter(bk => !bk.cancelled)
+    let showed = 0, noShow = 0
+    for (const bk of active) {
+      if (bk.noShow === true) noShow++
+      else if (new Date(bk.startsAt).getTime() < nowMs) showed++
+    }
+    const presented = active.length
+    const tracked   = showed + noShow
+    const closed    = salesStats.count
+    return {
+      revenue: salesStats.revenue, closed, presented, booked,
+      cancelled: stats.cancelled, showed, noShow,
+      showUpRate:  tracked > 0    ? Math.round((showed / tracked) * 100)    : null,
+      closingRate: presented > 0  ? Math.round((closed / presented) * 100)  : null,
+    }
+  }, [bookings, inRange, from, to, isCustom, customSet, nowMs, salesStats, stats.cancelled]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Daily trend (active bookings per day)
   const trend = useMemo(() => {
@@ -258,9 +353,15 @@ export default function AacioReportTab() {
   // ── Daily Performance Matrix (mirrors the Operations tab spreadsheet) ──────
   // Columns = one day each, across the selected period (capped at 92 days).
   // All rows are derived from AACIO YCBM bookings + external LakbayHub sales.
+  // For 'All Time', clamp the matrix end to today so we show the most-recent
+  // 92 days of real activity, not empty far-future columns from the wide range.
   const matrixDays = useMemo(
-    () => (isCustom ? [...customDates].sort().map(dateFromKey) : enumerateDays(from, to)),
-    [isCustom, customDates, from, to],
+    () => {
+      if (isCustom) return [...customDates].sort().map(dateFromKey)
+      const end = periodId === 'all' ? new Date(nowMs) : to
+      return enumerateDays(from, end)
+    },
+    [isCustom, customDates, from, to, periodId, nowMs],
   )
 
   // Group AACIO bookings by SCHEDULE date (startsAt) and by CREATED date.
@@ -395,11 +496,15 @@ export default function AacioReportTab() {
 
       {/* Period selector */}
       <PeriodBar
+        periods={PERIODS_WITH_ALL}
         periodId={periodId} onPeriod={setPeriodId}
         monthKey={monthKey} onMonth={setMonthKey}
         customDates={customDates} isCustom={isCustom}
         onApplyCustom={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
       />
+
+      {/* Warn when LakbayHub sales are coming from a stale fallback source */}
+      {!salesLoading && <DataSourceBanner source={getSalesSource()} />}
 
       {/* Hero band — instant read on AACIO external-team activity */}
       <HeroBand
@@ -426,11 +531,23 @@ export default function AacioReportTab() {
           sub="active bookings per day" accent={GOLD} />
       </div>
 
-      {/* External-team SALES (LakbayHub, cluster-tagged) */}
+      {/* Sales funnel report — Booked → Presented → Showed → Closed */}
+      <SalesReportPanel
+        title="AACIO Sales Report"
+        periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)}
+        funnel={funnel}
+        note="Show-up galing sa YCBM's own No-Show marks. Closed/Revenue galing sa LakbayHub external-cluster sales."
+      />
+
+      {/* External-team SALES (LakbayHub sales-report endpoint, external clusters) */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <BadgeDollarSign size={16} style={{ color: GOLD }} />
           <h3 className="text-sm font-semibold text-gray-700">Sales from LakbayHub — External Coach clusters</h3>
+          {salesLoading && <span className="text-xs text-gray-400 ml-auto">Loading...</span>}
+          {!salesLoading && salesError && (
+            <span className="text-xs text-red-500 ml-auto">Failed to load: {salesError.message}</span>
+          )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <KpiCard icon={Wallet} label="Total Revenue" value={formatPHPCompact(salesStats.revenue)}
@@ -519,24 +636,41 @@ export default function AacioReportTab() {
               <thead>
                 <tr className="text-left text-gray-400 text-xs uppercase tracking-wide border-b border-gray-100">
                   <th className="px-3 py-2 font-semibold">Customer</th>
-                  <th className="px-3 py-2 font-semibold">Closer</th>
+                  <th className="px-3 py-2 font-semibold">Email</th>
                   <th className="px-3 py-2 font-semibold">Cluster</th>
                   <th className="px-3 py-2 font-semibold">Package</th>
                   <th className="px-3 py-2 font-semibold text-right">Amount</th>
                   <th className="px-3 py-2 font-semibold">Date Paid</th>
+                  <th className="px-3 py-2 font-semibold">Payment</th>
+                  <th className="px-3 py-2 font-semibold">Account</th>
+                  <th className="px-3 py-2 font-semibold">FB</th>
                 </tr>
               </thead>
               <tbody>
                 {salesInRange.slice(0, 100).map(r => (
                   <tr key={r.transaction_id} className="border-b border-gray-50 hover:bg-gray-50/50">
                     <td className="px-3 py-2.5 font-medium text-gray-800">{r.customer_name}</td>
-                    <td className="px-3 py-2.5 text-gray-600">{r.sales_agent}</td>
+                    <td className="px-3 py-2.5 text-gray-500 text-xs">{r.meta?.email || '—'}</td>
                     <td className="px-3 py-2.5 text-gray-500">{r.team}</td>
                     <td className="px-3 py-2.5 text-gray-500">{r.meta?.package || '—'}</td>
                     <td className="px-3 py-2.5 text-right font-semibold" style={{ color: TEAL }}>
                       {formatPHP(r.sales_amount)}
                     </td>
                     <td className="px-3 py-2.5 text-gray-600">{r.date ? fmtDate(r.date) : '—'}</td>
+                    <td className="px-3 py-2.5">
+                      <PaymentBadge status={r.meta?.payment_status} />
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <AccountBadge status={r.meta?.account_status} />
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {r.meta?.facebook
+                        ? <a href={r.meta.facebook} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-0.5 text-blue-500 hover:text-blue-700 text-xs">
+                            <ExternalLink size={11} /> FB
+                          </a>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -549,6 +683,22 @@ export default function AacioReportTab() {
           </div>
         )}
       </div>
+
+      {/* Acquisition-style monitoring — same blocks as the Acquisition tab,
+          scoped to external-cluster (AACIO) sales only. Hidden when the fetch
+          failed before ever loading data (zeros would read as a real slow day). */}
+      {(extSales.length > 0 || !salesError) && (
+        <>
+          <NeedsReview records={extReview} />
+          <TodaySnapshot records={extSales} />
+          {extSales.length > 0 && <FunnelHealth records={extSales} />}
+          <PackagePerformance records={extSales} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <LiveActivityFeed records={extSales} limit={8} />
+            <ClusterHealth records={extSales} />
+          </div>
+        </>
+      )}
 
       {/* Daily Performance Matrix — spreadsheet layout (AACIO YCBM × sales) */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

@@ -20,6 +20,7 @@ import {
   parseDate, sum, startOfDay, startOfWeek, endOfWeek,
   filterByRange, rangeFor, sameDayLastWeek,
   paceProjection, formatPHP, formatPHPCompact, fetchSalesRecords,
+  getExternalSalesRecords,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent } from '../api/fusioo'
 import { getSettings } from '../lib/settings'
@@ -139,7 +140,7 @@ function TargetCard({ records, target }) {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2 text-gray-500 text-[11px] font-semibold uppercase tracking-widest">
-            <Target size={12} /> Monthly Target
+            <Target size={12} /> Company Monthly Target
           </div>
           <p className="text-2xl font-bold text-gray-900 mt-1">
             {formatPHP(p.mtd)} <span className="text-gray-400 text-base font-medium">/ {formatPHPCompact(target)}</span>
@@ -356,12 +357,19 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
     return () => { cancelled = true; clearInterval(id) }
   }, [])
 
-  // --- Load Acquisition sales (LakbayHub sign-ups) for the combined company view ---
+  // --- Load Acquisition + AACIO sales (LakbayHub) for the combined company view ---
+  // One fetch warms the shared cache; fetchSalesRecords() returns POTB-only
+  // (Acquisition) and getExternalSalesRecords() reads the AACIO split.
   const [acqRecords, setAcqRecords] = useState([])
+  const [aacioRecords, setAacioRecords] = useState([])
   useEffect(() => {
     let cancelled = false
     const load = () => fetchSalesRecords()
-      .then(recs => { if (!cancelled) setAcqRecords(Array.isArray(recs) ? recs : []) })
+      .then(recs => {
+        if (cancelled) return
+        setAcqRecords(Array.isArray(recs) ? recs : [])
+        setAacioRecords(getExternalSalesRecords().filter(r => r.date))
+      })
       .catch(() => {})
     load()
     const id = setInterval(load, 60_000)
@@ -392,16 +400,24 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
   const lastWeekSales = sum(lastWeekRecs, 'sales_amount')
   const mthSales   = sum(mthRecs,   'sales_amount')
 
-  // --- Combined company revenue: Acquisition (LakbayHub) + Account Officers (Fusioo) ---
-  // Both are money coming in; this is the CEO's "total pera na pumapasok" view.
+  // --- Combined company revenue: Acquisition + AACIO (LakbayHub) + Account Officers (Fusioo) ---
+  // All three are money coming in; this is the CEO's "total pera na pumapasok" view.
   const acqToday = sum(filterByRange(acqRecords, today.start,    today.end),    'sales_amount')
   const acqWeek  = sum(filterByRange(acqRecords, thisWeek.start, thisWeek.end), 'sales_amount')
   const acqMonth = sum(filterByRange(acqRecords, thisMth.start,  thisMth.end),  'sales_amount')
+  const aacioToday = sum(filterByRange(aacioRecords, today.start,    today.end),    'sales_amount')
+  const aacioWeek  = sum(filterByRange(aacioRecords, thisWeek.start, thisWeek.end), 'sales_amount')
+  const aacioMonth = sum(filterByRange(aacioRecords, thisMth.start,  thisMth.end),  'sales_amount')
   const company = {
-    today: { acq: acqToday, off: todaySales, total: acqToday + todaySales },
-    week:  { acq: acqWeek,  off: weekSales,  total: acqWeek  + weekSales  },
-    month: { acq: acqMonth, off: mthSales,   total: acqMonth + mthSales   },
+    today: { acq: acqToday, aacio: aacioToday, off: todaySales, total: acqToday + aacioToday + todaySales },
+    week:  { acq: acqWeek,  aacio: aacioWeek,  off: weekSales,  total: acqWeek  + aacioWeek  + weekSales  },
+    month: { acq: acqMonth, aacio: aacioMonth, off: mthSales,   total: acqMonth + aacioMonth + mthSales   },
   }
+  // Combined records (with dates) → drives the overall ₱5.3M target pace.
+  const companyRecords = useMemo(
+    () => [...acqRecords, ...aacioRecords, ...records],
+    [acqRecords, aacioRecords, records],
+  )
 
   const pct = (cur, prev) => prev === 0 ? (cur > 0 ? 100 : 0) : Math.round(((cur - prev) / prev) * 100)
   const dVsYest    = pct(todaySales, yestSales)
@@ -500,8 +516,10 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
   const totalSales = sum(records, 'sales_amount')
 
   const cMonth = company.month
-  const acqShare = cMonth.total > 0 ? Math.round((cMonth.acq / cMonth.total) * 100) : 0
-  const offShare = cMonth.total > 0 ? 100 - acqShare : 0
+  const share = (v) => cMonth.total > 0 ? Math.round((v / cMonth.total) * 100) : 0
+  const acqShare   = share(cMonth.acq)
+  const aacioShare = share(cMonth.aacio)
+  const offShare   = share(cMonth.off)
 
   return (
     <div className="flex flex-col gap-5 pb-24 sm:pb-6">
@@ -512,14 +530,19 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
           <div>
             <span className="text-[11px] uppercase tracking-widest text-white/70">Total Company Revenue · This Month</span>
             <p className="text-4xl sm:text-5xl font-extrabold tracking-tight mt-1">{formatPHP(cMonth.total)}</p>
-            <p className="text-sm text-white/70 mt-1">Lahat ng pumapasok na pera — acquisition + account officers</p>
+            <p className="text-sm text-white/70 mt-1">Lahat ng pumapasok na pera — acquisition + AACIO + account officers</p>
           </div>
           {/* Stream split */}
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <div className="bg-white/10 rounded-xl px-4 py-3 min-w-[8.5rem]">
               <p className="text-[10px] uppercase tracking-wide text-white/60">Acquisition</p>
               <p className="text-lg font-bold leading-tight">{formatPHPCompact(cMonth.acq)}</p>
               <p className="text-[11px] text-white/60">{acqShare}% · sign-ups</p>
+            </div>
+            <div className="bg-white/10 rounded-xl px-4 py-3 min-w-[8.5rem]">
+              <p className="text-[10px] uppercase tracking-wide text-white/60">AACIO</p>
+              <p className="text-lg font-bold leading-tight">{formatPHPCompact(cMonth.aacio)}</p>
+              <p className="text-[11px] text-white/60">{aacioShare}% · external team</p>
             </div>
             <div className="bg-white/10 rounded-xl px-4 py-3 min-w-[8.5rem]">
               <p className="text-[10px] uppercase tracking-wide text-white/60">Account Officers</p>
@@ -530,8 +553,9 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
         </div>
         {/* Share bar */}
         <div className="mt-4 h-2 rounded-full overflow-hidden bg-white/15 flex">
-          <div style={{ width: `${acqShare}%`, backgroundColor: '#F5A623' }} title={`Acquisition ${acqShare}%`} />
-          <div style={{ width: `${offShare}%`, backgroundColor: '#4ECDC4' }} title={`Account Officers ${offShare}%`} />
+          <div style={{ width: `${acqShare}%`,   backgroundColor: '#F5A623' }} title={`Acquisition ${acqShare}%`} />
+          <div style={{ width: `${aacioShare}%`, backgroundColor: '#9333ea' }} title={`AACIO ${aacioShare}%`} />
+          <div style={{ width: `${offShare}%`,   backgroundColor: '#4ECDC4' }} title={`Account Officers ${offShare}%`} />
         </div>
         {/* Today / Week / Month */}
         <div className="grid grid-cols-3 gap-3 mt-4">
@@ -558,7 +582,7 @@ export default function OverviewTab({ bookings: _bookings = [], userName = 'MJ',
           dVsLW={dVsLW}
           totalSales={totalSales}
         />
-        <TargetCard records={records} target={monthlyTarget} />
+        <TargetCard records={companyRecords} target={monthlyTarget} />
       </div>
 
       {/* Action items / alerts */}

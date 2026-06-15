@@ -18,9 +18,10 @@ const BROWSER_FIELDS = [
   'userName', 'userRole', 'dashboardTitle', 'organizationName',
 ]
 
-// Default monthly sales target — placeholder for an Angel of Pinoy
-// Travel Biz benchmark. Edit in Settings → Business → Monthly Target.
-const DEFAULT_MONTHLY_TARGET = 1_000_000 // ₱1,000,000
+// Default monthly sales target — the OVERALL company-wide goal (combined
+// Acquisition + AACIO + Account Officers revenue), tracked in Insights.
+// Edit in Settings → Business → Monthly Target.
+const DEFAULT_MONTHLY_TARGET = 5_300_000 // ₱5.3M company-wide / month
 const DEFAULT_USER_NAME      = 'MJ'
 const DEFAULT_USER_ROLE      = 'Sales Skills Development Manager'
 const DEFAULT_DASHBOARD_TITLE = 'Operations Console'

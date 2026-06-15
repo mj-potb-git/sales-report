@@ -8,7 +8,9 @@ import {
   ChevronRight, ArrowLeft, Search, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import useSalesData from '../hooks/useSalesData'
+import useYcbmData from '../hooks/useYcbmData'
 import LiveIndicator from './LiveIndicator'
+import SalesReportPanel from './sales/SalesReportPanel'
 import TodaySnapshot from './sales/TodaySnapshot'
 import TargetProgress from './sales/TargetProgress'
 import SmartInsights from './sales/SmartInsights'
@@ -271,6 +273,43 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
     name: t.name, value: t.sales, color: PALETTE[i % PALETTE.length],
   }))
 
+  // POTB YCBM bookings (shared cache — warmed by App-level useYcbmData) for the
+  // sales funnel: Booked (created) → Presented (scheduled) → Showed → Closed.
+  const { bookings: ycbm, loading: ycbmLoading } = useYcbmData()
+  const funnel = useMemo(() => {
+    const a = start.getTime(), b = end.getTime()
+    const dk = (d) => {
+      const x = new Date(d)
+      return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+    }
+    const inSet = (key) => !isCustom || customSet.has(key)
+    const inWin = (t) => t >= a && t <= b
+    // Booked = appointments CREATED in range
+    const booked = ycbm.filter(bk => {
+      const c = bk.raw?.createdAt
+      if (!c || bk.status === 'Cancelled') return false
+      return inWin(new Date(c).getTime()) && inSet(dk(c))
+    }).length
+    // Presented = active scheduled appointments in range (by startsAt)
+    const scheduled = ycbm.filter(bk =>
+      bk.status !== 'Cancelled' && inWin(new Date(bk.startsAt).getTime()) && inSet(dk(bk.startsAt)))
+    let showed = 0, noShow = 0
+    for (const bk of scheduled) {
+      if (bk.noShow === true) noShow++
+      else if (new Date(bk.startsAt).getTime() < today.getTime()) showed++
+    }
+    const cancelled = ycbm.filter(bk =>
+      bk.status === 'Cancelled' && inWin(new Date(bk.startsAt).getTime()) && inSet(dk(bk.startsAt))).length
+    const presented = scheduled.length
+    const tracked   = showed + noShow
+    const closed    = ranged.length
+    return {
+      revenue: sum(ranged, 'sales_amount'), closed, presented, booked, cancelled, showed, noShow,
+      showUpRate:  tracked > 0   ? Math.round((showed / tracked) * 100)   : null,
+      closingRate: presented > 0 ? Math.round((closed / presented) * 100) : null,
+    }
+  }, [ycbm, ranged, start, end, isCustom, customSet]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="flex flex-col gap-5">
       {/* Header: title + live indicator + period filter */}
@@ -306,6 +345,15 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
           { label: 'Conversion', value: `${conversionRate}%` },
           { label: 'Active Closers', value: String(byAgent.length) },
         ]}
+      />
+
+      {/* Sales funnel report — Booked → Presented → Showed → Closed */}
+      <SalesReportPanel
+        title="Acquisition Sales Report"
+        periodLabel={periodLabel}
+        funnel={funnel}
+        loading={ycbmLoading}
+        note="Booked/Presented/Show-up galing sa POTB YCBM bookings. Closed/Revenue galing sa LakbayHub sign-up sales."
       />
 
       {/* Today's live snapshot + monthly target */}

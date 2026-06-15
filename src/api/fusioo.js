@@ -42,13 +42,18 @@ let _inFlight = null
 const CACHE_TTL_MS = 60_000
 
 /**
- * Fetch booking transactions, paginated. Defaults to 5 pages (1000 most-recent
- * records by transaction_date desc) — plenty for analytics, fast to load.
- * Bump `maxPages` if you need deeper history.
+ * Fetch booking transactions, paginated (transaction_date desc). The loop
+ * breaks as soon as a short page returns, so it only fetches as many pages as
+ * there is data — `maxPages` is just a runaway ceiling, NOT a fixed page count.
+ *
+ * NOTE: there were ~2,700 records as of Jun 2026. The old 5-page (1,000) cap
+ * silently dropped everything before ~Sept 2025 (~1,700 records / ₱72M),
+ * breaking All-Time and older-month officer views. Ceiling raised to 40 pages
+ * (8,000 records) for headroom; normal loads stop after ~14 pages.
  */
 export async function fetchAllBookingTransactions({
   appId = BOOKING_TX_APP_ID,
-  maxPages = 5,            // 5 × 200 = 1000 records — covers many months of POTB activity
+  maxPages = 40,           // ceiling only — early-break stops at the real last page
   force = false,
 } = {}) {
   const now = Date.now()

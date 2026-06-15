@@ -22,6 +22,12 @@ export const UNIFORM_PERIODS = [
   { id: 'month',     label: 'Monthly',   compareLabel: 'vs prior month' },
 ]
 
+// 'All Time' is opt-in per tab (not in the default pill set) — pass
+// PERIODS_WITH_ALL to <PeriodBar periods={...} /> to expose it. Used by AACIO
+// so all external sales (across months) show without changing the period.
+export const ALL_TIME_PERIOD = { id: 'all', label: 'All Time', compareLabel: '' }
+export const PERIODS_WITH_ALL = [...UNIFORM_PERIODS, ALL_TIME_PERIOD]
+
 /** 'YYYY-MM' → Date(first of that month). Defaults to the current month. */
 export function monthFromKey(key) {
   if (!key) { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1) }
@@ -68,6 +74,10 @@ export function periodRange(periodId, monthKey, anchor = new Date()) {
     const m = monthFromKey(monthKey)
     return { start: startOfDay(m), end: endOfDay(new Date(m.getFullYear(), m.getMonth() + 1, 0)) }
   }
+  if (periodId === 'all') {
+    // Wide window covering all history + future bookings (YCBM books ~60d fwd).
+    return { start: new Date(2000, 0, 1), end: endOfDay(new Date(anchor.getFullYear() + 1, 11, 31)) }
+  }
   // today (default)
   const t = startOfDay(anchor)
   return { start: t, end: endOfDay(t) }
@@ -84,5 +94,6 @@ export function periodDays(periodId, monthKey, anchor = new Date()) {
 /** Human label for the active period. */
 export function periodLabelFor(periodId, monthKey) {
   if (periodId === 'month') return monthFromKey(monthKey).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
+  if (periodId === 'all') return ALL_TIME_PERIOD.label
   return UNIFORM_PERIODS.find(p => p.id === periodId)?.label || ''
 }

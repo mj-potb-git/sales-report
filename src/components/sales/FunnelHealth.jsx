@@ -11,6 +11,7 @@ const PALETTE_PAYMENT = {
 const PALETTE_ACCOUNT = {
   ACTIVATED: '#1B4F4F',
   PENDING:   '#f59e0b',
+  'FOR APPROVAL': '#9333ea',
   DEACTIVATED: '#dc2626',
   Unknown:   '#94a3b8',
 }

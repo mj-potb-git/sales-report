@@ -6,7 +6,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import {
   FileText, Download, Search, ChevronUp, ChevronDown,
-  Calendar, DollarSign, ExternalLink, Users, Package, Briefcase, Loader2,
+  Calendar, DollarSign, ExternalLink, Users, Package, Briefcase, Loader2, Globe,
 } from 'lucide-react'
 import useSalesData from '../hooks/useSalesData'
 import LiveIndicator from './LiveIndicator'
@@ -17,7 +17,7 @@ import { CalendarClock, Check, X as XIcon } from 'lucide-react'
 import {
   formatPHP, formatPHPCompact, parseDate, sum,
   filterByRange, rangeFor, startOfWeek, startOfMonth,
-  endOfMonth, endOfWeek, getSalesSource,
+  endOfMonth, endOfWeek, getSalesSource, getExternalSalesRecords,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction } from '../api/fusioo'
 import {
@@ -57,6 +57,7 @@ const REPORTS = [
   { id: 'closer',   label: 'By Closer',  Icon: Users },
   { id: 'package',  label: 'By Package', Icon: Package },
   { id: 'officers', label: 'Officers',   Icon: Briefcase },
+  { id: 'aacio',    label: 'AACIO',      Icon: Globe },
 ]
 
 // Range-filter periods (used by the breakdown + officers reports)
@@ -832,6 +833,17 @@ export default function ReportsTab() {
     () => filterByPeriod(records, rangeId, rangeCustomSet, isRangeCustom),
     [records, rangeId, rangeCustomSet, isRangeCustom],
   )
+
+  // AACIO external-team sales — read the split that useSalesData already warmed
+  // (re-read whenever the POTB records refresh or a date correction lands).
+  const [aacioRecords, setAacioRecords] = useState([])
+  useEffect(() => {
+    setAacioRecords(getExternalSalesRecords().filter(r => r.date))
+  }, [records, lastFetched])
+  const scopedAacio = useMemo(
+    () => filterByPeriod(aacioRecords, rangeId, rangeCustomSet, isRangeCustom),
+    [aacioRecords, rangeId, rangeCustomSet, isRangeCustom],
+  )
   const rangeLabel = isRangeCustom
     ? (rangeCustom.length === 1 ? '1 day' : `${rangeCustom.length} days`)
     : (RANGES.find(r => r.id === rangeId)?.label || '')
@@ -924,6 +936,22 @@ export default function ReportsTab() {
       {report === 'officers' && (
         <OfficersReport rangeId={rangeId} isCustom={isRangeCustom} customSet={rangeCustomSet} />
       )}
+      {report === 'aacio' && (<>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <KpiCard icon={DollarSign} label={`AACIO Revenue · ${rangeLabel}`}
+                   value={formatPHP(sum(scopedAacio, 'sales_amount'))}
+                   sub={`${scopedAacio.length} sale${scopedAacio.length === 1 ? '' : 's'}`} tone="#F3E8FF" />
+          <KpiCard icon={Users} label="AACIO Closers / Clusters"
+                   value={String(new Set(scopedAacio.map(r => r.team)).size)}
+                   sub="external-team clusters" />
+          <KpiCard icon={Calendar} label="Avg Deal"
+                   value={formatPHPCompact(scopedAacio.length ? sum(scopedAacio, 'sales_amount') / scopedAacio.length : 0)}
+                   sub="revenue ÷ sales" tone="#dcfce7" />
+        </div>
+        <BreakdownReport records={scopedAacio} dimension={r => r.team} label="AACIO Closer / Cluster"
+          filename="aacio-sales-by-cluster" periodLabel={rangeLabel} />
+        <DetailedList records={scopedAacio} />
+      </>)}
 
       {/* ── Sign-ups report (existing) ── */}
       {report === 'signups' && (<>

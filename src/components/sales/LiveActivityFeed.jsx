@@ -33,7 +33,7 @@ export default function LiveActivityFeed({ records, limit = 10 }) {
             <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
           </span>
-          updating every 5s
+          updating every 30s
         </span>
       </div>
 
