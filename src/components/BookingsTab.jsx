@@ -6,6 +6,7 @@ import AttendanceToggle from './AttendanceToggle'
 import { getStatus, bulkSet, clearAll, inferAttendance, subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords } from '../api/lakbay'
 import PeriodBar from './PeriodBar'
+import CoachReport from './CoachReport'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 function downloadCSV(filename, rows) {
@@ -409,13 +410,18 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
         </div>
       </section>
 
+      {/* Per-coach analytics from the uploaded YCBM report (coaching tab only).
+          The booking API has no coach/Team field, so MJ uploads the report
+          export which does. Respects the same period selector above. */}
+      {!ORIENTATION && <CoachReport from={sumFrom} to={sumTo} />}
+
       {/* Desktop table */}
       <div className="hidden sm:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                {['Date', 'Time', 'Duration', 'Booking', 'Team', 'Appointment Type', 'Attendance', 'Actions'].map(col => (
+                {['Date', 'Time', 'Duration', 'Customer', 'Team', 'Appointment Type', 'Attendance', 'Actions'].map(col => (
                   <th
                     key={col}
                     className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-gray-700 select-none"
