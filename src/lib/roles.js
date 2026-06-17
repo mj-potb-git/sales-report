@@ -7,9 +7,9 @@ import { getSupabase } from '../api/supabase'
 
 // role -> allowed tab ids (must match the ids in components/TabNav.jsx)
 export const ROLE_TABS = {
-  admin:     ['insights', 'bookings', 'dashboard', 'sales', 'officers', 'aacio', 'users', 'settings'],
+  admin:     ['insights', 'bookings', 'orientation', 'dashboard', 'sales', 'officers', 'aacio', 'users', 'settings'],
   sales:     ['officers'],
-  signup:    ['bookings', 'sales'],
+  signup:    ['bookings', 'orientation', 'sales'],
   marketing: ['dashboard'],
   aacio:     ['aacio'],
 }

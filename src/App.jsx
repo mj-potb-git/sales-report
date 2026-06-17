@@ -183,7 +183,7 @@ export default function App() {
                 <span className="text-lg font-bold truncate" style={{ color: '#1B4F4F' }}>
                   {settings.dashboardTitle}
                 </span>
-                {(currentTab === 'bookings' || currentTab === 'dashboard') && (
+                {(currentTab === 'bookings' || currentTab === 'orientation' || currentTab === 'dashboard') && (
                   <LiveIndicator
                     lastFetched={lastFetched}
                     refreshing={refreshing}
@@ -223,8 +223,9 @@ export default function App() {
             <ErrorState error={error} />
           ) : (
             <div key={currentTab} className="tab-content">
-              {currentTab === 'bookings'  && <BookingsTab  bookings={bookings} />}
-              {currentTab === 'dashboard' && <SalesDashboard bookings={bookings} />}
+              {currentTab === 'bookings'    && <BookingsTab bookings={bookings} />}
+              {currentTab === 'orientation' && <BookingsTab bookings={bookings} mode="orientation" />}
+              {currentTab === 'dashboard'   && <SalesDashboard bookings={bookings} />}
             </div>
           )}
         </Suspense>

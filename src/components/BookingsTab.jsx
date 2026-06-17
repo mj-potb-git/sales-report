@@ -55,10 +55,14 @@ const hourOf = (startsAt) => {
   return m ? Number(m[1]) : null
 }
 
-export default function BookingsTab({ bookings: allBookings = [] }) {
-  // Coaching/sales bookings only — Welcome Orientation is excluded everywhere
-  // in this tab (roster, summary, per-slot, auto-fill, CSV).
-  const bookings = useMemo(() => allBookings.filter(b => !isOrientation(b)), [allBookings])
+export default function BookingsTab({ bookings: allBookings = [], mode = 'coaching' }) {
+  // mode 'coaching' (default) shows sales/coaching bookings and EXCLUDES Welcome
+  // Orientation; mode 'orientation' shows ONLY the Welcome Orientation bookings.
+  const ORIENTATION = mode === 'orientation'
+  const bookings = useMemo(
+    () => allBookings.filter(b => ORIENTATION ? isOrientation(b) : !isOrientation(b)),
+    [allBookings, ORIENTATION],
+  )
   const [activeFilter, setActiveFilter] = useState('Upcoming')
   const [page, setPage] = useState(1)
   const [openMenu, setOpenMenu] = useState(null)
@@ -209,10 +213,10 @@ export default function BookingsTab({ bookings: allBookings = [] }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">
-            Bookings Roster
+            {ORIENTATION ? 'Orientation Roster' : 'Bookings Roster'}
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            {activeFilter === 'Past' ? 'Past appointments' : activeFilter === 'Date Range' ? 'Selected date range' : 'Upcoming appointments'} · who’s booked &amp; when
+            {ORIENTATION ? 'POTB Welcome Orientation sessions' : (activeFilter === 'Past' ? 'Past appointments' : activeFilter === 'Date Range' ? 'Selected date range' : 'Upcoming appointments')} · who’s booked &amp; when
           </p>
         </div>
 
@@ -321,7 +325,7 @@ export default function BookingsTab({ bookings: allBookings = [] }) {
                 b.date, b.time, b.durationMinutes, b.name, b.team, b.appointmentType,
                 getStatus(b.id) || 'unset', b.id, b.timeZone,
               ])]
-              downloadCSV(`bookings-${activeFilter.toLowerCase()}-${today}.csv`, rows)
+              downloadCSV(`${ORIENTATION ? 'orientation' : 'bookings'}-${activeFilter.toLowerCase()}-${today}.csv`, rows)
             }}
             title={`Export ${filtered.length} ${activeFilter.toLowerCase()} bookings`}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors hover:opacity-90"
@@ -338,8 +342,8 @@ export default function BookingsTab({ bookings: allBookings = [] }) {
         <div className="px-5 py-3 border-b border-gray-100 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h2 className="font-semibold text-gray-900">Booking Summary · {summaryLabel}</h2>
-              <p className="text-[11px] text-gray-500 mt-0.5">Coaching sessions only (excludes Welcome Orientation) · show-up galing sa manual mark o YCBM No-Show flag</p>
+              <h2 className="font-semibold text-gray-900">{ORIENTATION ? 'Orientation Summary' : 'Booking Summary'} · {summaryLabel}</h2>
+              <p className="text-[11px] text-gray-500 mt-0.5">{ORIENTATION ? 'Welcome Orientation sessions' : 'Coaching sessions only (excludes Welcome Orientation)'} · show-up galing sa manual mark o YCBM No-Show flag</p>
             </div>
             {summary.showUpRate != null && (
               <span className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700">
