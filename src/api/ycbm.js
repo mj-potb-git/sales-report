@@ -21,23 +21,17 @@ async function get(path) {
 // teamMember = the assigned coach (the "Team" column in YCBM's report export).
 const BOOKING_FIELDS = 'id,title,startsAt,endsAt,createdAt,cancelled,noShow,profileId,timeZone,location,accountId,tentative,teamMember,teamMember.name,teamMember.email'
 
-// Same coach appearing under different YCBM team-member names → one canonical.
-// Princess (POTB, coach05) and Romelyn (AACIO) are the same person per MJ.
-// Keyed by the CLEANED, lowercased name.
-const COACH_ALIASES = {
-  'princess': 'Princess Romelyn',
-  'romelyn':  'Princess Romelyn',
-}
-
-// "Maria of Pinoy Online Travel Biz" / "Coach Shiela" → "Maria" / "Shiela",
-// then collapse known aliases so one person = one row.
+// "Maria of Pinoy Online Travel Biz" / "Coach Shiela" → "Maria" / "Shiela".
+// NOTE: do NOT merge names across the two separate YCBM accounts (e.g.
+// Princess↔Romelyn, Angel↔Angelyn are the same people but on different YCBMs).
+// Each tab shows ONLY its own account's coaches — Bookings/Acquisition use the
+// main YCBM, AACIO uses its own — so we never mix one team's names into another.
 export function cleanCoachName(name) {
   const c = (name || '')
     .replace(/^coach\s+/i, '')
     .replace(/\s+of\s+pinoy.*$/i, '')
     .trim()
-  if (!c) return null
-  return COACH_ALIASES[c.toLowerCase()] || c
+  return c || null
 }
 
 const DEFAULT_FROM_DAYS_BACK    = 30    // 1 month back — keeps initial load fast
