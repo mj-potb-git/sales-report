@@ -45,7 +45,7 @@ export default function CoachBreakdown({ bookings = [], from, to }) {
       const coach = bk.coach || 'Unassigned'
       if (!coaches.has(coach)) coaches.set(coach, { coach, booked: 0, showed: 0, noShow: 0, cancelled: 0, slots: {} })
       const c = coaches.get(coach)
-      if (bk.status === 'Cancelled') { c.cancelled++; continue }
+      if (bk.cancelled === true || bk.status === 'Cancelled') { c.cancelled++; continue }
       c.booked++
       const a2 = att(bk)
       if (a2 === 'showed') c.showed++
