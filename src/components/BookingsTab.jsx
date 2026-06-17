@@ -26,6 +26,13 @@ function downloadCSV(filename, rows) {
 const VIEW_FILTERS = ['Upcoming', 'Past', 'Date Range']
 const PER_PAGE = 10
 
+// Welcome Orientation is a general onboarding session, NOT a sales/coaching
+// booking — exclude it from this tab so it doesn't pollute the funnel/show-up.
+const isOrientation = (b) =>
+  /orientation/i.test(b.appointmentType || '') ||
+  /orientation/i.test(b.team || '') ||
+  /orientation/i.test(b.raw?.title || '')
+
 // Official POTB session time slots (confirmed by MJ — the 6 high-volume slots).
 // Every booking is bucketed into the NEAREST of these by hour, so odd-hour
 // bookings (reschedules / off-schedule) fold into a real slot — no "Other".
@@ -48,7 +55,10 @@ const hourOf = (startsAt) => {
   return m ? Number(m[1]) : null
 }
 
-export default function BookingsTab({ bookings = [] }) {
+export default function BookingsTab({ bookings: allBookings = [] }) {
+  // Coaching/sales bookings only — Welcome Orientation is excluded everywhere
+  // in this tab (roster, summary, per-slot, auto-fill, CSV).
+  const bookings = useMemo(() => allBookings.filter(b => !isOrientation(b)), [allBookings])
   const [activeFilter, setActiveFilter] = useState('Upcoming')
   const [page, setPage] = useState(1)
   const [openMenu, setOpenMenu] = useState(null)
@@ -329,7 +339,7 @@ export default function BookingsTab({ bookings = [] }) {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h2 className="font-semibold text-gray-900">Booking Summary · {summaryLabel}</h2>
-              <p className="text-[11px] text-gray-500 mt-0.5">Show-up galing sa manual mark o YCBM No-Show flag · by scheduled date</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">Coaching sessions only (excludes Welcome Orientation) · show-up galing sa manual mark o YCBM No-Show flag</p>
             </div>
             {summary.showUpRate != null && (
               <span className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700">
