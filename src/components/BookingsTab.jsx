@@ -6,7 +6,7 @@ import AttendanceToggle from './AttendanceToggle'
 import { getStatus, bulkSet, clearAll, inferAttendance, subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords } from '../api/lakbay'
 import PeriodBar from './PeriodBar'
-import CoachReport from './CoachReport'
+import CoachBreakdown from './CoachBreakdown'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 function downloadCSV(filename, rows) {
@@ -410,10 +410,9 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
         </div>
       </section>
 
-      {/* Per-coach analytics from the uploaded YCBM report (coaching tab only).
-          The booking API has no coach/Team field, so MJ uploads the report
-          export which does. Respects the same period selector above. */}
-      {!ORIENTATION && <CoachReport from={sumFrom} to={sumTo} />}
+      {/* Per-coach analytics — automatic from the YCBM teamMember (coach) field.
+          Coaching tab only; respects the same period selector above. */}
+      {!ORIENTATION && <CoachBreakdown bookings={bookings} from={sumFrom} to={sumTo} />}
 
       {/* Desktop table */}
       <div className="hidden sm:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

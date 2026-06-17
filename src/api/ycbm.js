@@ -13,11 +13,22 @@ async function get(path) {
 //
 // Default window: 30 days back to 60 days forward.
 
-// YCBM omits `noShow` (and `answers`) from the default booking payload — they
-// only appear when explicitly requested via the `fields` whitelist. We list
-// every field the app relies on PLUS noShow so attendance reflects YCBM's own
-// "No Show" marking (the team sets this in the YCBM UI; it's the source of truth).
-const BOOKING_FIELDS = 'id,title,startsAt,endsAt,createdAt,cancelled,noShow,profileId,timeZone,location,accountId,tentative'
+// YCBM omits `noShow`, `answers`, and `teamMember` from the default booking
+// payload — they only appear when explicitly requested via the `fields`
+// whitelist. NOTE: a nested object like teamMember needs BOTH the parent AND
+// its sub-fields listed (`teamMember,teamMember.name,teamMember.email`) — per
+// YCBM staff on their forum — otherwise it comes back as an empty `{}`.
+// teamMember = the assigned coach (the "Team" column in YCBM's report export).
+const BOOKING_FIELDS = 'id,title,startsAt,endsAt,createdAt,cancelled,noShow,profileId,timeZone,location,accountId,tentative,teamMember,teamMember.name,teamMember.email'
+
+// "Maria of Pinoy Online Travel Biz" / "Coach Shiela" → "Maria" / "Shiela"
+export function cleanCoachName(name) {
+  const c = (name || '')
+    .replace(/^coach\s+/i, '')
+    .replace(/\s+of\s+pinoy.*$/i, '')
+    .trim()
+  return c || null
+}
 
 const DEFAULT_FROM_DAYS_BACK    = 30    // 1 month back — keeps initial load fast
 const DEFAULT_TO_DAYS_FORWARD   = 30
@@ -35,7 +46,9 @@ let _bookingsCache = null  // { seen: Map, endedAt: number, window: { start, end
 // Persist the cache to localStorage so a page reload renders instantly from
 // the last successful fetch (then refreshes in the background) instead of
 // re-paginating the full window — which can take 2-3 minutes on a cold load.
-const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v1'
+// v2: cache now stores the teamMember (coach) field — bump discards the old
+// v1 cache so all bookings are re-fetched with the coach attached.
+const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v2'
 
 function persistCache() {
   try {
@@ -189,6 +202,8 @@ export function mapBooking(raw, profilesById) {
     appointmentType: profile?.title ?? parsedType,
     status: raw.cancelled ? 'Cancelled' : (raw.noShow ? 'No Show' : null),
     noShow: raw.noShow === true,   // YCBM's own attendance flag (source of truth)
+    coach: cleanCoachName(raw.teamMember?.name),   // assigned coach (Team), or null
+    coachEmail: raw.teamMember?.email ?? null,
     startsAt: raw.startsAt,
     endsAt: raw.endsAt,
     timeZone: raw.timeZone,
