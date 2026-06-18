@@ -31,7 +31,7 @@ import LiveActivityFeed from './sales/LiveActivityFeed'
 import ClusterHealth from './sales/ClusterHealth'
 import NeedsReview from './sales/NeedsReview'
 import SalesReportPanel from './sales/SalesReportPanel'
-import CoachBreakdown from './CoachBreakdown'
+import CoachPivot from './CoachPivot'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 // Parse a YYYY-MM-DD key into a local Date (for custom date selections)
@@ -540,8 +540,8 @@ export default function AacioReportTab() {
         note="Show-up galing sa YCBM's own No-Show marks. Closed/Revenue galing sa LakbayHub external-cluster sales."
       />
 
-      {/* Per-coach analytics — automatic from AACIO YCBM teamMember (coach) */}
-      <CoachBreakdown bookings={bookings} from={from} to={to} />
+      {/* Expandable per-coach / per-slot pivot — automatic from AACIO YCBM teamMember */}
+      <CoachPivot bookings={bookings} from={from} to={to} />
 
       {/* External-team SALES (LakbayHub sales-report endpoint, external clusters) */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-4">

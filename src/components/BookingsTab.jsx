@@ -6,7 +6,7 @@ import AttendanceToggle from './AttendanceToggle'
 import { getStatus, bulkSet, clearAll, inferAttendance, subscribeAttendance } from '../lib/attendance'
 import { fetchSalesRecords } from '../api/lakbay'
 import PeriodBar from './PeriodBar'
-import CoachBreakdown from './CoachBreakdown'
+import CoachPivot from './CoachPivot'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 function downloadCSV(filename, rows) {
@@ -410,9 +410,9 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
         </div>
       </section>
 
-      {/* Per-coach analytics — automatic from the YCBM teamMember (coach) field.
+      {/* Expandable per-coach / per-slot pivot (coach ↔ slot ↔ booker names).
           Coaching tab only; respects the same period selector above. */}
-      {!ORIENTATION && <CoachBreakdown bookings={bookings} from={sumFrom} to={sumTo} />}
+      {!ORIENTATION && <CoachPivot bookings={bookings} from={sumFrom} to={sumTo} />}
 
       {/* Desktop table */}
       <div className="hidden sm:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
