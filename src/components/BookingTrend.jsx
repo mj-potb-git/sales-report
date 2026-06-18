@@ -53,6 +53,18 @@ export default function BookingTrend({ bookings = [] }) {
       const g = m.get(key); g.Booked++
       if (attShowed(b, now)) g.Showed++
     }
+    // Per Month: always show January → present of the CURRENT year (fill empty
+    // months with 0) so MJ sees the full-year comparison, not just months with data.
+    if (gran === 'month') {
+      const d = new Date(now)
+      const yr = d.getFullYear()
+      const out = []
+      for (let i = 0; i <= d.getMonth(); i++) {
+        const key = `${yr}-${String(i + 1).padStart(2, '0')}`
+        out.push(m.get(key) || { key, label: `${MONTHS[i]} '${String(yr).slice(2)}`, Booked: 0, Showed: 0 })
+      }
+      return out
+    }
     return [...m.values()].sort((a, b) => a.key.localeCompare(b.key)).slice(-CAP[gran])
   }, [bookings, gran, attBump])
 
