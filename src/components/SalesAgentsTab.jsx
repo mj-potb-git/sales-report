@@ -471,9 +471,11 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
         </ResponsiveContainer>
       </div>
 
-      {/* Funnel + Package Performance + Live Activity (in a 3-column-ish layout) */}
-      <FunnelHealth records={records} />
-      <PackagePerformance records={records} />
+      {/* Funnel + Package Performance + Live Activity (in a 3-column-ish layout).
+          Funnel + Packages follow the SELECTED period (ranged) — MJ checks
+          Package Performance per month, so it must change with the period. */}
+      <FunnelHealth records={ranged} />
+      <PackagePerformance records={ranged} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <LiveActivityFeed records={records} limit={10} />
         <ClusterHealth records={records} onTeamClick={onTeamClick} />
