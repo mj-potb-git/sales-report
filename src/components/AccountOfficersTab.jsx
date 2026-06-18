@@ -37,6 +37,7 @@ import {
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
+import RevenueTrend from './RevenueTrend'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 
 // Normalize a record's date to a local YYYY-MM-DD key (matches DateRangePicker's
@@ -746,6 +747,9 @@ export default function AccountOfficersTab() {
           </button>
         </div>
       </section>
+
+      {/* Revenue trend bar chart — Week/Month/Year comparison across all data */}
+      <RevenueTrend records={records} />
 
       {/* Coaching priorities */}
       {coachingPriorities.length > 0 && (
