@@ -32,15 +32,21 @@ function attOf(b, now) {
 const ATT_DOT = { showed: 'bg-emerald-500', no_show: 'bg-red-500', upcoming: 'bg-gray-300' }
 const ATT_LABEL = { showed: 'showed', no_show: 'no-show', upcoming: 'upcoming' }
 
+// Show-up rate = showed / (showed + no-show), null when nothing tracked yet.
+const showUpRate = (g) => (g.showed + g.noShow) > 0 ? Math.round((g.showed / (g.showed + g.noShow)) * 100) : null
+const rateTone = (p) => p == null ? 'text-gray-300' : p >= 70 ? 'text-emerald-600' : p >= 40 ? 'text-amber-600' : 'text-red-600'
+
 // Group rows two levels deep. `l1`/`l2` are 'coach' or 'slot'.
 function buildPivot(rows, l1, l2) {
   const m = new Map()
   for (const r of rows) {
     const k1 = r[l1], k2 = r[l2]
-    if (!m.has(k1)) m.set(k1, { key: k1, count: 0, kids: new Map() })
+    if (!m.has(k1)) m.set(k1, { key: k1, count: 0, showed: 0, noShow: 0, kids: new Map() })
     const g1 = m.get(k1); g1.count++
-    if (!g1.kids.has(k2)) g1.kids.set(k2, { key: k2, count: 0, bookers: [] })
+    if (r.att === 'showed') g1.showed++; else if (r.att === 'no_show') g1.noShow++
+    if (!g1.kids.has(k2)) g1.kids.set(k2, { key: k2, count: 0, showed: 0, noShow: 0, bookers: [] })
     const g2 = g1.kids.get(k2); g2.count++; g2.bookers.push({ name: r.name, att: r.att })
+    if (r.att === 'showed') g2.showed++; else if (r.att === 'no_show') g2.noShow++
   }
   const sortKey = (level) => (a, b) =>
     level === 'slot'
@@ -126,6 +132,10 @@ export default function CoachPivot({ bookings = [], from, to }) {
                     {open1 ? <ChevronDown size={15} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />}
                     <L1Icon size={14} style={{ color: '#1B4F4F' }} className="flex-shrink-0" />
                     <span className="font-semibold text-gray-800 flex-1 truncate">{g1.key}</span>
+                    {(() => { const p = showUpRate(g1); return (
+                      <span className={`text-xs font-semibold ${rateTone(p)}`} title="Show-up rate">{p == null ? '—' : `${p}%`}</span>
+                    )})()}
+                    <span className="text-[11px] text-gray-300">·</span>
                     <span className="text-sm font-bold text-gray-900">{g1.count}</span>
                     <span className="text-[11px] text-gray-400">appts</span>
                   </button>
@@ -143,6 +153,10 @@ export default function CoachPivot({ bookings = [], from, to }) {
                               {open2 ? <ChevronDown size={14} className="text-gray-300 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />}
                               <L2Icon size={13} className="text-gray-400 flex-shrink-0" />
                               <span className="text-sm text-gray-700 flex-1 truncate">{g2.key}</span>
+                              {(() => { const p = showUpRate(g2); return (
+                                <span className={`text-[11px] font-semibold ${rateTone(p)}`} title="Show-up rate">{p == null ? '—' : `${p}%`}</span>
+                              )})()}
+                              <span className="text-[11px] text-gray-300">·</span>
                               <span className="text-sm font-semibold text-gray-800">{g2.count}</span>
                               <span className="text-[11px] text-gray-400">appts</span>
                             </button>

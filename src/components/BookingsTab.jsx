@@ -7,6 +7,7 @@ import { getStatus, bulkSet, clearAll, inferAttendance, subscribeAttendance } fr
 import { fetchSalesRecords } from '../api/lakbay'
 import PeriodBar from './PeriodBar'
 import CoachPivot from './CoachPivot'
+import BookingTrend from './BookingTrend'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 function downloadCSV(filename, rows) {
@@ -410,8 +411,12 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
         </div>
       </section>
 
-      {/* Expandable per-coach / per-slot pivot (coach ↔ slot ↔ booker names).
-          Coaching tab only; respects the same period selector above. */}
+      {/* Bookings trend bar chart — Week/Month/Year comparison across all data */}
+      <BookingTrend bookings={bookings} />
+
+      {/* Expandable per-coach / per-slot pivot (coach ↔ slot ↔ booker names),
+          now with per-coach show-up rate. Coaching tab only; respects the
+          period selector above. */}
       {!ORIENTATION && <CoachPivot bookings={bookings} from={sumFrom} to={sumTo} />}
 
       {/* Desktop table */}
