@@ -9,9 +9,14 @@
 import { createClient } from '@supabase/supabase-js'
 import { randomBytes } from 'node:crypto'
 
+// Roles assignable via the API ('owner' is NOT — owners are defined below).
 const VALID_ROLES = ['admin', 'sales', 'signup', 'marketing', 'aacio']
-// Owner emails are always treated as admin (mirrors src/lib/roles.js bootstrap).
-const OWNER_EMAILS = new Set(['mj.pamintuan@pinoyonlinebiz.com'])
+// OWNERS — the ONLY accounts allowed to manage users / grant access. Mirrors
+// OWNER_EMAILS in src/lib/roles.js. Keep these two lists in sync.
+const OWNER_EMAILS = new Set([
+  'mj.pamintuan@pinoyonlinebiz.com',
+  'glady.bolosa@pinoyonlinebiz.com',
+])
 
 // Generate a readable, strong-ish password (avoids ambiguous chars like O/0/l/1).
 function genPassword() {
@@ -30,20 +35,20 @@ export function createAdminHandler({ url, serviceKey }) {
   }
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } })
 
-  async function requireAdmin(authHeader) {
+  // Only OWNERS can manage users / grant access — verified server-side so the
+  // gate can't be bypassed by hitting the API directly (UI tab is owner-only too).
+  async function requireOwner(authHeader) {
     const token = (authHeader || '').replace(/^Bearer\s+/i, '').trim()
     if (!token) return { ok: false, status: 401, error: 'Missing auth token' }
     const { data, error } = await admin.auth.getUser(token)
     const email = data?.user?.email
     if (error || !email) return { ok: false, status: 401, error: 'Invalid or expired session' }
-    const { data: row } = await admin.from('user_roles').select('role').eq('email', email.toLowerCase()).maybeSingle()
-    const role = row?.role || (OWNER_EMAILS.has(email.toLowerCase()) ? 'admin' : null)
-    if (role !== 'admin') return { ok: false, status: 403, error: 'Admin access required' }
+    if (!OWNER_EMAILS.has(email.toLowerCase())) return { ok: false, status: 403, error: 'Owner access required' }
     return { ok: true, email: email.toLowerCase() }
   }
 
   return async function handle({ method, query = {}, body = {}, authHeader }) {
-    const gate = await requireAdmin(authHeader)
+    const gate = await requireOwner(authHeader)
     if (!gate.ok) return { status: gate.status, body: { error: gate.error } }
 
     try {

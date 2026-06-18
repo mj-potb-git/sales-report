@@ -11,7 +11,9 @@ import { getAccessToken } from '../lib/auth'
 import { ROLE_LABELS, ROLE_TABS } from '../lib/roles'
 
 const TEAL = '#1B4F4F'
-const ROLES = Object.keys(ROLE_LABELS) // admin, sales, signup, marketing, aacio
+// Assignable roles — 'owner' is intentionally excluded: owners are defined in
+// OWNER_EMAILS (lib/roles.js), not granted via this dropdown.
+const ROLES = Object.keys(ROLE_LABELS).filter(r => r !== 'owner')
 
 async function adminApi(method, payload) {
   const token = await getAccessToken()
