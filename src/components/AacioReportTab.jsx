@@ -32,6 +32,7 @@ import ClusterHealth from './sales/ClusterHealth'
 import NeedsReview from './sales/NeedsReview'
 import SalesReportPanel from './sales/SalesReportPanel'
 import CoachPivot from './CoachPivot'
+import RevenueTrend from './RevenueTrend'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 // Parse a YYYY-MM-DD key into a local Date (for custom date selections)
@@ -542,6 +543,9 @@ export default function AacioReportTab() {
 
       {/* Expandable per-coach / per-slot pivot — automatic from AACIO YCBM teamMember */}
       <CoachPivot bookings={bookings} from={from} to={to} />
+
+      {/* Revenue trend (external-cluster LakbayHub sales) — Week/Month/Year */}
+      <RevenueTrend records={extSales} />
 
       {/* External-team SALES (LakbayHub sales-report endpoint, external clusters) */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-4">

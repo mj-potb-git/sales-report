@@ -24,6 +24,7 @@ import NeedsReview from './sales/NeedsReview'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
 import DataSourceBanner from './ui/DataSourceBanner'
+import RevenueTrend from './RevenueTrend'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 import { comparePeriods } from '../api/lakbay'
 import {
@@ -355,6 +356,9 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
         loading={ycbmLoading}
         note="Booked/Presented/Show-up galing sa POTB YCBM bookings. Closed/Revenue galing sa LakbayHub sign-up sales."
       />
+
+      {/* Revenue trend (LakbayHub sign-up sales) — Week/Month/Year comparison */}
+      <RevenueTrend records={records} />
 
       {/* Today's live snapshot + monthly target */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
