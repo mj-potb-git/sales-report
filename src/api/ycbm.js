@@ -34,7 +34,7 @@ export function cleanCoachName(name) {
   return c || null
 }
 
-const DEFAULT_FROM_DAYS_BACK    = 90    // ~3 months back so per-month coach reports cover recent months
+const DEFAULT_FROM_DAYS_BACK    = 45    // ~1.5 months — balance: covers recent months without an over-long cold fetch
 const DEFAULT_TO_DAYS_FORWARD   = 30
 const MAX_PAGES                 = 400
 const PAGINATION_HARD_TIME_LIMIT = 120000 // 120s cap — wider window needs more headroom on cold load
@@ -52,7 +52,7 @@ let _bookingsCache = null  // { seen: Map, endedAt: number, window: { start, end
 // re-paginating the full window — which can take 2-3 minutes on a cold load.
 // v3: widened to 90 days back — bump discards the old 30-day cache so stale /
 // partial data is never shown while the fuller window re-fetches.
-const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v3'
+const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v4'
 
 function persistCache() {
   try {
@@ -105,29 +105,33 @@ export async function fetchBookings({
     cursorMs = Math.max(startOfWindow.getTime(), _bookingsCache.endedAt - 2 * 86400000)
   }
 
-  let cursor = toISO(new Date(cursorMs))
   const startTime = Date.now()
   let pages = 0
   let latestSeenMs = cursorMs
 
+  // The API returns ≤10 bookings/page sorted by startsAt asc, and has NO offset
+  // param — `from` is the only cursor. Many bookings share an EXACT startsAt
+  // (group slots like 10AM/3PM). Advancing the cursor to maxStartsAt+1s would
+  // skip same-second records that didn't fit in the page, undercounting badly.
+  // Fix: advance the cursor to the boundary startsAt itself (no +1s) and dedup
+  // by id, so overlapping records are absorbed and none are skipped.
   while (pages < MAX_PAGES && (Date.now() - startTime) < PAGINATION_HARD_TIME_LIMIT) {
-    const page = await get(`/bookings?from=${encodeURIComponent(cursor)}&fields=${BOOKING_FIELDS}`)
+    const page = await get(`/bookings?from=${encodeURIComponent(toISO(new Date(cursorMs)))}&fields=${BOOKING_FIELDS}`)
     if (!Array.isArray(page) || page.length === 0) break
 
-    let progressed = false
+    let maxTs = cursorMs
     for (const b of page) {
-      seen.set(b.id, b) // overwrite (refresh) is fine
+      seen.set(b.id, b)
       const t = new Date(b.startsAt).getTime()
-      if (t > latestSeenMs) {
-        latestSeenMs = t
-        progressed = true
-      }
+      if (t > maxTs) maxTs = t
     }
+    if (maxTs > latestSeenMs) latestSeenMs = maxTs
+    if (maxTs > endOfWindow.getTime()) break
+    if (page.length < 10) break  // short page = no more bookings
 
-    if (!progressed) break // cursor stuck → done
-    if (latestSeenMs > endOfWindow.getTime()) break
-
-    cursor = toISO(new Date(latestSeenMs + 1000))
+    // Advance to the boundary timestamp (dedup absorbs overlap). If the whole
+    // page sat on one second (a >10 cluster), nudge +1s to escape it.
+    cursorMs = (maxTs > cursorMs) ? maxTs : (cursorMs + 1000)
     pages++
   }
 
