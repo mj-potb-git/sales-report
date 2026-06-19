@@ -34,10 +34,10 @@ export function cleanCoachName(name) {
   return c || null
 }
 
-const DEFAULT_FROM_DAYS_BACK    = 30    // 1 month back — keeps initial load fast
+const DEFAULT_FROM_DAYS_BACK    = 90    // ~3 months back so per-month coach reports cover recent months
 const DEFAULT_TO_DAYS_FORWARD   = 30
-const MAX_PAGES                 = 200
-const PAGINATION_HARD_TIME_LIMIT = 60000  // 60s cap — anything longer means Vite proxy is overloaded
+const MAX_PAGES                 = 400
+const PAGINATION_HARD_TIME_LIMIT = 120000 // 120s cap — wider window needs more headroom on cold load
 
 function toISO(date) {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')

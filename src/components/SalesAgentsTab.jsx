@@ -25,6 +25,7 @@ import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
 import DataSourceBanner from './ui/DataSourceBanner'
 import RevenueTrend from './RevenueTrend'
+import SalesPerformanceCards from './SalesPerformanceCards'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 import { comparePeriods } from '../api/lakbay'
 import {
@@ -380,6 +381,10 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
           <SummaryCard icon={Users}      label="Active Agents"       value={String(byAgent.length)} sub={`${byTeam.length} teams`} />
         </div>
       </div>
+
+      {/* Per-coach Sales Performance — LakbayHub (Availed/SRP) + YCBM
+          (Appointment/Show Up/No Show) for the selected period. */}
+      <SalesPerformanceCards salesRecords={ranged} bookings={ycbm} from={start} to={end} periodLabel={periodLabel} />
 
       {/* Detailed sales breakdown — how much each closer/cluster sold this period */}
       <SalesBreakdown records={ranged} periodLabel={periodLabel} />
