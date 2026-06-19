@@ -42,6 +42,14 @@ function dateFromKey(k) {
   return new Date(y, m - 1, d)
 }
 
+// Same AACIO coach under different names across LakbayHub clusters vs YCBM
+// teamMember → one canonical card. Keyed by first-name (uppercase).
+const AACIO_COACH_ALIASES = {
+  ANGEL: 'Angelyn', ANGELYN: 'Angelyn',            // AACIO ANGEL ↔ Coach Angelyn
+  PRINCESS: 'Princess Romelyn', ROMELYN: 'Princess Romelyn',
+  SHEILA: 'Sheila', SHIELA: 'Sheila',              // spelling variants
+}
+
 const TEAL = '#1B4F4F'
 const GOLD = '#F5A623'
 
@@ -549,6 +557,7 @@ export default function AacioReportTab() {
           AACIO YCBM (Appointment/Show Up/No Show) for the selected period. */}
       <SalesPerformanceCards
         salesRecords={salesInRange} bookings={bookings} from={from} to={to}
+        aliases={AACIO_COACH_ALIASES}
         periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)} />
 
       {/* Revenue trend (external-cluster LakbayHub sales) — Week/Month/Year */}

@@ -46,7 +46,10 @@ function Row({ label, value }) {
   )
 }
 
-export default function SalesPerformanceCards({ salesRecords = [], bookings = [], from, to, periodLabel }) {
+// `aliases` (optional) merges different names for the SAME person — e.g. on the
+// AACIO tab, LakbayHub "AACIO ANGEL" and YCBM "Coach Angelyn" are one coach.
+// Keyed by first-name (uppercase) → canonical display name.
+export default function SalesPerformanceCards({ salesRecords = [], bookings = [], from, to, periodLabel, aliases = {} }) {
   const [attBump, setAttBump] = useState(0)
   useEffect(() => subscribeAttendance(() => setAttBump(n => n + 1)), [])
 
@@ -54,17 +57,24 @@ export default function SalesPerformanceCards({ salesRecords = [], bookings = []
     const now = Date.now()
     const a = from ? from.getTime() : -Infinity
     const b = to ? to.getTime() : Infinity
+    // Resolve a raw coach name → { key, name } applying the alias map.
+    const resolve = (rawName) => {
+      const k = coachKey(rawName)
+      const canon = aliases[k]
+      return canon ? { key: coachKey(canon), name: canon } : { key: k, name: null }
+    }
     const map = new Map()
-    const get = (key) => {
-      if (!map.has(key)) map.set(key, { key, name: titleCase(key), availed: 0, srp: 0, appt: 0, showup: 0, noshow: 0 })
+    const get = (key, fallbackName) => {
+      if (!map.has(key)) map.set(key, { key, name: fallbackName || titleCase(key), availed: 0, srp: 0, appt: 0, showup: 0, noshow: 0 })
       return map.get(key)
     }
     // LakbayHub: Availed (count) + SRP (sum) per coach cluster
     for (const r of salesRecords) {
       const coach = coachFromCluster(r.team)
       if (!coach) continue
-      const c = get(coachKey(coach))
-      if (c.name === titleCase(c.key)) c.name = titleCase(coach)  // nicer than the key
+      const { key, name } = resolve(coach)
+      const c = get(key, name || titleCase(coach))
+      if (name) c.name = name
       c.availed += 1
       c.srp += r.sales_amount || 0
     }
@@ -74,8 +84,9 @@ export default function SalesPerformanceCards({ salesRecords = [], bookings = []
       if (bk.cancelled === true || bk.status === 'Cancelled') continue
       const t = new Date(bk.startsAt).getTime()
       if (t < a || t > b) continue
-      const c = get(coachKey(bk.coach))
-      c.name = bk.coach            // prefer YCBM's nicely-cased full name
+      const { key, name } = resolve(bk.coach)
+      const c = get(key, name || bk.coach)
+      c.name = name || bk.coach     // canonical alias, else YCBM's full name
       c.appt += 1
       const att = attOf(bk, now)
       if (att === 'showed') c.showup += 1
@@ -88,7 +99,7 @@ export default function SalesPerformanceCards({ salesRecords = [], bookings = []
         showUpRate: c.appt > 0 ? (c.showup / c.appt) * 100 : null,
       }))
       .sort((x, y) => y.srp - x.srp || y.availed - x.availed)
-  }, [salesRecords, bookings, from, to, attBump])
+  }, [salesRecords, bookings, from, to, attBump, aliases])
 
   return (
     <section>
