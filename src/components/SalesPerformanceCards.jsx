@@ -13,12 +13,21 @@ import { getStatus, subscribeAttendance } from '../lib/attendance'
 const PRIMARY = '#1B4F4F'
 const GOLD = '#F5A623'
 
-// "ACQUISITION - MARTIN" → "MARTIN"; non-coach clusters (2GO, etc.) → null
+// Extract the coach name from a cluster name across both audiences:
+//   "ACQUISITION - MARTIN" · "AACIO MARTIN" · "AACIO EXTERNAL COACH - RAFAEL"
+//   · "EXTERNAL COACH - MICHAEL"  → the coach. Non-coach clusters → null.
 function coachFromCluster(team) {
-  const m = (team || '').match(/^acquisition\s*-\s*(.+)$/i)
-  return m ? m[1].trim() : null
+  const t = (team || '').trim()
+  let m
+  if ((m = t.match(/external\s+coach\s*-\s*(.+)$/i))) return m[1].trim()
+  if ((m = t.match(/^acquisition\s*-\s*(.+)$/i)))     return m[1].trim()
+  if ((m = t.match(/^aacio\s+(.+)$/i)))               return m[1].trim()
+  return null
 }
 const titleCase = (s) => (s || '').split(/\s+/).map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ')
+// Match key = first name (first token), uppercase — bridges "Michael Sy" ↔
+// "EXTERNAL COACH - MICHAEL". (Acquisition coaches are single names, unaffected.)
+const coachKey = (name) => (name || '').trim().split(/\s+/)[0].toUpperCase()
 
 function attOf(b, now) {
   const m = getStatus(b.id)
@@ -54,7 +63,8 @@ export default function SalesPerformanceCards({ salesRecords = [], bookings = []
     for (const r of salesRecords) {
       const coach = coachFromCluster(r.team)
       if (!coach) continue
-      const c = get(coach.toUpperCase())
+      const c = get(coachKey(coach))
+      if (c.name === titleCase(c.key)) c.name = titleCase(coach)  // nicer than the key
       c.availed += 1
       c.srp += r.sales_amount || 0
     }
@@ -64,8 +74,8 @@ export default function SalesPerformanceCards({ salesRecords = [], bookings = []
       if (bk.cancelled === true || bk.status === 'Cancelled') continue
       const t = new Date(bk.startsAt).getTime()
       if (t < a || t > b) continue
-      const c = get(bk.coach.toUpperCase())
-      c.name = bk.coach            // prefer YCBM's nicely-cased name
+      const c = get(coachKey(bk.coach))
+      c.name = bk.coach            // prefer YCBM's nicely-cased full name
       c.appt += 1
       const att = attOf(bk, now)
       if (att === 'showed') c.showup += 1

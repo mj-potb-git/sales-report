@@ -33,6 +33,7 @@ import NeedsReview from './sales/NeedsReview'
 import SalesReportPanel from './sales/SalesReportPanel'
 import CoachPivot from './CoachPivot'
 import RevenueTrend from './RevenueTrend'
+import SalesPerformanceCards from './SalesPerformanceCards'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 // Parse a YYYY-MM-DD key into a local Date (for custom date selections)
@@ -543,6 +544,12 @@ export default function AacioReportTab() {
 
       {/* Expandable per-coach / per-slot pivot — automatic from AACIO YCBM teamMember */}
       <CoachPivot bookings={bookings} from={from} to={to} />
+
+      {/* Per-coach Sales Performance — external LakbayHub sales (Availed/SRP) +
+          AACIO YCBM (Appointment/Show Up/No Show) for the selected period. */}
+      <SalesPerformanceCards
+        salesRecords={salesInRange} bookings={bookings} from={from} to={to}
+        periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)} />
 
       {/* Revenue trend (external-cluster LakbayHub sales) — Week/Month/Year */}
       <RevenueTrend records={extSales} />
