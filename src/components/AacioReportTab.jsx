@@ -557,7 +557,7 @@ export default function AacioReportTab() {
           AACIO YCBM (Appointment/Show Up/No Show) for the selected period. */}
       <SalesPerformanceCards
         salesRecords={salesInRange} bookings={bookings} from={from} to={to}
-        aliases={AACIO_COACH_ALIASES} loading={loading}
+        aliases={AACIO_COACH_ALIASES} loading={loading} storageKey="aacio"
         periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)} />
 
       {/* Revenue trend (external-cluster LakbayHub sales) — Week/Month/Year */}

@@ -384,7 +384,7 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
 
       {/* Per-coach Sales Performance — LakbayHub (Availed/SRP) + YCBM
           (Appointment/Show Up/No Show) for the selected period. */}
-      <SalesPerformanceCards salesRecords={ranged} bookings={ycbm} from={start} to={end} periodLabel={periodLabel} loading={ycbmLoading} />
+      <SalesPerformanceCards salesRecords={ranged} bookings={ycbm} from={start} to={end} periodLabel={periodLabel} loading={ycbmLoading} storageKey="acquisition" />
 
       {/* Detailed sales breakdown — how much each closer/cluster sold this period */}
       <SalesBreakdown records={ranged} periodLabel={periodLabel} />

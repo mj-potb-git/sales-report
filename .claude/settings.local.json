@@ -101,7 +101,8 @@
       "Bash(echo \"bytes: $\\(wc -c < aud.json\\) | fetched: $\\(date\\)\")",
       "Bash(rm aud.json)",
       "Bash(cd \"/c/Users/Lenovo/Desktop/My Projects/Sales Dashboard\" *)",
-      "WebFetch(domain:forum.youcanbook.me)"
+      "WebFetch(domain:forum.youcanbook.me)",
+      "WebFetch(domain:ycbm.stoplight.io)"
     ]
   }
 }
