@@ -82,19 +82,27 @@ export default function SalesPerformanceCards({
     try { const raw = localStorage.getItem(LS); if (raw) setReport(JSON.parse(raw)) } catch { /* ignore */ }
   }, [LS])
 
+  const [flash, setFlash] = useState(null)
   const onFile = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
     setErr(null)
     try {
       const rows = parseReport(await file.text())
       if (!rows.length) throw new Error('Walang nabasang bookings.')
-      const next = { uploadedAt: new Date().toISOString(), fileName: file.name, rows }
+      const times = rows.map(r => r.ms).filter(Boolean).sort((a, b) => a - b)
+      const fmt = (ms) => new Date(ms).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+      const next = {
+        uploadedAt: new Date().toISOString(), fileName: file.name, rows,
+        dateMin: times.length ? fmt(times[0]) : '', dateMax: times.length ? fmt(times[times.length - 1]) : '',
+      }
       setReport(next)
       try { localStorage.setItem(LS, JSON.stringify(next)) } catch { /* quota */ }
+      setFlash(`✓ Na-upload at na-update! ${rows.length} bookings (${next.dateMin}–${next.dateMax}). Sinusunod na ang report — automatic save, walang "Save" button na kailangan.`)
+      setTimeout(() => setFlash(null), 8000)
     } catch (e2) { setErr(e2.message) }
     finally { e.target.value = '' }
   }
-  const clearReport = () => { setReport(null); try { localStorage.removeItem(LS) } catch { /* ignore */ } }
+  const clearReport = () => { setReport(null); setFlash(null); try { localStorage.removeItem(LS) } catch { /* ignore */ } }
 
   const resolve = (rawName) => {
     const k = coachKey(rawName)
@@ -164,23 +172,27 @@ export default function SalesPerformanceCards({
             : <span className="text-[11px] font-normal text-gray-400">(automatic · YCBM API)</span>}
         </h2>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white cursor-pointer hover:opacity-90" style={{ backgroundColor: PRIMARY }}>
-            <Upload size={13} /> Upload YCBM report
+          <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer hover:opacity-90 ${report ? 'bg-emerald-600 text-white' : 'text-white'}`} style={report ? undefined : { backgroundColor: PRIMARY }}>
+            {report ? <FileCheck2 size={13} /> : <Upload size={13} />}
+            {report ? 'Report loaded — palitan' : 'Upload YCBM report'}
             <input type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" />
           </label>
           {report && (
-            <button onClick={clearReport} title="Clear uploaded report (balik sa automatic)" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-red-500"><Trash2 size={14} /></button>
+            <button onClick={clearReport} title="Tanggalin ang report (balik sa automatic)" className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-red-500"><Trash2 size={14} /></button>
           )}
         </div>
       </div>
 
       {err && <div className="mb-2 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-xs">{err}</div>}
+      {flash && <div className="mb-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-800 text-xs font-medium border border-emerald-200">{flash}</div>}
       {report && (
-        <p className="text-[11px] text-gray-400 mb-2">
+        <div className="mb-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 text-[11px] text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <FileCheck2 size={13} className="text-emerald-600" />
+          <span><b className="text-gray-700">{report.fileName}</b> · sakop: <b>{report.dateMin}–{report.dateMax}</b> · {report.rows.length} bookings · auto-saved {new Date(report.uploadedAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
           {usingReport
-            ? <>Source: <b>{report.fileName}</b> ({reportTotal} appts sa period) · cross-check vs live API: <b>{autoTotal}</b> appts {autoTotal !== reportTotal && <span className="text-amber-600">(API ~{Math.round((autoTotal / Math.max(1, reportTotal)) * 100)}% — kulang sa busy days)</span>}</>
-            : <>May na-upload na report pero walang sakop na booking sa napiling period — automatic muna.</>}
-        </p>
+            ? <span className="text-emerald-700">· naka-follow ang report sa period na ito (cross-check API: {autoTotal} appts{autoTotal !== reportTotal ? ` ~${Math.round((autoTotal / Math.max(1, reportTotal)) * 100)}%` : ''})</span>
+            : <span className="text-amber-600">· walang booking ang report sa napiling period — pumili ng period na sakop (Monthly), o automatic muna</span>}
+        </div>
       )}
 
       {loading && !usingReport && bookings.length === 0 ? (
