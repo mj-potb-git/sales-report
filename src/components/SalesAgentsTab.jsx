@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -26,6 +26,7 @@ import HeroBand from './ui/HeroBand'
 import DataSourceBanner from './ui/DataSourceBanner'
 import RevenueTrend from './RevenueTrend'
 import SalesPerformanceCards from './SalesPerformanceCards'
+import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 import { comparePeriods } from '../api/lakbay'
 import {
@@ -277,7 +278,11 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
 
   // POTB YCBM bookings (shared cache — warmed by App-level useYcbmData) for the
   // sales funnel: Booked (created) → Presented (scheduled) → Showed → Closed.
-  const { bookings: ycbm, loading: ycbmLoading } = useYcbmData()
+  const { bookings: ycbmApi, loading: ycbmLoading } = useYcbmData()
+  // Merge live API with the accumulated uploaded report (report wins = exact).
+  const [repBump, setRepBump] = useState(0)
+  useEffect(() => subscribeReport(() => setRepBump(n => n + 1)), [])
+  const ycbm = useMemo(() => mergeWithReport(ycbmApi, 'acquisition'), [ycbmApi, repBump])
   const funnel = useMemo(() => {
     const a = start.getTime(), b = end.getTime()
     const dk = (d) => {

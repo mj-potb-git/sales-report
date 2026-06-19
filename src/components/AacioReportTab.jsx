@@ -34,6 +34,8 @@ import SalesReportPanel from './sales/SalesReportPanel'
 import CoachPivot from './CoachPivot'
 import RevenueTrend from './RevenueTrend'
 import SalesPerformanceCards from './SalesPerformanceCards'
+import YcbmReportUpload from './YcbmReportUpload'
+import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 // Parse a YYYY-MM-DD key into a local Date (for custom date selections)
@@ -179,7 +181,11 @@ function fmtTime(iso) {
 }
 
 export default function AacioReportTab() {
-  const { bookings, loading, refreshing, error, lastFetched, refresh } = useAacioData()
+  const { bookings: apiBookings, loading, refreshing, error, lastFetched, refresh } = useAacioData()
+  // Merge live AACIO API bookings with the accumulated uploaded report (report wins = exact).
+  const [repBump, setRepBump] = useState(0)
+  useEffect(() => subscribeReport(() => setRepBump(n => n + 1)), [])
+  const bookings = useMemo(() => mergeWithReport(apiBookings, 'aacio'), [apiBookings, repBump])
   const [periodId, setPeriodId] = useState('all')   // default: show ALL AACIO sales across months
   const [monthKey, setMonthKey] = useState(currentMonthKey())
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
@@ -516,6 +522,12 @@ export default function AacioReportTab() {
 
       {/* Warn when LakbayHub sales are coming from a stale fallback source */}
       {!salesLoading && <DataSourceBanner source={getSalesSource()} />}
+
+      {/* Accumulating AACIO YCBM report upload — exact data, merged (dedup) per upload */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">AACIO YCBM Report (exact data · iniipon)</p>
+        <YcbmReportUpload account="aacio" label="AACIO YCBM report" />
+      </div>
 
       {/* Hero band — instant read on AACIO external-team activity */}
       <HeroBand

@@ -8,6 +8,8 @@ import { fetchSalesRecords } from '../api/lakbay'
 import PeriodBar from './PeriodBar'
 import CoachPivot from './CoachPivot'
 import BookingTrend from './BookingTrend'
+import YcbmReportUpload from './YcbmReportUpload'
+import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 function downloadCSV(filename, rows) {
@@ -61,9 +63,14 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
   // mode 'coaching' (default) shows sales/coaching bookings and EXCLUDES Welcome
   // Orientation; mode 'orientation' shows ONLY the Welcome Orientation bookings.
   const ORIENTATION = mode === 'orientation'
+  // Re-render when an uploaded report is merged/cleared.
+  const [repBump, setRepBump] = useState(0)
+  useEffect(() => subscribeReport(() => setRepBump(n => n + 1)), [])
+  // Merge live API bookings with the accumulated uploaded report (report wins),
+  // then split coaching vs orientation for this tab.
   const bookings = useMemo(
-    () => allBookings.filter(b => ORIENTATION ? isOrientation(b) : !isOrientation(b)),
-    [allBookings, ORIENTATION],
+    () => mergeWithReport(allBookings, 'acquisition').filter(b => ORIENTATION ? isOrientation(b) : !isOrientation(b)),
+    [allBookings, ORIENTATION, repBump],
   )
   const [activeFilter, setActiveFilter] = useState('Upcoming')
   const [page, setPage] = useState(1)
@@ -337,6 +344,13 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
             <span className="hidden sm:inline">Export CSV</span>
           </button>
         </div>
+      </div>
+
+      {/* Accumulating YCBM report upload — exact data, merged (dedup) per upload.
+          Upload daily here; covers both Bookings and Orientation (same export). */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-2">YCBM Report (exact data · iniipon)</p>
+        <YcbmReportUpload account="acquisition" />
       </div>
 
       {/* Booking funnel summary — booked / showed / no-show + per time slot */}
