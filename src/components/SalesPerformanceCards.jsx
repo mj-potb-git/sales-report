@@ -49,7 +49,7 @@ function Row({ label, value }) {
 // `aliases` (optional) merges different names for the SAME person — e.g. on the
 // AACIO tab, LakbayHub "AACIO ANGEL" and YCBM "Coach Angelyn" are one coach.
 // Keyed by first-name (uppercase) → canonical display name.
-export default function SalesPerformanceCards({ salesRecords = [], bookings = [], from, to, periodLabel, aliases = {} }) {
+export default function SalesPerformanceCards({ salesRecords = [], bookings = [], from, to, periodLabel, aliases = {}, loading = false }) {
   const [attBump, setAttBump] = useState(0)
   useEffect(() => subscribeAttendance(() => setAttBump(n => n + 1)), [])
 
@@ -107,7 +107,11 @@ export default function SalesPerformanceCards({ salesRecords = [], bookings = []
         <Award size={16} style={{ color: GOLD }} /> Sales Performance · {periodLabel}
         <span className="text-[11px] font-normal text-gray-400">(per coach · LakbayHub + YCBM)</span>
       </h2>
-      {coaches.length === 0 ? (
+      {loading && bookings.length === 0 ? (
+        <p className="text-sm text-gray-400 py-6 text-center bg-white rounded-2xl border border-gray-100">
+          Naglo-load pa ang YCBM bookings… (unang load ng ~90 araw ay matagal-tagal)
+        </p>
+      ) : coaches.length === 0 ? (
         <p className="text-sm text-gray-400 py-6 text-center bg-white rounded-2xl border border-gray-100">
           Walang per-coach data sa napiling period.
         </p>

@@ -50,9 +50,9 @@ let _bookingsCache = null  // { seen: Map, endedAt: number, window: { start, end
 // Persist the cache to localStorage so a page reload renders instantly from
 // the last successful fetch (then refreshes in the background) instead of
 // re-paginating the full window — which can take 2-3 minutes on a cold load.
-// v2: cache now stores the teamMember (coach) field — bump discards the old
-// v1 cache so all bookings are re-fetched with the coach attached.
-const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v2'
+// v3: widened to 90 days back — bump discards the old 30-day cache so stale /
+// partial data is never shown while the fuller window re-fetches.
+const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v3'
 
 function persistCache() {
   try {
