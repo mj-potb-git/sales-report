@@ -291,13 +291,7 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
     }
     const inSet = (key) => !isCustom || customSet.has(key)
     const inWin = (t) => t >= a && t <= b
-    // Booked = appointments CREATED in range
-    const booked = ycbm.filter(bk => {
-      const c = bk.raw?.createdAt
-      if (!c || bk.status === 'Cancelled') return false
-      return inWin(new Date(c).getTime()) && inSet(dk(c))
-    }).length
-    // Presented = active scheduled appointments in range (by startsAt)
+    // Booked = all YCBM appointments scheduled in the period (active, by startsAt)
     const scheduled = ycbm.filter(bk =>
       bk.status !== 'Cancelled' && inWin(new Date(bk.startsAt).getTime()) && inSet(dk(bk.startsAt)))
     let showed = 0, noShow = 0
@@ -307,13 +301,12 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
     }
     const cancelled = ycbm.filter(bk =>
       bk.status === 'Cancelled' && inWin(new Date(bk.startsAt).getTime()) && inSet(dk(bk.startsAt))).length
-    const presented = scheduled.length
-    const tracked   = showed + noShow
-    const closed    = ranged.length
+    const booked = scheduled.length
+    const closed = ranged.length
     return {
-      revenue: sum(ranged, 'sales_amount'), closed, presented, booked, cancelled, showed, noShow,
-      showUpRate:  tracked > 0   ? Math.round((showed / tracked) * 100)   : null,
-      closingRate: presented > 0 ? Math.round((closed / presented) * 100) : null,
+      revenue: sum(ranged, 'sales_amount'), closed, booked, cancelled, showed, noShow,
+      showUpRate:  booked > 0 ? Math.round((showed / booked) * 100) : null,
+      closingRate: showed > 0 ? Math.round((closed / showed) * 100) : null,
     }
   }, [ycbm, ranged, start, end, isCustom, customSet]) // eslint-disable-line react-hooks/exhaustive-deps
 

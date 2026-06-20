@@ -1,11 +1,12 @@
 // Compact sales-funnel report shared by the Acquisition and AACIO tabs.
-// Funnel: Booked (YCBM created) → Presented (YCBM scheduled) → Showed → Closed,
-// plus Revenue, Show-Up Rate, Closing Rate, and Cancelled.
-//
+// Funnel: Booked (YCBM appointments) → Showed up → Closed (sales).
+//   • Booked   = all YCBM appointments scheduled in the period (the biggest)
+//   • Showed up= attended (Show-Up Rate = showed ÷ booked)
+//   • Closed   = LakbayHub paid sign-ups (Closing Rate = closed ÷ showed)
 // Pure presentational — the parent computes the funnel object and passes it in.
-//   funnel = { revenue, closed, presented, booked, cancelled, showed, noShow,
+//   funnel = { revenue, booked, showed, noShow, closed, cancelled,
 //              showUpRate (0-100|null), closingRate (0-100|null) }
-import { CalendarPlus, Presentation, UserCheck, BadgeCheck, Wallet, XCircle, Percent } from 'lucide-react'
+import { CalendarPlus, UserCheck, BadgeCheck, Wallet, XCircle, Percent } from 'lucide-react'
 
 const TEAL = '#1B4F4F'
 const GOLD = '#F5A623'
@@ -51,11 +52,10 @@ function FunnelStep({ icon: Icon, label, count, max, color, pct }) {
 
 export default function SalesReportPanel({ title = 'Sales Report', periodLabel, funnel, loading = false, note }) {
   const f = funnel || {}
-  const booked    = f.booked    || 0
-  const presented = f.presented || 0
-  const showed    = f.showed    || 0
-  const closed    = f.closed    || 0
-  const max = Math.max(booked, presented, showed, closed, 1)
+  const booked = f.booked || 0
+  const showed = f.showed || 0
+  const closed = f.closed || 0
+  const max = Math.max(booked, showed, closed, 1)
 
   return (
     <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -63,34 +63,32 @@ export default function SalesReportPanel({ title = 'Sales Report', periodLabel, 
         <div>
           <h3 className="font-semibold text-gray-900">{title}</h3>
           <p className="text-[11px] text-gray-500 mt-0.5">
-            Booked → Presented → Showed → Closed{periodLabel ? ` · ${periodLabel}` : ''}
+            Booked → Showed up → Closed{periodLabel ? ` · ${periodLabel}` : ''}
           </p>
         </div>
         <span className="text-2xl font-extrabold" style={{ color: TEAL }}>{fmtPHP(f.revenue)}</span>
       </div>
 
       <div className="p-5 flex flex-col gap-4">
-        {loading && booked + presented + closed === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">Loading YCBM bookings… (unang fetch ay 2-3 min)</p>
+        {loading && booked + showed + closed === 0 ? (
+          <p className="text-sm text-gray-400 py-6 text-center">Loading YCBM bookings…</p>
         ) : (
           <>
-            {/* Funnel bars */}
+            {/* Funnel bars: Booked (appointments) → Showed up → Closed */}
             <div className="flex flex-col gap-2">
-              <FunnelStep icon={CalendarPlus}  label="Booked (nagbook)"   count={booked}    max={max} color="#94a3b8" />
-              <FunnelStep icon={Presentation}  label="Presented (YCBM)"   count={presented} max={max} color="#4ECDC4"
-                pct={booked > 0 ? Math.round((presented / booked) * 100) : null} />
-              <FunnelStep icon={UserCheck}     label="Showed up"          count={showed}    max={max} color={GOLD}
-                pct={presented > 0 ? Math.round((showed / presented) * 100) : null} />
-              <FunnelStep icon={BadgeCheck}    label="Closed (sales)"     count={closed}    max={max} color={TEAL}
-                pct={presented > 0 ? Math.round((closed / presented) * 100) : null} />
+              <FunnelStep icon={CalendarPlus} label="Booked (appointments)" count={booked} max={max} color="#4ECDC4" />
+              <FunnelStep icon={UserCheck}    label="Showed up"             count={showed} max={max} color={GOLD}
+                pct={booked > 0 ? Math.round((showed / booked) * 100) : null} />
+              <FunnelStep icon={BadgeCheck}   label="Closed (sales)"        count={closed} max={max} color={TEAL}
+                pct={showed > 0 ? Math.round((closed / showed) * 100) : null} />
             </div>
 
             {/* Key rates + money */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-              <Stat icon={Percent}  label="Closing Rate" accent={TEAL}
-                value={f.closingRate != null ? `${f.closingRate}%` : '—'} sub="closed ÷ presented" />
               <Stat icon={UserCheck} label="Show-Up Rate" accent={GOLD}
-                value={f.showUpRate != null ? `${f.showUpRate}%` : '—'} sub="showed ÷ tracked" />
+                value={f.showUpRate != null ? `${f.showUpRate}%` : '—'} sub="showed ÷ booked" />
+              <Stat icon={Percent}  label="Closing Rate" accent={TEAL}
+                value={f.closingRate != null ? `${f.closingRate}%` : '—'} sub="closed ÷ showed" />
               <Stat icon={Wallet}   label="Revenue" accent={TEAL}
                 value={fmtPHP(f.revenue)} sub={`${fmtInt(closed)} closed`} />
               <Stat icon={XCircle}  label="Cancelled" accent="#dc2626"

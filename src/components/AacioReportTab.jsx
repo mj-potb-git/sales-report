@@ -309,33 +309,24 @@ export default function AacioReportTab() {
     return { total, cancelled, active, unique: names.size, perDay }
   }, [inRange, from, to, periodId, nowMs])
 
-  // Sales funnel: Booked (created) → Presented (scheduled) → Showed → Closed
+  // Sales funnel: Booked (appointments) → Showed up → Closed (sales)
   const funnel = useMemo(() => {
-    const a = from.getTime(), b = to.getTime()
-    // Booked = bookings CREATED in range (lead booked an appointment)
-    const booked = bookings.filter(bk => {
-      if (!bk.createdAt || bk.cancelled) return false
-      const t = new Date(bk.createdAt).getTime()
-      if (t < a || t > b) return false
-      return inCustom(dateKey(bk.createdAt))
-    }).length
-    // Presented = active scheduled bookings (inRange already startsAt-filtered)
+    // Booked = all active scheduled appointments in range (inRange = startsAt-filtered)
     const active = inRange.filter(bk => !bk.cancelled)
     let showed = 0, noShow = 0
     for (const bk of active) {
       if (bk.noShow === true) noShow++
       else if (new Date(bk.startsAt).getTime() < nowMs) showed++
     }
-    const presented = active.length
-    const tracked   = showed + noShow
-    const closed    = salesStats.count
+    const booked = active.length
+    const closed = salesStats.count
     return {
-      revenue: salesStats.revenue, closed, presented, booked,
+      revenue: salesStats.revenue, closed, booked,
       cancelled: stats.cancelled, showed, noShow,
-      showUpRate:  tracked > 0    ? Math.round((showed / tracked) * 100)    : null,
-      closingRate: presented > 0  ? Math.round((closed / presented) * 100)  : null,
+      showUpRate:  booked > 0 ? Math.round((showed / booked) * 100) : null,
+      closingRate: showed > 0 ? Math.round((closed / showed) * 100) : null,
     }
-  }, [bookings, inRange, from, to, isCustom, customSet, nowMs, salesStats, stats.cancelled]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inRange, nowMs, salesStats, stats.cancelled]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Daily trend (active bookings per day)
   const trend = useMemo(() => {
