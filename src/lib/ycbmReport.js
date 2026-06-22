@@ -48,6 +48,11 @@ export function parseReportCSV(text) {
     const me = (r[cEnd] || '').match(/(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/)
     const mm = (cMade >= 0 ? (r[cMade] || '') : '').match(/(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/)
     const title = r[cTitle] || ''
+    // No-Show: only an explicit "true"/"false" is a real mark. A BLANK cell
+    // means "not yet marked" → null (NOT false/showed). Treating blanks as
+    // "showed" was inflating show-up to ~100%.
+    const noRaw = (cNo >= 0 ? (r[cNo] || '') : '').trim().toLowerCase()
+    const noShow = noRaw === 'true' ? true : noRaw === 'false' ? false : null
     out.push({
       id: r[cId],
       name: (cFn >= 0 && r[cFn]) ? r[cFn] : (title.includes(' and ') ? title.split(' and ')[0].trim() : title),
@@ -57,7 +62,7 @@ export function parseReportCSV(text) {
       hour: Number(m[2]),                   // for AACIO slot matrix
       cancelled: (r[cCanc] || '').toLowerCase() === 'true',
       status: (r[cCanc] || '').toLowerCase() === 'true' ? 'Cancelled' : null,
-      noShow: (r[cNo] || '').toLowerCase() === 'true',
+      noShow,
       coach: cleanCoach(r[cTeam]),
       team: r[cProf] || '',                 // profile subdomain (orientation detection)
       appointmentType: r[cProf] || '',
@@ -121,8 +126,20 @@ export function clearReport(account) {
  * from uploads + future bookings from the live API.
  */
 export function mergeWithReport(apiBookings, account) {
+  const apiById = new Map(apiBookings.map(b => [b.id, b]))
   const map = new Map()
   for (const b of apiBookings) map.set(b.id, b)
-  for (const b of getReportBookings(account)) map.set(b.id, b)
+  for (const b of getReportBookings(account)) {
+    const live = apiById.get(b.id)
+    // Report wins for the booking LIST + coach (the live API undercounts and
+    // often lacks coach). But the LIVE YCBM No-Show flag is authoritative for
+    // ATTENDANCE — so when a booking exists in both, keep the report's fields
+    // but take noShow from live (only if live actually has a true/false mark).
+    if (live && (live.noShow === true || live.noShow === false)) {
+      map.set(b.id, { ...b, noShow: live.noShow })
+    } else {
+      map.set(b.id, b)
+    }
+  }
   return [...map.values()]
 }
