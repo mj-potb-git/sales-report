@@ -23,11 +23,16 @@ function coachFromCluster(team) {
 const titleCase = (s) => (s || '').split(/\s+/).map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ')
 const coachKey = (name) => (name || '').trim().split(/\s+/)[0].toUpperCase()
 
+// Attendance per booking. YCBM marks attendance explicitly:
+//   noShow === true  → no-show   ·   noShow === false → showed up
+// A manual mark wins. Per MJ's rule, a PAST appointment left unmarked counts
+// as a no-show (di na-mark = no show). Future unmarked = upcoming (excluded).
 function attOf(b, now) {
   const m = getStatus(b.id)
   if (m === 'showed' || m === 'no_show') return m
   if (b.noShow === true) return 'no_show'
-  if (new Date(b.startsAt).getTime() < now) return 'showed'
+  if (b.noShow === false) return 'showed'
+  if (new Date(b.startsAt).getTime() < now) return 'no_show' // past & unmarked = no-show
   return 'upcoming'
 }
 
@@ -35,6 +40,7 @@ export default function SalesPerformanceCards({
   salesRecords = [], bookings = [], from, to, periodLabel, aliases = {}, loading = false,
 }) {
   const [attBump, setAttBump] = useState(0)
+  const [nowMs] = useState(() => Date.now()) // stable "now" — avoid impure Date.now() in render
   useEffect(() => subscribeAttendance(() => setAttBump(n => n + 1)), [])
 
   const resolve = (rawName) => {
@@ -44,7 +50,7 @@ export default function SalesPerformanceCards({
   }
 
   const coaches = useMemo(() => {
-    const now = Date.now()
+    const now = nowMs
     const a = from ? from.getTime() : -Infinity
     const b = to ? to.getTime() : Infinity
     const map = new Map()
@@ -69,8 +75,11 @@ export default function SalesPerformanceCards({
     }
     return [...map.values()].map(c => ({
       ...c,
+      // Show-up rate = showed ÷ concluded (showed + no-show). Upcoming
+      // appointments are excluded, so it reads "—" until sessions conclude
+      // instead of a misleading 0%.
       closingRate: c.showup > 0 ? (c.availed / c.showup) * 100 : null,
-      showUpRate: c.appt > 0 ? (c.showup / c.appt) * 100 : null,
+      showUpRate: (c.showup + c.noshow) > 0 ? (c.showup / (c.showup + c.noshow)) * 100 : null,
     })).sort((x, y) => y.srp - x.srp || y.availed - x.availed)
   }, [salesRecords, bookings, from, to, attBump, aliases]) // eslint-disable-line react-hooks/exhaustive-deps
 

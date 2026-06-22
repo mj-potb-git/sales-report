@@ -313,17 +313,22 @@ export default function AacioReportTab() {
   const funnel = useMemo(() => {
     // Booked = all active scheduled appointments in range (inRange = startsAt-filtered)
     const active = inRange.filter(bk => !bk.cancelled)
+    // YCBM marks attendance explicitly (noShow false = showed, true = no-show).
+    // Past appointment left unmarked = no-show (per MJ). Future = upcoming.
     let showed = 0, noShow = 0
     for (const bk of active) {
       if (bk.noShow === true) noShow++
-      else if (new Date(bk.startsAt).getTime() < nowMs) showed++
+      else if (bk.noShow === false) showed++
+      else if (new Date(bk.startsAt).getTime() < nowMs) noShow++
     }
+    const concluded = showed + noShow
     const booked = active.length
     const closed = salesStats.count
     return {
       revenue: salesStats.revenue, closed, booked,
       cancelled: stats.cancelled, showed, noShow,
-      showUpRate:  booked > 0 ? Math.round((showed / booked) * 100) : null,
+      // Show-up rate vs CONCLUDED appointments (excludes upcoming) → "—" if none done yet.
+      showUpRate:  concluded > 0 ? Math.round((showed / concluded) * 100) : null,
       closingRate: showed > 0 ? Math.round((closed / showed) * 100) : null,
     }
   }, [inRange, nowMs, salesStats, stats.cancelled]) // eslint-disable-line react-hooks/exhaustive-deps

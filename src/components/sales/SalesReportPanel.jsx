@@ -78,15 +78,15 @@ export default function SalesReportPanel({ title = 'Sales Report', periodLabel, 
             <div className="flex flex-col gap-2">
               <FunnelStep icon={CalendarPlus} label="Booked (appointments)" count={booked} max={max} color="#4ECDC4" />
               <FunnelStep icon={UserCheck}    label="Showed up"             count={showed} max={max} color={GOLD}
-                pct={booked > 0 ? Math.round((showed / booked) * 100) : null} />
+                pct={f.showUpRate} />
               <FunnelStep icon={BadgeCheck}   label="Closed (sales)"        count={closed} max={max} color={TEAL}
-                pct={showed > 0 ? Math.round((closed / showed) * 100) : null} />
+                pct={f.closingRate} />
             </div>
 
             {/* Key rates + money */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
               <Stat icon={UserCheck} label="Show-Up Rate" accent={GOLD}
-                value={f.showUpRate != null ? `${f.showUpRate}%` : '—'} sub="showed ÷ booked" />
+                value={f.showUpRate != null ? `${f.showUpRate}%` : '—'} sub="showed ÷ concluded" />
               <Stat icon={Percent}  label="Closing Rate" accent={TEAL}
                 value={f.closingRate != null ? `${f.closingRate}%` : '—'} sub="closed ÷ showed" />
               <Stat icon={Wallet}   label="Revenue" accent={TEAL}
