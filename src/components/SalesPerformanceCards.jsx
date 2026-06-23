@@ -26,16 +26,17 @@ function coachFromCluster(team) {
 const titleCase = (s) => (s || '').split(/\s+/).map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ')
 const coachKey = (name) => (name || '').trim().split(/\s+/)[0].toUpperCase()
 
-// Attendance per booking. YCBM marks attendance explicitly:
-//   noShow === true  → no-show   ·   noShow === false → showed up
-// A manual mark wins. Per MJ's rule, a PAST appointment left unmarked counts
-// as a no-show (di na-mark = no show). Future unmarked = upcoming (excluded).
+// Attendance per booking. Per MJ's actual YCBM workflow: a no-show is explicitly
+// marked (noShow=true), a show is marked "finished", a cancel is cancelled. The
+// only reliable positive signal is noShow===true — so a PAST appointment that is
+// NOT flagged no-show was finished = SHOWED. Future unmarked = upcoming (excluded).
+// A manual mark always wins.
 function attOf(b, now) {
   const m = getStatus(b.id)
   if (m === 'showed' || m === 'no_show') return m
   if (b.noShow === true) return 'no_show'
   if (b.noShow === false) return 'showed'
-  if (new Date(b.startsAt).getTime() < now) return 'no_show' // past & unmarked = no-show
+  if (new Date(b.startsAt).getTime() < now) return 'showed' // past & not flagged no-show = showed (finished)
   return 'upcoming'
 }
 

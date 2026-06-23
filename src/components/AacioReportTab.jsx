@@ -313,13 +313,14 @@ export default function AacioReportTab() {
   const funnel = useMemo(() => {
     // Booked = all active scheduled appointments in range (inRange = startsAt-filtered)
     const active = inRange.filter(bk => !bk.cancelled)
-    // YCBM marks attendance explicitly (noShow false = showed, true = no-show).
-    // Past appointment left unmarked = no-show (per MJ). Future = upcoming.
+    // Per MJ's YCBM workflow: no-show is explicitly marked (true), a show is
+    // marked "finished". Only noShow===true is reliable → a PAST appointment not
+    // flagged no-show was finished = showed. Future unmarked = upcoming (excluded).
     let showed = 0, noShow = 0
     for (const bk of active) {
       if (bk.noShow === true) noShow++
       else if (bk.noShow === false) showed++
-      else if (new Date(bk.startsAt).getTime() < nowMs) noShow++
+      else if (new Date(bk.startsAt).getTime() < nowMs) showed++
     }
     const concluded = showed + noShow
     const booked = active.length
@@ -416,13 +417,13 @@ export default function AacioReportTab() {
     const cancelled  = sched.filter(b => b.cancelled).length
     const leads      = (createdByDate.get(k) || []).filter(b => !b.cancelled).length
     // Attendance — same rule as the per-coach cards & funnel so totals tally:
-    //   noShow=true → No-Show · noShow=false (explicit report mark) → Showed ·
-    //   past & unmarked → No-Show (per MJ: di na-mark = no show) · future → unmarked
+    //   noShow=true → No-Show · noShow=false (explicit mark) → Showed ·
+    //   past & unmarked → Showed (finished; per MJ's workflow) · future → unmarked
     let showed = 0, noShow = 0, unmarked = 0
     for (const b of active) {
       if (b.noShow === true) noShow++
       else if (b.noShow === false) showed++
-      else if (new Date(b.startsAt).getTime() < nowMs) noShow++
+      else if (new Date(b.startsAt).getTime() < nowMs) showed++
       else unmarked++
     }
     const tracked    = showed + noShow
@@ -431,9 +432,9 @@ export default function AacioReportTab() {
     const cvr        = active.length > 0 ? Math.round((salesCount / active.length) * 100) : null
     const bySlot     = SLOTS.map(h => {
       const slotBk = active.filter(b => b.hour === h)
-      // Attendee = explicitly showed (report mark). Past-unmarked is a no-show
-      // per MJ's rule, so it is NOT counted here (kept consistent with the rows above).
-      const att    = slotBk.filter(b => b.noShow === false).length
+      // Attendee = showed: explicitly marked (noShow===false) OR past & not
+      // flagged no-show (finished). Matches the show/no-show rows above.
+      const att    = slotBk.filter(b => b.noShow !== true && new Date(b.startsAt).getTime() < nowMs).length
       return { hour: h, bookings: slotBk.length, attendees: att }
     })
     return {

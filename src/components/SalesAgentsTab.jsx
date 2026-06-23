@@ -296,13 +296,14 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
     // Booked = all YCBM appointments scheduled in the period (active, by startsAt)
     const scheduled = ycbm.filter(bk =>
       bk.status !== 'Cancelled' && inWin(new Date(bk.startsAt).getTime()) && inSet(dk(bk.startsAt)))
-    // YCBM marks attendance explicitly (noShow false = showed, true = no-show).
-    // Past appointment left unmarked = no-show (per MJ). Future = upcoming.
+    // Per MJ's YCBM workflow: no-show is explicitly marked (true), a show is
+    // marked "finished". Only noShow===true is reliable → a PAST appointment not
+    // flagged no-show was finished = showed. Future unmarked = upcoming (excluded).
     let showed = 0, noShow = 0
     for (const bk of scheduled) {
       if (bk.noShow === true) noShow++
       else if (bk.noShow === false) showed++
-      else if (new Date(bk.startsAt).getTime() < today.getTime()) noShow++
+      else if (new Date(bk.startsAt).getTime() < today.getTime()) showed++
     }
     const cancelled = ycbm.filter(bk =>
       bk.status === 'Cancelled' && inWin(new Date(bk.startsAt).getTime()) && inSet(dk(bk.startsAt))).length
