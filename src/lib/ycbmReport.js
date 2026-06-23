@@ -119,7 +119,13 @@ export function getReportMeta(account) {
   if (!arr.length) return null
   const times = arr.map(b => new Date(b.startsAt).getTime()).filter(t => !isNaN(t)).sort((a, b) => a - b)
   const fmt = (ms) => new Date(ms).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-  return { total: arr.length, dateMin: times.length ? fmt(times[0]) : '', dateMax: times.length ? fmt(times[times.length - 1]) : '' }
+  const minMs = times.length ? times[0] : null
+  const maxMs = times.length ? times[times.length - 1] : null
+  return {
+    total: arr.length,
+    dateMin: minMs != null ? fmt(minMs) : '', dateMax: maxMs != null ? fmt(maxMs) : '',
+    minMs, maxMs,
+  }
 }
 
 export function clearReport(account) {

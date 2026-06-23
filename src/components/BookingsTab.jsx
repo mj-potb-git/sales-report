@@ -9,7 +9,7 @@ import PeriodBar from './PeriodBar'
 import CoachPivot from './CoachPivot'
 import BookingTrend from './BookingTrend'
 import YcbmReportUpload from './YcbmReportUpload'
-import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
+import { mergeWithReport, subscribeReport, isOrientation, getReportMeta } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 function downloadCSV(filename, rows) {
@@ -203,6 +203,12 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
     }
   }, [bookings, attBump, sumFrom, sumTo, isCustom, customSet]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Coverage: warn when the selected period reaches PAST the uploaded report's
+  // last day — those days fall back to the incomplete live API (the "25 vs 120"
+  // case). Tells MJ to upload the latest report so the numbers go exact.
+  const reportMeta = useMemo(() => getReportMeta('acquisition'), [repBump])
+  const coverageGap = !!reportMeta && reportMeta.maxMs != null && sumTo.getTime() > reportMeta.maxMs
+
   return (
     <div className="flex flex-col gap-4">
       {flash && (
@@ -370,6 +376,11 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
             customDates={customDates} isCustom={isCustom}
             onApplyCustom={(dates) => { setCustomDates(dates); setPeriodId('custom') }}
           />
+          {coverageGap && (
+            <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+              ⚠️ Lampas sa sakop ng na-upload na report (hanggang <b>{reportMeta.dateMax}</b> lang). Ang mga araw pagkatapos nun ay <b>live API (posibleng kulang)</b> — i-upload ang pinakabagong YCBM report para maging exact.
+            </div>
+          )}
         </div>
         {/* Stat tiles */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-gray-100">
