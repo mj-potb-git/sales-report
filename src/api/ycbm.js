@@ -58,7 +58,10 @@ let _bookingsCache = null  // { seen: Map, endedAt: number, window: { start, end
 // re-paginating the full window — which can take 2-3 minutes on a cold load.
 // v3: widened to 90 days back — bump discards the old 30-day cache so stale /
 // partial data is never shown while the fuller window re-fetches.
-const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v4'
+// v5: window narrowed to 25d back + crawl made resilient/incremental — bump
+// discards any stale wide-window cache that a reload would otherwise resume,
+// forcing a clean crawl so the current week populates correctly.
+const LS_CACHE_KEY = 'potb_ycbm_bookings_cache_v5'
 
 function persistCache() {
   try {
@@ -121,8 +124,31 @@ export async function fetchBookings({
   // skip same-second records that didn't fit in the page, undercounting badly.
   // Fix: advance the cursor to the boundary startsAt itself (no +1s) and dedup
   // by id, so overlapping records are absorbed and none are skipped.
+  // Commit progress to the module + localStorage cache. Called PERIODICALLY
+  // during the crawl (not just at the end) so an interruption — a new 15s poll,
+  // a component unmount, or a single failed page over the ~75-request crawl —
+  // never throws away what we already fetched. Because endedAt advances with
+  // each commit and the window key is stable, the NEXT call resumes from the
+  // cached frontier instead of restarting at -25d. That makes a cold load that
+  // can't finish in one shot converge across a few polls instead of looping.
+  const commit = () => {
+    _bookingsCache = {
+      seen: new Map(seen),
+      endedAt: latestSeenMs,
+      window: { start: startOfWindow.getTime(), end: endOfWindow.getTime() },
+    }
+    persistCache()
+  }
+
   while (pages < MAX_PAGES && (Date.now() - startTime) < PAGINATION_HARD_TIME_LIMIT) {
-    const page = await get(`/bookings?from=${encodeURIComponent(toISO(new Date(cursorMs)))}&fields=${BOOKING_FIELDS}`)
+    let page
+    try {
+      page = await get(`/bookings?from=${encodeURIComponent(toISO(new Date(cursorMs)))}&fields=${BOOKING_FIELDS}`)
+    } catch {
+      // A transient page failure (rate-limit / network blip) must NOT discard
+      // the whole crawl. Keep what we have; the next poll resumes from here.
+      break
+    }
     if (!Array.isArray(page) || page.length === 0) break
 
     let maxTs = cursorMs
@@ -132,6 +158,7 @@ export async function fetchBookings({
       if (t > maxTs) maxTs = t
     }
     if (maxTs > latestSeenMs) latestSeenMs = maxTs
+    if (pages % 5 === 0) commit()       // checkpoint progress as we go
     if (maxTs > endOfWindow.getTime()) break
     if (page.length < 10) break  // short page = no more bookings
 
@@ -141,12 +168,7 @@ export async function fetchBookings({
     pages++
   }
 
-  _bookingsCache = {
-    seen: new Map(seen),
-    endedAt: latestSeenMs,
-    window: { start: startOfWindow.getTime(), end: endOfWindow.getTime() },
-  }
-  persistCache()
+  commit()
 
   return [...seen.values()].filter(b => {
     const t = new Date(b.startsAt).getTime()
