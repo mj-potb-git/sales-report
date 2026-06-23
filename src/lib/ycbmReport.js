@@ -134,25 +134,37 @@ export function clearReport(account) {
 }
 
 /**
- * Union the live API bookings with the accumulated report (report wins on
- * conflict — it's exact). Gives the best of both: complete historical bookings
- * from uploads + future bookings from the live API.
+ * Union the live API bookings with the accumulated report.
+ *
+ * The live API is COMPLETE and CORRECT for the bookings it returns (full coach
+ * via teamMember + real true/false noShow — verified: a past week returns 0
+ * nulls). Its only weakness is COVERAGE: it silently drops some bookings on
+ * busy same-minute slots (YCBM's 10/page + `from`-cursor limit) and can't reach
+ * far back. The uploaded report has every booking but its columns can be thin
+ * (blank Team/No-Show in some exports).
+ *
+ * So: LIVE is authoritative for shared bookings (never let a thin report blank
+ * clobber a good live coach/attendance); the report only ADDS bookings the live
+ * feed is missing, and back-fills individual fields the live record lacks.
  */
 export function mergeWithReport(apiBookings, account) {
-  const apiById = new Map(apiBookings.map(b => [b.id, b]))
-  const map = new Map()
-  for (const b of apiBookings) map.set(b.id, b)
-  for (const b of getReportBookings(account)) {
-    const live = apiById.get(b.id)
-    // Report wins for the booking LIST + coach (the live API undercounts and
-    // often lacks coach). For ATTENDANCE, the live API only ever asserts a real
-    // no-show (noShow === true) — its `false`/unmarked is a default, not a
-    // "showed" mark (now mapped to null). So a live no-show overrides the
-    // report; otherwise the report's own attendance (true/false/blank) stands.
-    if (live && live.noShow === true) {
-      map.set(b.id, { ...b, noShow: true })
+  const liveById = new Map(apiBookings.map(b => [b.id, b]))
+  const map = new Map(liveById)
+  for (const r of getReportBookings(account)) {
+    const live = liveById.get(r.id)
+    if (!live) {
+      // Booking the live feed never returned (older than its window, or dropped
+      // on a busy slot) — take the report's copy as-is.
+      map.set(r.id, r)
     } else {
-      map.set(b.id, b)
+      // Booking in both: keep live, but back-fill any field live is missing
+      // from the report (so a thin export can never erase good live data).
+      map.set(r.id, {
+        ...r,
+        ...live,
+        coach:  live.coach || r.coach,
+        noShow: (live.noShow === true || live.noShow === false) ? live.noShow : r.noShow,
+      })
     }
   }
   return [...map.values()]

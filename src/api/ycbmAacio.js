@@ -14,15 +14,19 @@ async function get(path) {
   return res.json()
 }
 
-// Window: 90 days back → 60 forward. AACIO has fewer profiles/bookings than
-// POTB, so a wider history is cheap and gives better month-over-month views.
+// Window: 45 days back → 14 forward. AACIO is actually HIGH volume (~220
+// bookings/week, on par with POTB) — the old 90/60 window needed ~270 pages
+// (10 records/page) and the pagination time/page cap ran out BEFORE reaching
+// recent dates, so the latest week (what MJ actually views) was undercounted.
+// A tighter window paginates fully to today; older history comes from the
+// uploaded YCBM report (exact) via mergeWithReport.
 // YCBM omits `noShow` and `teamMember` from the default payload — request them
 // explicitly. teamMember (the assigned coach) needs the parent AND sub-fields
 // listed together or it comes back empty (see api/ycbm.js note).
 const BOOKING_FIELDS = 'id,title,startsAt,endsAt,createdAt,cancelled,noShow,profileId,timeZone,location,accountId,tentative,teamMember,teamMember.name,teamMember.email'
 
-const DEFAULT_FROM_DAYS_BACK     = 90
-const DEFAULT_TO_DAYS_FORWARD    = 60
+const DEFAULT_FROM_DAYS_BACK     = 45
+const DEFAULT_TO_DAYS_FORWARD    = 14
 const MAX_PAGES                  = 300
 const PAGINATION_HARD_TIME_LIMIT = 60000
 
@@ -113,13 +117,13 @@ export function mapAacioBooking(raw, profilesById) {
     endsAt: raw.endsAt,
     createdAt: raw.createdAt,
     cancelled: !!raw.cancelled,
-    // YCBM's live API only reliably reports a no-show as `noShow: true`; an
-    // UNMARKED booking comes back false/absent (a default, NOT a real "showed"
-    // mark). Map those to null ("unknown") so the live feed never (a) clobbers
-    // an uploaded report's real marks via mergeWithReport, nor (b) gets read as
-    // "showed" downstream — inflating show-up to 100%. The uploaded report +
-    // MJ's "past-unmarked = no-show" rule decide attendance instead.
-    noShow: raw.noShow === true ? true : null,
+    // Tri-state attendance. Coaches mark every concluded session in YCBM
+    // (finish → noShow:false = SHOWED · no-show → noShow:true), so both bools
+    // are REAL marks — verified empirically (a past week returns 0 nulls). Only
+    // an ABSENT field (future/not-yet-concluded) maps to null → handled as
+    // upcoming downstream. Keeping false (not collapsing it to null) preserves
+    // the explicit "showed" signal.
+    noShow: raw.noShow === true ? true : raw.noShow === false ? false : null,
     profileId: raw.profileId,
     team: profile?.subdomain ?? 'aacio',
     appointmentType: profile?.title ?? 'Coaching Session',
