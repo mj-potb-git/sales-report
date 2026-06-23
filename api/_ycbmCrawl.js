@@ -41,7 +41,9 @@ export async function crawlYcbm({
   while (pages < maxPages && (Date.now() - t0) < budgetMs) {
     let page
     try {
-      const r = await fetch(`${base}/bookings?from=${encodeURIComponent(toISO(cursorMs))}&fields=${FIELDS}`, { headers })
+      // Per-page timeout so one hung YCBM request can't block the whole crawl
+      // until the platform kills the function (which read as a 5-min hang live).
+      const r = await fetch(`${base}/bookings?from=${encodeURIComponent(toISO(cursorMs))}&fields=${FIELDS}`, { headers, signal: AbortSignal.timeout(8000) })
       if (!r.ok) break
       page = await r.json()
     } catch { break }

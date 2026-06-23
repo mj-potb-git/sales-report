@@ -12,6 +12,8 @@ const env = process.env
 export const config = { maxDuration: 60 }
 
 export default async function handler(req, res) {
+  // Allow cross-origin reads so the endpoint can be probed/diagnosed directly.
+  res.setHeader('Access-Control-Allow-Origin', '*')
   try {
     const account   = req.query.account === 'aacio' ? 'aacio' : 'ycbm'
     const accountId  = account === 'aacio' ? env.YCBM_AACIO_ACCOUNT_ID : env.YCBM_ACCOUNT_ID
