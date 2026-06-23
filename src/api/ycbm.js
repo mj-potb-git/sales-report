@@ -34,10 +34,16 @@ export function cleanCoachName(name) {
   return c || null
 }
 
-const DEFAULT_FROM_DAYS_BACK    = 45    // ~1.5 months — balance: covers recent months without an over-long cold fetch
-const DEFAULT_TO_DAYS_FORWARD   = 30
+// YCBM paginates only ~10 records/page, oldest-first from the `from` cursor, so
+// a wide back-window crawls for MINUTES before reaching recent dates (measured:
+// 68 pages / 25s only got from -45d to -21d). That left the current week — what
+// MJ actually views — empty in the live feed, so the per-coach cards fell back
+// to a thin report. Keep the back-window tight so the crawl reaches TODAY fast;
+// older history comes from the uploaded report (exact) via mergeWithReport.
+const DEFAULT_FROM_DAYS_BACK    = 25    // ~current + previous few weeks — reaches today in one fast load
+const DEFAULT_TO_DAYS_FORWARD   = 14
 const MAX_PAGES                 = 400
-const PAGINATION_HARD_TIME_LIMIT = 120000 // 120s cap — wider window needs more headroom on cold load
+const PAGINATION_HARD_TIME_LIMIT = 120000 // 120s cap — ample for the tighter window
 
 function toISO(date) {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
