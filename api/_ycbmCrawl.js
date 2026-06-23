@@ -39,23 +39,24 @@ export async function crawlYcbm({
   let pages = 0
   let stale = 0
   let hitEnd = false
+  let stoppedReason = 'budget/maxpages'
+  const trace = []
   while (pages < maxPages && (Date.now() - t0) < budgetMs) {
-    let page
+    let page, httpStatus = 0
     try {
       // Per-page timeout so one hung YCBM request can't block the whole crawl
       // until the platform kills the function (which read as a 5-min hang live).
       const r = await fetch(`${base}/bookings?from=${encodeURIComponent(toISO(cursorMs))}&fields=${FIELDS}`, { headers, signal: AbortSignal.timeout(12000) })
-      if (!r.ok) break
+      httpStatus = r.status
+      if (!r.ok) { stoppedReason = `http ${r.status}`; trace.push({ from: toISO(cursorMs), status: r.status }); break }
       page = await r.json()
-    } catch { break }
-    if (!Array.isArray(page) || page.length === 0) { hitEnd = true; break }
+    } catch (e) { stoppedReason = 'fetch error: ' + String(e?.name || e); break }
+    if (!Array.isArray(page) || page.length === 0) { hitEnd = true; stoppedReason = 'empty page'; break }
 
     // NOTE: do NOT stop on a short page (length < 10). YCBM returns variable
     // page sizes — on Vercel a <10 page appeared mid-stream and falsely ended
-    // the crawl (438 → 215, scrambled per-coach counts). Instead advance the
-    // cursor to the last seen startsAt (dedup absorbs the re-fetched overlap)
-    // and only stop on an empty page, on reaching the window end, or when a
-    // page brings no new records and time can't advance.
+    // the crawl. Advance the cursor to the last seen startsAt (dedup absorbs the
+    // re-fetched overlap) and stop only on empty page, window end, or no progress.
     let maxTs = cursorMs
     let added = 0
     for (const b of page) {
@@ -64,8 +65,9 @@ export async function crawlYcbm({
       const ts = new Date(b.startsAt).getTime()
       if (ts > maxTs) maxTs = ts
     }
+    if (trace.length < 60) trace.push({ from: toISO(cursorMs), n: page.length, added, last: page.length ? page[page.length - 1].startsAt : null, status: httpStatus })
     if (maxTs > reachedMs) reachedMs = maxTs
-    if (maxTs > endMs) { hitEnd = true; break }
+    if (maxTs > endMs) { hitEnd = true; stoppedReason = 'reached window end'; break }
 
     if (maxTs > cursorMs) {
       cursorMs = maxTs            // normal advance; re-fetch from boundary, dedup
@@ -74,7 +76,7 @@ export async function crawlYcbm({
       // Whole page sat on one second (a >page-size same-second cluster) — nudge
       // past it. If nothing new is coming through, we've reached the end.
       cursorMs += 1000
-      if (added === 0) { if (++stale >= 2) { hitEnd = true; break } } else stale = 0
+      if (added === 0) { if (++stale >= 2) { hitEnd = true; stoppedReason = 'stale (no new records)'; break } } else stale = 0
     }
     pages++
   }
@@ -83,5 +85,5 @@ export async function crawlYcbm({
     const ts = new Date(b.startsAt).getTime()
     return ts >= startMs && ts <= endMs
   })
-  return { bookings, reachedMs, pages, partial: !hitEnd }
+  return { bookings, reachedMs, pages, partial: !hitEnd, stoppedReason, trace, totalSeen: seen.size, elapsedMs: Date.now() - t0 }
 }

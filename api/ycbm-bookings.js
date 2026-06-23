@@ -28,15 +28,29 @@ export default async function handler(req, res) {
     const fromDaysBack  = Math.min(120, Math.max(1, Number(req.query.fromDaysBack)  || 14))
     const toDaysForward = Math.min(120, Math.max(0, Number(req.query.toDaysForward) || 10))
 
-    const { bookings, partial } = await crawlYcbm({
+    const result = await crawlYcbm({
       accountId, apiKey, fromDaysBack, toDaysForward,
       budgetMs: 50000, maxPages: 800,
     })
+    const { bookings, partial } = result
 
     res.setHeader('Content-Type', 'application/json')
+    res.setHeader('X-Ycbm-Partial', partial ? '1' : '0')
+
+    // ?debug=1 → return crawl telemetry instead of the array (no edge cache),
+    // to diagnose why the live crawl stops short.
+    if (req.query.debug === '1') {
+      res.setHeader('Cache-Control', 'no-store')
+      res.status(200).json({
+        count: bookings.length, totalSeen: result.totalSeen, pages: result.pages,
+        partial, stoppedReason: result.stoppedReason, elapsedMs: result.elapsedMs,
+        reached: new Date(result.reachedMs).toISOString(), trace: result.trace,
+      })
+      return
+    }
+
     // Cache briefly at the edge so rapid polls/multiple viewers share one crawl.
     res.setHeader('Cache-Control', 's-maxage=20, stale-while-revalidate=40')
-    res.setHeader('X-Ycbm-Partial', partial ? '1' : '0')
     res.status(200).json(bookings)
   } catch (err) {
     res.status(502).json({ error: String(err?.message || err) })
