@@ -14,6 +14,13 @@ export function subscribeReport(handler) { listeners.add(handler); return () => 
 
 const cleanCoach = (n) => (n || '').replace(/^coach\s+/i, '').replace(/\s+of\s+pinoy.*$/i, '').trim() || null
 
+// Welcome Orientation is a general session, NOT a coaching/sales booking.
+// Shared so every coaching view excludes it identically (so totals tally).
+export const isOrientation = (b) =>
+  /orientation/i.test(b.appointmentType || '') ||
+  /orientation/i.test(b.team || '') ||
+  /orientation/i.test(b.raw?.title || '')
+
 // --- CSV parse ---------------------------------------------------------------
 function parseCSV(text) {
   const rows = []; let i = 0, f = '', row = [], q = false

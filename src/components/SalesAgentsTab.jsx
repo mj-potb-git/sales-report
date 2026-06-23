@@ -26,7 +26,7 @@ import HeroBand from './ui/HeroBand'
 import DataSourceBanner from './ui/DataSourceBanner'
 import RevenueTrend from './RevenueTrend'
 import SalesPerformanceCards from './SalesPerformanceCards'
-import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
+import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 import { comparePeriods } from '../api/lakbay'
 import {
@@ -282,7 +282,9 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
   // Merge live API with the accumulated uploaded report (report wins = exact).
   const [repBump, setRepBump] = useState(0)
   useEffect(() => subscribeReport(() => setRepBump(n => n + 1)), [])
-  const ycbm = useMemo(() => mergeWithReport(ycbmApi, 'acquisition'), [ycbmApi, repBump])
+  // Coaching only — exclude Welcome Orientation so the funnel + Sales
+  // Performance tally with the Bookings tab (which also excludes it).
+  const ycbm = useMemo(() => mergeWithReport(ycbmApi, 'acquisition').filter(b => !isOrientation(b)), [ycbmApi, repBump])
   const funnel = useMemo(() => {
     const a = start.getTime(), b = end.getTime()
     const dk = (d) => {
@@ -358,7 +360,7 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
         periodLabel={periodLabel}
         funnel={funnel}
         loading={ycbmLoading}
-        note="Booked/Presented/Show-up galing sa POTB YCBM bookings. Closed/Revenue galing sa LakbayHub sign-up sales."
+        note="Booked/Show-up galing sa POTB YCBM bookings (coaching only, excludes Orientation). Closed/Revenue galing sa LakbayHub sign-up sales."
       />
 
       {/* Revenue trend (LakbayHub sign-up sales) — Week/Month/Year comparison */}

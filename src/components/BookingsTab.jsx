@@ -9,7 +9,7 @@ import PeriodBar from './PeriodBar'
 import CoachPivot from './CoachPivot'
 import BookingTrend from './BookingTrend'
 import YcbmReportUpload from './YcbmReportUpload'
-import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
+import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, PERIODS_WITH_ALL } from '../lib/periods'
 
 function downloadCSV(filename, rows) {
@@ -30,12 +30,8 @@ function downloadCSV(filename, rows) {
 const VIEW_FILTERS = ['Upcoming', 'Past', 'Date Range']
 const PER_PAGE = 10
 
-// Welcome Orientation is a general onboarding session, NOT a sales/coaching
-// booking — exclude it from this tab so it doesn't pollute the funnel/show-up.
-const isOrientation = (b) =>
-  /orientation/i.test(b.appointmentType || '') ||
-  /orientation/i.test(b.team || '') ||
-  /orientation/i.test(b.raw?.title || '')
+// isOrientation is shared from lib/ycbmReport so every coaching view (Bookings,
+// Acquisition funnel, Sales Performance) excludes orientation identically.
 
 // Official POTB session time slots (confirmed by MJ — the 6 high-volume slots).
 // Every booking is bucketed into the NEAREST of these by hour, so odd-hour
