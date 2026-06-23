@@ -33,7 +33,9 @@ export async function crawlYcbm({
   const headers = { Authorization: basicAuth(accountId, apiKey), Accept: 'application/json' }
 
   const seen = new Map()
-  let cursorMs = startMs
+  // Start one second before the window so the first record isn't missed
+  // whether YCBM treats `from` as inclusive or exclusive.
+  let cursorMs = startMs - 1000
   let reachedMs = startMs
   const t0 = Date.now()
   let pages = 0
@@ -53,10 +55,6 @@ export async function crawlYcbm({
     } catch (e) { stoppedReason = 'fetch error: ' + String(e?.name || e); break }
     if (!Array.isArray(page) || page.length === 0) { hitEnd = true; stoppedReason = 'empty page'; break }
 
-    // NOTE: do NOT stop on a short page (length < 10). YCBM returns variable
-    // page sizes — on Vercel a <10 page appeared mid-stream and falsely ended
-    // the crawl. Advance the cursor to the last seen startsAt (dedup absorbs the
-    // re-fetched overlap) and stop only on empty page, window end, or no progress.
     let maxTs = cursorMs
     let added = 0
     for (const b of page) {
@@ -69,14 +67,19 @@ export async function crawlYcbm({
     if (maxTs > reachedMs) reachedMs = maxTs
     if (maxTs > endMs) { hitEnd = true; stoppedReason = 'reached window end'; break }
 
-    if (maxTs > cursorMs) {
-      cursorMs = maxTs            // normal advance; re-fetch from boundary, dedup
+    // YCBM's `from` cursor SKIPS the boundary second's siblings on Vercel
+    // (effectively exclusive), and many bookings share an exact slot time
+    // (10:00/14:00/19:00...) — advancing straight to maxTs dropped them
+    // (438 → 215). So step back to maxTs-1s to RE-FETCH that boundary second
+    // and pick up its siblings; dedup absorbs the overlap. Only when a page
+    // brings nothing new (boundary fully drained, or a rare >page same-second
+    // cluster) do we jump strictly past it; two such stalls = done.
+    if (added > 0) {
+      cursorMs = maxTs - 1000
       stale = 0
     } else {
-      // Whole page sat on one second (a >page-size same-second cluster) — nudge
-      // past it. If nothing new is coming through, we've reached the end.
-      cursorMs += 1000
-      if (added === 0) { if (++stale >= 2) { hitEnd = true; stoppedReason = 'stale (no new records)'; break } } else stale = 0
+      cursorMs = maxTs + 1000
+      if (++stale >= 2) { hitEnd = true; stoppedReason = 'stale (no new records)'; break }
     }
     pages++
   }
