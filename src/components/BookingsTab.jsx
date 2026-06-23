@@ -203,11 +203,15 @@ export default function BookingsTab({ bookings: allBookings = [], mode = 'coachi
     }
   }, [bookings, attBump, sumFrom, sumTo, isCustom, customSet]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Coverage: warn when the selected period reaches PAST the uploaded report's
-  // last day — those days fall back to the incomplete live API (the "25 vs 120"
-  // case). Tells MJ to upload the latest report so the numbers go exact.
+  // Coverage: warn only when the selected period includes ELAPSED days (up to
+  // today) that are AFTER the uploaded report's last day — those fall back to
+  // the incomplete live API (the "25 vs 120" case). Compared by day, and capped
+  // at today, so "All Time"/"Today"/covered periods don't false-warn just
+  // because their nominal end is in the future.
   const reportMeta = useMemo(() => getReportMeta('acquisition'), [repBump])
-  const coverageGap = !!reportMeta && reportMeta.maxMs != null && sumTo.getTime() > reportMeta.maxMs
+  const dayStart = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime() }
+  const coverageGap = !!reportMeta && reportMeta.maxMs != null &&
+    dayStart(Math.min(sumTo.getTime(), Date.now())) > dayStart(reportMeta.maxMs)
 
   return (
     <div className="flex flex-col gap-4">
