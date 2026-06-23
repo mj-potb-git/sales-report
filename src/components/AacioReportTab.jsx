@@ -415,12 +415,14 @@ export default function AacioReportTab() {
     const active     = sched.filter(b => !b.cancelled)
     const cancelled  = sched.filter(b => b.cancelled).length
     const leads      = (createdByDate.get(k) || []).filter(b => !b.cancelled).length
-    // Attendance from YCBM's own noShow flag (source of truth):
-    //   noShow=true → No-Show · past & not flagged → Showed · future → unmarked
+    // Attendance — same rule as the per-coach cards & funnel so totals tally:
+    //   noShow=true → No-Show · noShow=false (explicit report mark) → Showed ·
+    //   past & unmarked → No-Show (per MJ: di na-mark = no show) · future → unmarked
     let showed = 0, noShow = 0, unmarked = 0
     for (const b of active) {
       if (b.noShow === true) noShow++
-      else if (new Date(b.startsAt).getTime() < nowMs) showed++
+      else if (b.noShow === false) showed++
+      else if (new Date(b.startsAt).getTime() < nowMs) noShow++
       else unmarked++
     }
     const tracked    = showed + noShow
@@ -429,7 +431,9 @@ export default function AacioReportTab() {
     const cvr        = active.length > 0 ? Math.round((salesCount / active.length) * 100) : null
     const bySlot     = SLOTS.map(h => {
       const slotBk = active.filter(b => b.hour === h)
-      const att    = slotBk.filter(b => b.noShow !== true && new Date(b.startsAt).getTime() < nowMs).length
+      // Attendee = explicitly showed (report mark). Past-unmarked is a no-show
+      // per MJ's rule, so it is NOT counted here (kept consistent with the rows above).
+      const att    = slotBk.filter(b => b.noShow === false).length
       return { hour: h, bookings: slotBk.length, attendees: att }
     })
     return {

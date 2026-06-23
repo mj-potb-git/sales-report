@@ -113,7 +113,13 @@ export function mapAacioBooking(raw, profilesById) {
     endsAt: raw.endsAt,
     createdAt: raw.createdAt,
     cancelled: !!raw.cancelled,
-    noShow: raw.noShow === true,   // YCBM's own attendance flag (source of truth)
+    // YCBM's live API only reliably reports a no-show as `noShow: true`; an
+    // UNMARKED booking comes back false/absent (a default, NOT a real "showed"
+    // mark). Map those to null ("unknown") so the live feed never (a) clobbers
+    // an uploaded report's real marks via mergeWithReport, nor (b) gets read as
+    // "showed" downstream — inflating show-up to 100%. The uploaded report +
+    // MJ's "past-unmarked = no-show" rule decide attendance instead.
+    noShow: raw.noShow === true ? true : null,
     profileId: raw.profileId,
     team: profile?.subdomain ?? 'aacio',
     appointmentType: profile?.title ?? 'Coaching Session',

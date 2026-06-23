@@ -209,7 +209,11 @@ export function mapBooking(raw, profilesById) {
     team: profile?.subdomain ?? 'unknown',
     appointmentType: profile?.title ?? parsedType,
     status: raw.cancelled ? 'Cancelled' : (raw.noShow ? 'No Show' : null),
-    noShow: raw.noShow === true,   // YCBM's own attendance flag (source of truth)
+    // Tri-state: YCBM's live API only reliably reports a no-show as
+    // `noShow: true`. An UNMARKED booking comes back false/absent (a default,
+    // not a real "showed" mark) → map to null ("unknown") so it never clobbers
+    // an uploaded report nor reads as "showed" (which inflated show-up to 100%).
+    noShow: raw.noShow === true ? true : null,
     coach: cleanCoachName(raw.teamMember?.name),   // assigned coach (Team), or null
     coachEmail: raw.teamMember?.email ?? null,
     startsAt: raw.startsAt,

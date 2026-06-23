@@ -145,11 +145,12 @@ export function mergeWithReport(apiBookings, account) {
   for (const b of getReportBookings(account)) {
     const live = apiById.get(b.id)
     // Report wins for the booking LIST + coach (the live API undercounts and
-    // often lacks coach). But the LIVE YCBM No-Show flag is authoritative for
-    // ATTENDANCE — so when a booking exists in both, keep the report's fields
-    // but take noShow from live (only if live actually has a true/false mark).
-    if (live && (live.noShow === true || live.noShow === false)) {
-      map.set(b.id, { ...b, noShow: live.noShow })
+    // often lacks coach). For ATTENDANCE, the live API only ever asserts a real
+    // no-show (noShow === true) — its `false`/unmarked is a default, not a
+    // "showed" mark (now mapped to null). So a live no-show overrides the
+    // report; otherwise the report's own attendance (true/false/blank) stands.
+    if (live && live.noShow === true) {
+      map.set(b.id, { ...b, noShow: true })
     } else {
       map.set(b.id, b)
     }
