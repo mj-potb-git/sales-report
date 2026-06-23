@@ -87,8 +87,43 @@ export default defineConfig(({ mode }) => {
     },
   }
 
+  // Dev-only middleware for /api/ycbm-bookings (server-side YCBM pagination).
+  // In production this is the Vercel function api/ycbm-bookings.js; locally the
+  // Vite proxy can't run it, so we mount the same shared crawl here.
+  const ycbmBookingsPlugin = {
+    name: 'potb-ycbm-bookings-api',
+    configureServer(server) {
+      server.middlewares.use('/api/ycbm-bookings', async (req, res) => {
+        try {
+          const u = new URL(req.url, 'http://localhost')
+          const account = u.searchParams.get('account') === 'aacio' ? 'aacio' : 'ycbm'
+          const id  = account === 'aacio' ? aacioAccountId : accountId
+          const key = account === 'aacio' ? aacioApiKey    : apiKey
+          if (!id || !key) {
+            res.statusCode = 503
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: `${account} credentials not configured` }))
+            return
+          }
+          const fromDaysBack  = Math.min(120, Math.max(1, Number(u.searchParams.get('fromDaysBack'))  || 14))
+          const toDaysForward = Math.min(120, Math.max(0, Number(u.searchParams.get('toDaysForward')) || 10))
+          const { crawlYcbm } = await import('./api/_ycbmCrawl.js')
+          const { bookings, partial } = await crawlYcbm({ accountId: id, apiKey: key, fromDaysBack, toDaysForward, budgetMs: 50000, maxPages: 800 })
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/json')
+          res.setHeader('X-Ycbm-Partial', partial ? '1' : '0')
+          res.end(JSON.stringify(bookings))
+        } catch (e) {
+          res.statusCode = 502
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: String(e?.message || e) }))
+        }
+      })
+    },
+  }
+
   return {
-    plugins: [react(), tailwindcss(), adminApiPlugin],
+    plugins: [react(), tailwindcss(), adminApiPlugin, ycbmBookingsPlugin],
     build: {
       rollupOptions: {
         output: {

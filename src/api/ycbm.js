@@ -104,6 +104,27 @@ export async function fetchBookings({
   const startOfWindow = new Date(dayStart.getTime() - fromDaysBack  * 86400000)
   const endOfWindow   = new Date(dayStart.getTime() + (toDaysForward + 1) * 86400000 - 1)
 
+  // FAST PATH: let the server paginate (one request) instead of crawling ~40
+  // pages from the browser — which is too slow on Vercel and left the current
+  // week empty. Falls through to the client crawl below if the endpoint is
+  // unavailable (older deploy) or returns nothing.
+  try {
+    const qs = new URLSearchParams({ account: 'ycbm', fromDaysBack: String(fromDaysBack), toDaysForward: String(toDaysForward) })
+    const res = await fetch(`/api/ycbm-bookings?${qs}`, { headers: { Accept: 'application/json' } })
+    if (res.ok) {
+      const arr = await res.json()
+      if (Array.isArray(arr) && arr.length) {
+        _bookingsCache = {
+          seen: new Map(arr.map(b => [b.id, b])),
+          endedAt: endOfWindow.getTime(),
+          window: { start: startOfWindow.getTime(), end: endOfWindow.getTime() },
+        }
+        persistCache()
+        return arr
+      }
+    }
+  } catch { /* endpoint missing/failed — fall back to the client crawl */ }
+
   // Seed from cache when the window matches (subsequent polls). We'll still
   // re-fetch the "tail" (from latest-seen + 1s onward) to pick up new bookings.
   let seen = new Map()

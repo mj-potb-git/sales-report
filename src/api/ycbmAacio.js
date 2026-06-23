@@ -25,8 +25,8 @@ async function get(path) {
 // listed together or it comes back empty (see api/ycbm.js note).
 const BOOKING_FIELDS = 'id,title,startsAt,endsAt,createdAt,cancelled,noShow,profileId,timeZone,location,accountId,tentative,teamMember,teamMember.name,teamMember.email'
 
-const DEFAULT_FROM_DAYS_BACK     = 45
-const DEFAULT_TO_DAYS_FORWARD    = 14
+const DEFAULT_FROM_DAYS_BACK     = 14
+const DEFAULT_TO_DAYS_FORWARD    = 10
 const MAX_PAGES                  = 300
 const PAGINATION_HARD_TIME_LIMIT = 60000
 
@@ -40,6 +40,17 @@ export async function fetchAacioBookings({
   fromDaysBack  = DEFAULT_FROM_DAYS_BACK,
   toDaysForward = DEFAULT_TO_DAYS_FORWARD,
 } = {}) {
+  // FAST PATH: server-side pagination in one request (see api/_ycbmCrawl.js).
+  // Falls through to the client crawl below if the endpoint is unavailable.
+  try {
+    const qs = new URLSearchParams({ account: 'aacio', fromDaysBack: String(fromDaysBack), toDaysForward: String(toDaysForward) })
+    const r = await fetch(`/api/ycbm-bookings?${qs}`, { headers: { Accept: 'application/json' } })
+    if (r.ok) {
+      const arr = await r.json()
+      if (Array.isArray(arr) && arr.length) return arr
+    }
+  } catch { /* fall back to the client crawl */ }
+
   const now           = new Date()
   const startOfWindow = new Date(now.getTime() - fromDaysBack  * 86400000)
   const endOfWindow   = new Date(now.getTime() + toDaysForward * 86400000)
