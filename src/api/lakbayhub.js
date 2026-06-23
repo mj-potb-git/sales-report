@@ -44,6 +44,21 @@ export function isExternalRecord(r) {
   return AACIO_PAYMENT_LINK_IDS.some(id => link.includes(id))
 }
 
+// LakbayHub leaves `sales_closer` blank on ~100% of records — the real closer
+// is encoded in the cluster name (e.g. "ACQUISITION - MARTIN"). Extract it so
+// attribution (Top Closer, per-agent breakdown) shows a real name instead of
+// "Unassigned". Returns '' when the cluster has no recognizable coach name.
+const titleCase = (s) => (s || '').split(/\s+/).map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ')
+export function coachFromCluster(cluster) {
+  const t = (cluster || '').trim()
+  if (!t) return ''
+  let m
+  if ((m = t.match(/^acquisition\s*-\s*(.+)$/i)))     return titleCase(m[1].trim())
+  if ((m = t.match(/external\s+coach\s*-\s*(.+)$/i))) return titleCase(m[1].trim())
+  if ((m = t.match(/^aacio\s+(.+)$/i)))               return titleCase(m[1].trim())
+  return ''
+}
+
 // ---------------------------------------------------------------------------
 // Map a raw LakbayHub record → the internal schema the Sales tab expects.
 //
@@ -76,7 +91,7 @@ export function mapLakbayHubRecord(r, idx) {
   if (!closer && !cluster) reviewReasons.push('no attribution') // no closer AND no cluster
 
   return {
-    sales_agent: closer || 'Unassigned',
+    sales_agent: closer || coachFromCluster(cluster) || 'Unassigned',
     team:        r.cluster_name?.trim() || 'No Cluster',
     date,
     sales_amount: amount,
