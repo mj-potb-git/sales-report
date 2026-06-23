@@ -35,15 +35,17 @@ export function cleanCoachName(name) {
 }
 
 // YCBM paginates only ~10 records/page, oldest-first from the `from` cursor, so
-// a wide back-window crawls for MINUTES before reaching recent dates (measured:
-// 68 pages / 25s only got from -45d to -21d). That left the current week — what
-// MJ actually views — empty in the live feed, so the per-coach cards fell back
-// to a thin report. Keep the back-window tight so the crawl reaches TODAY fast;
-// older history comes from the uploaded report (exact) via mergeWithReport.
-const DEFAULT_FROM_DAYS_BACK    = 25    // ~current + previous few weeks — reaches today in one fast load
-const DEFAULT_TO_DAYS_FORWARD   = 14
+// a wide back-window crawls for a long time before reaching recent dates.
+// Measured locally: 25d = ~75 pages / 28s. But on Vercel each page is a
+// serverless round-trip (~1.5-2s), so 75 pages ≈ 150s — OVER the 120s cap, and
+// the crawl was cut off before reaching the current week (Booked showed 0 live).
+// 14d back ≈ ~40 pages ≈ 60-80s even on Vercel → finishes in one poll and the
+// current week populates. Older history comes from the uploaded report (exact)
+// via mergeWithReport; the incremental/resumable crawl extends coverage anyway.
+const DEFAULT_FROM_DAYS_BACK    = 14    // ~2 weeks — finishes within budget even on slow serverless
+const DEFAULT_TO_DAYS_FORWARD   = 10
 const MAX_PAGES                 = 400
-const PAGINATION_HARD_TIME_LIMIT = 120000 // 120s cap — ample for the tighter window
+const PAGINATION_HARD_TIME_LIMIT = 120000 // 120s cap
 
 function toISO(date) {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
