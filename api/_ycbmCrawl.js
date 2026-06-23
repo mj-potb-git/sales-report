@@ -37,31 +37,45 @@ export async function crawlYcbm({
   let reachedMs = startMs
   const t0 = Date.now()
   let pages = 0
+  let stale = 0
   let hitEnd = false
   while (pages < maxPages && (Date.now() - t0) < budgetMs) {
     let page
     try {
       // Per-page timeout so one hung YCBM request can't block the whole crawl
       // until the platform kills the function (which read as a 5-min hang live).
-      const r = await fetch(`${base}/bookings?from=${encodeURIComponent(toISO(cursorMs))}&fields=${FIELDS}`, { headers, signal: AbortSignal.timeout(8000) })
+      const r = await fetch(`${base}/bookings?from=${encodeURIComponent(toISO(cursorMs))}&fields=${FIELDS}`, { headers, signal: AbortSignal.timeout(12000) })
       if (!r.ok) break
       page = await r.json()
     } catch { break }
     if (!Array.isArray(page) || page.length === 0) { hitEnd = true; break }
 
+    // NOTE: do NOT stop on a short page (length < 10). YCBM returns variable
+    // page sizes — on Vercel a <10 page appeared mid-stream and falsely ended
+    // the crawl (438 → 215, scrambled per-coach counts). Instead advance the
+    // cursor to the last seen startsAt (dedup absorbs the re-fetched overlap)
+    // and only stop on an empty page, on reaching the window end, or when a
+    // page brings no new records and time can't advance.
     let maxTs = cursorMs
+    let added = 0
     for (const b of page) {
+      if (!seen.has(b.id)) added++
       seen.set(b.id, b)
       const ts = new Date(b.startsAt).getTime()
       if (ts > maxTs) maxTs = ts
     }
     if (maxTs > reachedMs) reachedMs = maxTs
     if (maxTs > endMs) { hitEnd = true; break }
-    if (page.length < 10) { hitEnd = true; break }   // short page = no more data
 
-    // Advance to the boundary timestamp (dedup absorbs overlap); nudge +1s if a
-    // whole page sat on one second (a >10 same-minute cluster) to escape it.
-    cursorMs = (maxTs > cursorMs) ? maxTs : (cursorMs + 1000)
+    if (maxTs > cursorMs) {
+      cursorMs = maxTs            // normal advance; re-fetch from boundary, dedup
+      stale = 0
+    } else {
+      // Whole page sat on one second (a >page-size same-second cluster) — nudge
+      // past it. If nothing new is coming through, we've reached the end.
+      cursorMs += 1000
+      if (added === 0) { if (++stale >= 2) { hitEnd = true; break } } else stale = 0
+    }
     pages++
   }
 
