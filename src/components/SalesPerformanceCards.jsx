@@ -4,8 +4,9 @@
 //     API with any accumulated uploaded YCBM report — report wins, so when a
 //     report is uploaded these are EXACT; otherwise it's the live API).
 // Show Up Rate = Show Up ÷ (Show Up + No Show) — concluded appointments only.
-// (Closing Rate removed: it mixed LakbayHub sales with YCBM show-ups across
-//  different sources/date-bases, giving misleading >100% values.)
+// Closing Rate = No. Availed (closed sales, LakbayHub) ÷ Show Up (YCBM) — of the
+//   people who showed up, how many did the coach close. Sources/date-bases
+//   differ so it can read >100% in short ranges; MJ wants it shown regardless.
 import { useMemo, useState, useEffect } from 'react'
 import { Award } from 'lucide-react'
 import { formatPHP } from '../api/lakbay'
@@ -83,6 +84,10 @@ export default function SalesPerformanceCards({
       // LakbayHub sales by YCBM show-ups across different sources/date-bases,
       // producing misleading >100% figures, esp. in short ranges.)
       showUpRate: (c.showup + c.noshow) > 0 ? (c.showup / (c.showup + c.noshow)) * 100 : null,
+      // Closing Rate = closed sales ÷ those who showed up. "—" until someone
+      // shows (avoids a misleading 0%). Can exceed 100% (sales date-base ≠
+      // booking date-base) — shown as-is per MJ's request.
+      closingRate: c.showup > 0 ? (c.availed / c.showup) * 100 : null,
     })).sort((x, y) => y.srp - x.srp || y.availed - x.availed)
   }, [salesRecords, bookings, from, to, attBump, aliases]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -117,6 +122,10 @@ export default function SalesPerformanceCards({
                 <div className="flex items-center justify-between text-sm py-0.5">
                   <span className="text-white/70 text-xs font-medium uppercase tracking-wide">Show Up Rate</span>
                   <span className="font-bold text-white">{c.showUpRate == null ? '—' : `${c.showUpRate.toFixed(2)}%`}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm py-0.5">
+                  <span className="text-white/70 text-xs font-medium uppercase tracking-wide">Closing Rate</span>
+                  <span className="font-bold" style={{ color: GOLD }}>{c.closingRate == null ? '—' : `${c.closingRate.toFixed(2)}%`}</span>
                 </div>
               </div>
             </div>
