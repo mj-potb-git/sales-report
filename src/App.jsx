@@ -15,11 +15,13 @@ const LandingPage       = lazy(() => import('./components/LandingPage'))
 import useYcbmData from './hooks/useYcbmData'
 import { getSettings, subscribeSettings } from './lib/settings'
 import { startAttendancePoller } from './lib/attendance'
+import { startReportSync } from './lib/ycbmReport'
 import { getSession, onAuthChange, signOut } from './lib/auth'
 import { fetchRole, allowedTabsForRole, ROLE_LABELS } from './lib/roles'
 
-// Boot attendance sync once on app load (idempotent)
+// Boot attendance sync + shared YCBM-report sync once on app load (idempotent)
 startAttendancePoller()
+startReportSync()
 
 function SkeletonLoader() {
   return (

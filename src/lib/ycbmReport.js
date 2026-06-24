@@ -1,13 +1,25 @@
 // Accumulating store of uploaded YCBM report bookings, per account
-// ('acquisition' | 'aacio'). The YCBM export only reaches ~30 days back, so MJ
-// uploads regularly and we ACCUMULATE: new bookings are added, ones we've seen
-// before (same booking Id) are UPDATED with the latest values (time/duration
-// can change), and nothing already saved is lost as the export window slides.
+// ('acquisition' = POTB YCBM | 'aacio' = AACIO YCBM).
 //
-// This is the source of truth when present (the live API undercounts busy days).
-// Persisted in localStorage; components subscribe to re-render on change.
+// The YCBM v1 API can't fully paginate busy slots (>10 bookings sharing an exact
+// start time can't be retrieved), so MJ uploads the exact YCBM CSV export and we
+// ACCUMULATE: new bookings are added, ones we've seen (same Id) are updated,
+// nothing already saved is lost as the export window slides.
+//
+// SHARED via Supabase (public.ycbm_reports): the uploader writes once and every
+// invited viewer reads the same report — they never need to upload anything.
+// localStorage is kept only as an instant-render + offline fallback cache (NOT
+// the source of truth). Reads are synchronous (in-memory); writes update memory
+// + localStorage immediately, then upsert to Supabase in the background; a poll
+// pulls other users' uploads. This is the source of truth when present (the live
+// API undercounts busy days).
 
-const KEY = (account) => `potb_ycbm_report_store_${account}`
+import { getSupabase } from '../api/supabase'
+
+const ACCOUNTS = ['acquisition', 'aacio']
+const LS_KEY = (account) => `potb_ycbm_report_store_${account}`
+const POLL_MS = 30_000
+
 const listeners = new Set()
 function notify() { listeners.forEach(fn => { try { fn() } catch { /* ignore */ } }) }
 export function subscribeReport(handler) { listeners.add(handler); return () => listeners.delete(handler) }
@@ -79,41 +91,125 @@ export function parseReportCSV(text) {
   return out
 }
 
-function read(account) {
+// --- In-memory store (source for synchronous reads) --------------------------
+// account → { [bookingId]: booking }
+const _store = {}
+const _updatedAt = {}   // account → Supabase updated_at (skip re-download if unchanged)
+
+function readLS(account) {
   try {
-    const raw = localStorage.getItem(KEY(account))
+    const raw = localStorage.getItem(LS_KEY(account))
     if (!raw) return {}
     const o = JSON.parse(raw)
     return o && typeof o === 'object' ? o : {}
   } catch { return {} }
 }
-function write(account, map) {
-  try { localStorage.setItem(KEY(account), JSON.stringify(map)) } catch { /* quota */ }
+function writeLS(account, map) {
+  try { localStorage.setItem(LS_KEY(account), JSON.stringify(map)) } catch { /* quota */ }
+}
+
+// Seed instantly from localStorage so the UI renders without waiting on network.
+for (const acc of ACCOUNTS) _store[acc] = readLS(acc)
+
+// --- Supabase sync (shared across all viewers) -------------------------------
+async function loadFromSupabase(account) {
+  const { data, error } = await getSupabase()
+    .from('ycbm_reports')
+    .select('bookings, updated_at')
+    .eq('account', account)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return false   // no shared row yet
+  const arr = Array.isArray(data.bookings) ? data.bookings : []
+  const map = {}
+  for (const b of arr) map[b.id] = b
+  _store[account] = map
+  _updatedAt[account] = data.updated_at
+  writeLS(account, map)
+  return true
+}
+
+async function pushToSupabase(account) {
+  const arr = Object.values(_store[account] || {})
+  const updated_at = new Date().toISOString()
+  const { error } = await getSupabase()
+    .from('ycbm_reports')
+    .upsert({ account, bookings: arr, updated_at }, { onConflict: 'account' })
+  if (error) { console.warn(`[ycbmReport] push failed (${account}):`, error.message); return }
+  _updatedAt[account] = updated_at
+}
+
+let _started = false
+/** Boot the shared-report sync. Idempotent — call once on app load. */
+export function startReportSync() {
+  if (_started) return
+  _started = true
+
+  ;(async () => {
+    for (const acc of ACCOUNTS) {
+      try {
+        const ok = await loadFromSupabase(acc)
+        if (ok) { notify(); continue }
+        // No shared row yet — migrate any local-only report up so it becomes
+        // visible to all viewers (e.g. a report uploaded before this change).
+        const local = readLS(acc)
+        if (Object.keys(local).length) {
+          _store[acc] = local
+          await pushToSupabase(acc)
+          notify()
+        }
+      } catch (err) {
+        console.warn(`[ycbmReport] initial load failed (${acc}):`, err.message)
+      }
+    }
+  })()
+
+  // Poll for other users' uploads. Cheap: check updated_at first, only pull the
+  // full blob when it actually changed.
+  setInterval(async () => {
+    if (document.hidden) return
+    for (const acc of ACCOUNTS) {
+      try {
+        const { data, error } = await getSupabase()
+          .from('ycbm_reports')
+          .select('updated_at')
+          .eq('account', acc)
+          .maybeSingle()
+        if (error || !data) continue
+        if (data.updated_at !== _updatedAt[acc]) {
+          await loadFromSupabase(acc)
+          notify()
+        }
+      } catch { /* transient — retry next tick */ }
+    }
+  }, POLL_MS)
 }
 
 /**
  * Merge freshly-parsed report bookings into the accumulated store.
  * Dedups by booking Id: new → added; already-seen → updated (latest wins).
- * Returns { added, updated, total }.
+ * Updates memory + localStorage immediately, then pushes the shared copy to
+ * Supabase in the background. Returns { added, updated, total }.
  */
 export function mergeReport(account, bookings) {
-  const store = read(account)
+  const store = _store[account] || (_store[account] = {})
   let added = 0, updated = 0
   for (const b of bookings) {
     if (store[b.id]) updated++; else added++
     store[b.id] = b
   }
-  write(account, store)
+  writeLS(account, store)
   notify()
+  pushToSupabase(account)   // background — share with all viewers
   return { added, updated, total: Object.keys(store).length }
 }
 
 /** All accumulated report bookings for an account. */
 export function getReportBookings(account) {
-  return Object.values(read(account))
+  return Object.values(_store[account] || {})
 }
 
-/** Summary: total, date range, last-updated. */
+/** Summary: total, date range. */
 export function getReportMeta(account) {
   const arr = getReportBookings(account)
   if (!arr.length) return null
@@ -129,23 +225,22 @@ export function getReportMeta(account) {
 }
 
 export function clearReport(account) {
-  try { localStorage.removeItem(KEY(account)) } catch { /* ignore */ }
+  _store[account] = {}
+  try { localStorage.removeItem(LS_KEY(account)) } catch { /* ignore */ }
   notify()
+  getSupabase().from('ycbm_reports').delete().eq('account', account)
+    .then(({ error }) => { if (error) console.warn(`[ycbmReport] clear failed (${account}):`, error.message) })
 }
 
 /**
  * Union the live API bookings with the accumulated report.
  *
- * The live API is COMPLETE and CORRECT for the bookings it returns (full coach
- * via teamMember + real true/false noShow — verified: a past week returns 0
- * nulls). Its only weakness is COVERAGE: it silently drops some bookings on
- * busy same-minute slots (YCBM's 10/page + `from`-cursor limit) and can't reach
- * far back. The uploaded report has every booking but its columns can be thin
- * (blank Team/No-Show in some exports).
- *
- * So: LIVE is authoritative for shared bookings (never let a thin report blank
- * clobber a good live coach/attendance); the report only ADDS bookings the live
- * feed is missing, and back-fills individual fields the live record lacks.
+ * The live API is COMPLETE and CORRECT for the bookings it returns (full coach +
+ * real true/false noShow). Its weakness is COVERAGE: it can't paginate busy
+ * same-time slots, so it silently drops bookings there. The uploaded report has
+ * every booking. So: LIVE is authoritative for shared booking ids (never let a
+ * thin report blank clobber good live data); the report only ADDS bookings the
+ * live feed is missing, and back-fills fields live lacks.
  */
 export function mergeWithReport(apiBookings, account) {
   const liveById = new Map(apiBookings.map(b => [b.id, b]))
@@ -153,12 +248,8 @@ export function mergeWithReport(apiBookings, account) {
   for (const r of getReportBookings(account)) {
     const live = liveById.get(r.id)
     if (!live) {
-      // Booking the live feed never returned (older than its window, or dropped
-      // on a busy slot) — take the report's copy as-is.
       map.set(r.id, r)
     } else {
-      // Booking in both: keep live, but back-fill any field live is missing
-      // from the report (so a thin export can never erase good live data).
       map.set(r.id, {
         ...r,
         ...live,
