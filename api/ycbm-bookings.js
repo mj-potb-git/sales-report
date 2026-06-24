@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   // Allow cross-origin reads so the endpoint can be probed/diagnosed directly.
   res.setHeader('Access-Control-Allow-Origin', '*')
   // Build marker so a given deploy can be identified from a cross-origin probe.
-  res.setHeader('X-Build-Marker', 'crawl-v3-no-shortpage')
+  res.setHeader('X-Build-Marker', 'crawl-v4-reinclude-boundary')
   res.setHeader('Access-Control-Expose-Headers', 'X-Build-Marker, X-Ycbm-Partial')
   try {
     const account   = req.query.account === 'aacio' ? 'aacio' : 'ycbm'
