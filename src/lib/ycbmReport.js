@@ -112,25 +112,15 @@ function writeLS(account, map) {
 for (const acc of ACCOUNTS) _store[acc] = readLS(acc)
 
 // --- Supabase sync (shared across all viewers) -------------------------------
-async function loadFromSupabase(account) {
-  const { data, error } = await getSupabase()
-    .from('ycbm_reports')
-    .select('bookings, updated_at')
-    .eq('account', account)
-    .maybeSingle()
-  if (error) throw error
-  if (!data) return false   // no shared row yet
-  const arr = Array.isArray(data.bookings) ? data.bookings : []
-  const map = {}
-  for (const b of arr) map[b.id] = b
-  _store[account] = map
-  _updatedAt[account] = data.updated_at
-  writeLS(account, map)
-  return true
-}
+// The report is an ACCUMULATING set — it only grows. So loads and pushes UNION
+// by booking id; they never replace/shrink. This prevents a browser whose
+// Supabase read failed (e.g. a broken anon key) from clobbering the shared row
+// with an empty/partial set, and lets any browser holding a fuller local copy
+// HEAL the shared row back.
 
 async function pushToSupabase(account) {
   const arr = Object.values(_store[account] || {})
+  if (!arr.length) return   // never overwrite the shared row with an empty set
   const updated_at = new Date().toISOString()
   const { error } = await getSupabase()
     .from('ycbm_reports')
@@ -139,33 +129,52 @@ async function pushToSupabase(account) {
   _updatedAt[account] = updated_at
 }
 
+// Pull the shared row, UNION it into the local store (never lose local ids),
+// and if the local copy holds bookings the shared row is missing, push the
+// union back up to heal it.
+async function reconcile(account) {
+  let row
+  try {
+    const { data, error } = await getSupabase()
+      .from('ycbm_reports')
+      .select('bookings, updated_at')
+      .eq('account', account)
+      .maybeSingle()
+    if (error) throw error
+    row = data
+  } catch (err) {
+    console.warn(`[ycbmReport] reconcile failed (${account}):`, err.message)
+    return
+  }
+
+  const remoteArr = row && Array.isArray(row.bookings) ? row.bookings : []
+  const remoteIds = new Set(remoteArr.map(b => b.id))
+  const local = _store[account] || {}
+  const localIds = Object.keys(local)
+
+  // Union (remote wins per id for freshest attendance), keeping all local ids.
+  const union = { ...local }
+  for (const b of remoteArr) union[b.id] = b
+  _store[account] = union
+  writeLS(account, union)
+  if (row) _updatedAt[account] = row.updated_at
+  notify()
+
+  // Heal: local holds ids the shared row lacks → push the fuller union up.
+  const localOnly = localIds.some(id => !remoteIds.has(id))
+  if (localOnly) await pushToSupabase(account)
+}
+
 let _started = false
 /** Boot the shared-report sync. Idempotent — call once on app load. */
 export function startReportSync() {
   if (_started) return
   _started = true
 
-  ;(async () => {
-    for (const acc of ACCOUNTS) {
-      try {
-        const ok = await loadFromSupabase(acc)
-        if (ok) { notify(); continue }
-        // No shared row yet — migrate any local-only report up so it becomes
-        // visible to all viewers (e.g. a report uploaded before this change).
-        const local = readLS(acc)
-        if (Object.keys(local).length) {
-          _store[acc] = local
-          await pushToSupabase(acc)
-          notify()
-        }
-      } catch (err) {
-        console.warn(`[ycbmReport] initial load failed (${acc}):`, err.message)
-      }
-    }
-  })()
+  ;(async () => { for (const acc of ACCOUNTS) await reconcile(acc) })()
 
-  // Poll for other users' uploads. Cheap: check updated_at first, only pull the
-  // full blob when it actually changed.
+  // Poll for other users' uploads — reconcile only when updated_at changed, OR
+  // when this browser still holds local-only bookings to heal.
   setInterval(async () => {
     if (document.hidden) return
     for (const acc of ACCOUNTS) {
@@ -175,11 +184,9 @@ export function startReportSync() {
           .select('updated_at')
           .eq('account', acc)
           .maybeSingle()
-        if (error || !data) continue
-        if (data.updated_at !== _updatedAt[acc]) {
-          await loadFromSupabase(acc)
-          notify()
-        }
+        if (error) continue
+        const changed = !data || data.updated_at !== _updatedAt[acc]
+        if (changed) await reconcile(acc)
       } catch { /* transient — retry next tick */ }
     }
   }, POLL_MS)
