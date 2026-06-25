@@ -238,7 +238,21 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
   const [showMore, setShowMore] = useState(false)  // collapse deep analytics by default
   const today = new Date()
   const isCustom = periodId === 'custom' && customDates.length > 0
-  const { start, end } = periodRange(periodId, monthKey)
+  // periodRange() has no 'custom' case — it falls through to TODAY. For a custom
+  // selection, derive start/end from the picked days' min→max so the funnel's
+  // window filter (and the per-coach cards) actually span the custom range
+  // instead of collapsing to today (which made Booked/Show-up read 0).
+  const customRange = useMemo(() => {
+    if (!isCustom) return null
+    const sorted = [...customDates].sort()
+    const fromKey = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d) }
+    const s = fromKey(sorted[0]); s.setHours(0, 0, 0, 0)
+    const e = fromKey(sorted[sorted.length - 1]); e.setHours(23, 59, 59, 999)
+    return { start: s, end: e }
+  }, [isCustom, customDates])
+  const base = periodRange(periodId, monthKey)
+  const start = customRange ? customRange.start : base.start
+  const end   = customRange ? customRange.end   : base.end
   const customSet = useMemo(() => new Set(customDates), [customDates])
   const ranged = isCustom
     ? records.filter(r => customSet.has(r.date))
