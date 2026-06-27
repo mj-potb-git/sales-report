@@ -114,7 +114,8 @@ export default function UserManagementTab() {
     setError('')
     try {
       await adminApi('PATCH', { email: userEmail, role: newRole })
-      setUsers(us => us.map(u => u.email === userEmail ? { ...u, role: newRole } : u))
+      const now = new Date().toISOString()
+      setUsers(us => us.map(u => u.email === userEmail ? { ...u, role: newRole, updated_at: now } : u))
     } catch (e) { setError(e.message) }
   }
 
@@ -132,7 +133,8 @@ export default function UserManagementTab() {
     setError('')
     try {
       await adminApi('PATCH', { email: userEmail, name: newName })
-      setUsers(us => us.map(u => u.email === userEmail ? { ...u, name: newName } : u))
+      const now = new Date().toISOString()
+      setUsers(us => us.map(u => u.email === userEmail ? { ...u, name: newName, updated_at: now } : u))
     } catch (e) { setError(e.message) }
   }
 
@@ -262,7 +264,7 @@ export default function UserManagementTab() {
                     </select>
                   </td>
                   <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
-                    {u.updated_at ? new Date(u.updated_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                    {u.updated_at ? new Date(u.updated_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => resetPassword(u.email)} title="Reset password"
