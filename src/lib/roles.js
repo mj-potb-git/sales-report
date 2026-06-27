@@ -12,7 +12,7 @@ export const ROLE_TABS = {
   owner:     ['insights', 'bookings', 'orientation', 'dashboard', 'sales', 'officers', 'aacio', 'users', 'settings'],
   admin:     ['insights', 'bookings', 'orientation', 'dashboard', 'sales', 'officers', 'aacio', 'settings'],
   sales:     ['officers'],
-  signup:    ['bookings', 'orientation', 'sales'],
+  signup:    ['bookings', 'sales', 'aacio'],   // Sign-up Team: Bookings, Acquisition (id=sales), AACIO
   marketing: ['dashboard'],
   aacio:     ['aacio'],
 }
@@ -21,7 +21,7 @@ export const ROLE_LABELS = {
   owner:     'Owner',
   admin:     'Admin',
   sales:     'Sales',
-  signup:    'Sign-up',
+  signup:    'Sign-up Team',
   marketing: 'Marketing',
   aacio:     'AACIO',
 }
