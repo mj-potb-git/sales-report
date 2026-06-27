@@ -36,6 +36,23 @@ function tabsForRole(role) {
   return ids.filter(t => t !== 'settings' && t !== 'users')
 }
 
+// Inline-editable name. Saves on blur or Enter, only when the value changed.
+function NameCell({ value, onSave }) {
+  const [val, setVal] = useState(value || '')
+  useEffect(() => { setVal(value || '') }, [value])
+  const commit = () => { const t = val.trim(); if (t !== (value || '')) onSave(t) }
+  return (
+    <input
+      value={val}
+      onChange={e => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur() } if (e.key === 'Escape') { setVal(value || ''); e.currentTarget.blur() } }}
+      placeholder="—"
+      className="w-full max-w-[180px] rounded-lg border border-transparent hover:border-gray-200 focus:border-teal-600 focus:ring-2 focus:ring-teal-600/15 px-2 py-1 text-sm outline-none bg-transparent"
+    />
+  )
+}
+
 export default function UserManagementTab() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -107,6 +124,26 @@ export default function UserManagementTab() {
     try {
       await adminApi('DELETE', { email: userEmail })
       setUsers(us => us.filter(u => u.email !== userEmail))
+    } catch (e) { setError(e.message) }
+  }
+
+  // Save an edited name (called on blur/Enter only when it actually changed).
+  async function saveName(userEmail, newName) {
+    setError('')
+    try {
+      await adminApi('PATCH', { email: userEmail, name: newName })
+      setUsers(us => us.map(u => u.email === userEmail ? { ...u, name: newName } : u))
+    } catch (e) { setError(e.message) }
+  }
+
+  // Reset a user's password and surface the new one to hand over.
+  async function resetPassword(userEmail) {
+    if (!window.confirm(`Reset the password for ${userEmail}? Bibigyan ka ng bagong password na ipapasa sa kanya.`)) return
+    setError(''); setCreated(null); setCopied(false)
+    try {
+      const role = users.find(u => u.email === userEmail)?.role
+      const res = await adminApi('PATCH', { email: userEmail, resetPassword: true })
+      setCreated({ email: userEmail, password: res.password, role, created: false })
     } catch (e) { setError(e.message) }
   }
 
@@ -215,7 +252,9 @@ export default function UserManagementTab() {
               ) : users.map(u => (
                 <tr key={u.email} className="hover:bg-gray-50">
                   <td className="px-4 py-2.5 font-medium text-gray-900 whitespace-nowrap">{u.email}</td>
-                  <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{u.name || '—'}</td>
+                  <td className="px-4 py-2.5">
+                    <NameCell value={u.name} onSave={(name) => saveName(u.email, name)} />
+                  </td>
                   <td className="px-4 py-2.5">
                     <select value={u.role} onChange={e => changeRole(u.email, e.target.value)}
                             className="rounded-lg border border-gray-200 px-2 py-1 text-xs bg-white">
@@ -225,9 +264,13 @@ export default function UserManagementTab() {
                   <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
                     {u.updated_at ? new Date(u.updated_at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                   </td>
-                  <td className="px-4 py-2.5 text-right">
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    <button onClick={() => resetPassword(u.email)} title="Reset password"
+                            className="text-gray-300 hover:text-teal-700 transition-colors mr-3 align-middle">
+                      <KeyRound size={15} />
+                    </button>
                     <button onClick={() => removeUser(u.email)} title="Remove access"
-                            className="text-gray-300 hover:text-red-600 transition-colors">
+                            className="text-gray-300 hover:text-red-600 transition-colors align-middle">
                       <Trash2 size={15} />
                     </button>
                   </td>

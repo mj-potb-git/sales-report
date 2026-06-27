@@ -92,15 +92,43 @@ export function createAdminHandler({ url, serviceKey }) {
         return { status: 200, body: { email, role, name, password, created } }
       }
 
-      // --- Change a user's role ---
+      // --- Edit a user: role and/or name, or reset their password ---
       if (method === 'PATCH') {
         const email = String(body.email || '').trim().toLowerCase()
-        const role  = String(body.role || '').trim().toLowerCase()
-        if (!email || !VALID_ROLES.includes(role)) return { status: 400, body: { error: 'valid email and role required' } }
-        const { error } = await admin.from('user_roles')
-          .upsert({ email, role, updated_at: new Date().toISOString() }, { onConflict: 'email' })
+        if (!email) return { status: 400, body: { error: 'email required' } }
+
+        // Reset password → generate a new one and return it to hand over.
+        if (body.resetPassword) {
+          const password = genPassword()
+          const { data: list } = await admin.auth.admin.listUsers()
+          const u = list?.users?.find(x => x.email?.toLowerCase() === email)
+          if (!u) return { status: 404, body: { error: `no login found for ${email}` } }
+          const { error } = await admin.auth.admin.updateUserById(u.id, { password })
+          if (error) return { status: 400, body: { error: error.message } }
+          return { status: 200, body: { ok: true, email, password, reset: true } }
+        }
+
+        // Otherwise edit role and/or name (only the fields provided).
+        const patch = { updated_at: new Date().toISOString() }
+        if (body.role !== undefined) {
+          const role = String(body.role).trim().toLowerCase()
+          if (!VALID_ROLES.includes(role)) return { status: 400, body: { error: `invalid role (valid: ${VALID_ROLES.join(', ')})` } }
+          patch.role = role
+        }
+        if (body.name !== undefined) patch.name = body.name ? String(body.name).trim() : null
+        if (Object.keys(patch).length === 1) return { status: 400, body: { error: 'nothing to update' } }
+
+        const { error } = await admin.from('user_roles').update(patch).eq('email', email)
         if (error) throw error
-        return { status: 200, body: { ok: true, email, role } }
+        // Keep the auth user's display name in sync when the name changed.
+        if (patch.name !== undefined) {
+          try {
+            const { data: list } = await admin.auth.admin.listUsers()
+            const u = list?.users?.find(x => x.email?.toLowerCase() === email)
+            if (u) await admin.auth.admin.updateUserById(u.id, { user_metadata: { name: patch.name } })
+          } catch { /* non-fatal */ }
+        }
+        return { status: 200, body: { ok: true, email, ...patch } }
       }
 
       // --- Remove a user (revoke login + role) ---
