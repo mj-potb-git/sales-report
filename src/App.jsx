@@ -9,6 +9,7 @@ const SalesDashboard    = lazy(() => import('./components/SalesDashboard'))
 const SalesAgentsTab    = lazy(() => import('./components/SalesAgentsTab'))
 const AccountOfficersTab = lazy(() => import('./components/AccountOfficersTab'))
 const AacioReportTab    = lazy(() => import('./components/AacioReportTab'))
+const AdsTab            = lazy(() => import('./components/AdsTab'))
 const UserManagementTab = lazy(() => import('./components/UserManagementTab'))
 const SettingsTab       = lazy(() => import('./components/SettingsTab'))
 const LandingPage       = lazy(() => import('./components/LandingPage'))
@@ -217,6 +218,8 @@ export default function App() {
             <AccountOfficersTab />
           ) : currentTab === 'aacio' ? (
             <AacioReportTab />
+          ) : currentTab === 'ads' ? (
+            <AdsTab />
           ) : currentTab === 'insights' ? (
             <InsightsTab userName={settings.userName} onJumpTab={setActiveTab} />
           ) : loading ? (
