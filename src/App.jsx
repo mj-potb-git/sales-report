@@ -127,8 +127,24 @@ export default function App() {
   useEffect(() => {
     if (!sessionEmail) return
     let alive = true
-    fetchRole(sessionEmail).then((r) => { if (alive) setRoleState({ email: sessionEmail, role: r }) })
-    return () => { alive = false }
+    // Re-fetch the role periodically (and on tab focus) so role/access changes
+    // an owner makes propagate to already-logged-in users WITHOUT a re-login.
+    // Only updates state when the role actually changed (no needless re-render).
+    const refresh = () => fetchRole(sessionEmail).then((r) => {
+      if (!alive) return
+      setRoleState(prev => (prev && prev.email === sessionEmail && prev.role === r) ? prev : { email: sessionEmail, role: r })
+    })
+    refresh()
+    const id = setInterval(() => { if (!document.hidden) refresh() }, 60_000)
+    const onFocus = () => { if (!document.hidden) refresh() }
+    document.addEventListener('visibilitychange', onFocus)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      alive = false
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onFocus)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [sessionEmail])
   const role = (roleState && roleState.email === sessionEmail) ? roleState.role : 'loading'
 
