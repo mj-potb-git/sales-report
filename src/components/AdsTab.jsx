@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Megaphone, AlertTriangle, TrendingUp, Wallet, Target, RefreshCw,
-  PauseCircle, ExternalLink, Rocket,
+  PauseCircle, ExternalLink, Rocket, PlayCircle,
 } from 'lucide-react'
 import { fetchAdPerformance } from '../api/metaAds'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
@@ -133,7 +133,7 @@ export default function AdsTab() {
           <p className="text-gray-500 text-xs mt-2">Check the Meta token in Settings — it may have expired.</p>
         </div>
       ) : (() => {
-        const { summary, ads, toTurnOff, winners } = data
+        const { summary, ads, toTurnOff, winners, toTurnOn } = data
         return (
           <>
             {/* Summary KPIs */}
@@ -171,6 +171,32 @@ export default function AdsTab() {
                 </ul>
               )}
             </section>
+
+            {/* Turn ON — paused ads with a strong lifetime record */}
+            {toTurnOn && toTurnOn.length > 0 && (
+              <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+                  <PlayCircle size={16} className="text-blue-600" />
+                  <h3 className="font-semibold text-gray-900">Turn these on ({toTurnOn.length})</h3>
+                  <span className="text-[11px] text-gray-500 ml-auto">currently off, but strong lifetime record (cheap cost/lead + volume)</span>
+                </div>
+                <ul className="divide-y divide-gray-50">
+                  {toTurnOn.slice(0, 10).map(ad => (
+                    <li key={ad.id} className="px-5 py-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <AdName ad={ad} />
+                        <p className="text-xs text-gray-400 truncate">{ad.campaign}</p>
+                        <p className="text-xs text-blue-600 mt-0.5">▶ Lifetime: {ad.histResults} results at {formatPHP(ad.histCpr)}/lead</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-bold text-blue-700">{formatPHP(ad.histCpr)}/lead</p>
+                        <p className="text-xs text-gray-500">{formatPHP(ad.histSpend)} lifetime spend</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {/* Winners — scale these */}
             {winners.length > 0 && (

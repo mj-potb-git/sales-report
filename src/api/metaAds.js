@@ -93,10 +93,14 @@ export async function fetchAdPerformance({ since, until } = {}) {
     since = ymd(from); until = ymd(now)
   }
   const fields = 'ad_id,ad_name,campaign_name,adset_name,spend,impressions,clicks,ctr,frequency,actions'
-  const [insightsJson, adsJson, acctJson] = await Promise.all([
+  const histFields = 'ad_id,ad_name,campaign_name,spend,actions'
+  const [insightsJson, adsJson, acctJson, histJson] = await Promise.all([
     get(`/insights?level=ad&fields=${fields}&${timeRangeQuery(since, until)}&limit=1000`),
     get(`/ads?fields=id,name,effective_status&limit=1000`).catch(() => ({ data: [] })),
     get(`?fields=id`).catch(() => ({})),
+    // Lifetime record per ad — used to find OFF ads that historically performed
+    // well (cheap cost/lead, good volume) and are worth turning back ON.
+    get(`/insights?level=ad&fields=${histFields}&date_preset=maximum&limit=1000`).catch(() => ({ data: [] })),
   ])
   const accountNum = String(acctJson.id || '').replace(/^act_/, '')
   const statusById = new Map((adsJson.data || []).map(a => [a.id, a.effective_status]))
@@ -135,6 +139,39 @@ export async function fetchAdPerformance({ since, until } = {}) {
     .sort((a, b) => (a.cpr ?? Infinity) - (b.cpr ?? Infinity))
   const wastedSpend = toTurnOff.reduce((s, a) => s + a.spend, 0)
 
+  // --- "Turn ON" suggestions ------------------------------------------------
+  // OFF ads with a strong LIFETIME record (cheap cost/lead + real volume) are
+  // worth re-activating. Judged on lifetime numbers, not the selected period
+  // (a paused ad shows 0 in the current period).
+  let histSpend = 0, histResults = 0
+  const histById = new Map()
+  for (const row of (histJson.data || [])) {
+    const sp = Math.round(num(row.spend))
+    const res = sumActions(row.actions, LEAD_TYPES) + sumActions(row.actions, MSG_TYPES)
+    histSpend += sp; histResults += res
+    histById.set(row.ad_id, {
+      name: row.ad_name || '(no name)',
+      campaign: row.campaign_name || '',
+      spend: sp, results: res,
+      cpr: res > 0 ? Math.round(sp / res) : null,
+    })
+  }
+  const histAvgCpr = histResults > 0 ? histSpend / histResults : 0
+  const toTurnOn = []
+  for (const [adId, status] of statusById) {
+    if (status !== 'PAUSED') continue            // ad-level paused (campaign still runnable)
+    const h = histById.get(adId)
+    if (!h || h.cpr == null) continue
+    if (h.results >= 20 && histAvgCpr && h.cpr <= histAvgCpr) {
+      toTurnOn.push({
+        id: adId, name: h.name, campaign: h.campaign,
+        histSpend: h.spend, histResults: h.results, histCpr: h.cpr,
+        link: adManagerLink(accountNum, adId),
+      })
+    }
+  }
+  toTurnOn.sort((a, b) => a.histCpr - b.histCpr)
+
   // Per-campaign rollup (active + paused combined; ranked by spend).
   const campMap = new Map()
   for (const a of ads) {
@@ -148,9 +185,10 @@ export async function fetchAdPerformance({ since, until } = {}) {
     .sort((a, b) => b.spend - a.spend)
 
   return {
-    ads, campaigns, toTurnOff, winners,
+    ads, campaigns, toTurnOff, winners, toTurnOn,
     accountNum,
     range: { since, until },
+    histAvgCpr: Math.round(histAvgCpr),
     summary: {
       totalSpend, totalLeads, totalMsg, totalResults,
       avgCpr: Math.round(avgCpr),
@@ -158,6 +196,7 @@ export async function fetchAdPerformance({ since, until } = {}) {
       activeCount: activeAds.length,
       turnOffCount: toTurnOff.length,
       winnerCount: winners.length,
+      turnOnCount: toTurnOn.length,
       wastedSpend,
     },
   }
