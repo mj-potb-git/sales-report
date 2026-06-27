@@ -43,6 +43,30 @@ export function allowedTabsForRole(role) {
 }
 
 /**
+ * Resolve a user's role AND name by email from public.user_roles, so each
+ * logged-in user is greeted by their OWN name (not a shared default). Owners
+ * always resolve to the 'owner' role. Returns { role, name }.
+ */
+export async function fetchProfile(email) {
+  if (!email) return { role: null, name: null }
+  const lower = email.toLowerCase()
+  let role = null, name = null
+  try {
+    const { data, error } = await getSupabase()
+      .from('user_roles')
+      .select('role, name')
+      .eq('email', lower)
+      .maybeSingle()
+    if (error) throw error
+    if (data) { role = data.role || null; name = data.name || null }
+  } catch (err) {
+    console.warn('[roles] fetchProfile failed:', err.message)
+  }
+  if (OWNER_EMAILS.has(lower)) role = 'owner'   // owners can't be demoted/locked out
+  return { role, name }
+}
+
+/**
  * Resolve a user's role by email from public.user_roles.
  * Returns the role string, or null if none is assigned / on error.
  */

@@ -18,7 +18,7 @@ import { getSettings, subscribeSettings } from './lib/settings'
 import { startAttendancePoller } from './lib/attendance'
 import { startReportSync } from './lib/ycbmReport'
 import { getSession, onAuthChange, signOut } from './lib/auth'
-import { fetchRole, allowedTabsForRole, ROLE_LABELS } from './lib/roles'
+import { fetchProfile, allowedTabsForRole, ROLE_LABELS } from './lib/roles'
 
 // Boot attendance sync + shared YCBM-report sync once on app load (idempotent)
 startAttendancePoller()
@@ -122,17 +122,17 @@ export default function App() {
   // ── Role gate ──────────────────────────────────────────────────────
   // Track which email the resolved role belongs to, so a user switch shows
   // 'loading' again instead of briefly flashing the previous user's tabs.
-  const [roleState, setRoleState] = useState(null) // { email, role } | null
+  const [roleState, setRoleState] = useState(null) // { email, role, name } | null
   const sessionEmail = session && session !== 'checking' ? session.user?.email : null
   useEffect(() => {
     if (!sessionEmail) return
     let alive = true
-    // Re-fetch the role periodically (and on tab focus) so role/access changes
+    // Re-fetch role + name periodically (and on tab focus) so role/access changes
     // an owner makes propagate to already-logged-in users WITHOUT a re-login.
-    // Only updates state when the role actually changed (no needless re-render).
-    const refresh = () => fetchRole(sessionEmail).then((r) => {
+    // Only updates state when something actually changed (no needless re-render).
+    const refresh = () => fetchProfile(sessionEmail).then((p) => {
       if (!alive) return
-      setRoleState(prev => (prev && prev.email === sessionEmail && prev.role === r) ? prev : { email: sessionEmail, role: r })
+      setRoleState(prev => (prev && prev.email === sessionEmail && prev.role === p.role && prev.name === p.name) ? prev : { email: sessionEmail, role: p.role, name: p.name })
     })
     refresh()
     const id = setInterval(() => { if (!document.hidden) refresh() }, 60_000)
@@ -147,6 +147,14 @@ export default function App() {
     }
   }, [sessionEmail])
   const role = (roleState && roleState.email === sessionEmail) ? roleState.role : 'loading'
+
+  // Greeting/badge name comes from the LOGGED-IN user's account (user_roles.name),
+  // NOT the per-browser personalization default — so each user sees their OWN
+  // name even on a shared device. Falls back to the email prefix.
+  const profileName = (roleState && roleState.email === sessionEmail) ? roleState.name : null
+  const displayName = (profileName && profileName.trim())
+    || (sessionEmail ? sessionEmail.split('@')[0] : '')
+    || 'there'
 
   const allowedTabs = useMemo(
     () => (role && role !== 'loading' ? allowedTabsForRole(role) : []),
@@ -212,7 +220,7 @@ export default function App() {
                 )}
               </div>
             </div>
-            <UserBadge userName={settings.userName} userRole={ROLE_LABELS[role] || settings.userRole} onSignOut={signOut} />
+            <UserBadge userName={displayName} userRole={ROLE_LABELS[role] || settings.userRole} onSignOut={signOut} />
           </div>
           <TabNav activeTab={currentTab} onTabChange={setActiveTab} allowedTabs={allowedTabs} />
         </div>
@@ -237,7 +245,7 @@ export default function App() {
           ) : currentTab === 'ads' ? (
             <AdsTab />
           ) : currentTab === 'insights' ? (
-            <InsightsTab userName={settings.userName} onJumpTab={setActiveTab} />
+            <InsightsTab userName={displayName} onJumpTab={setActiveTab} />
           ) : loading ? (
             <SkeletonLoader />
           ) : error ? (
