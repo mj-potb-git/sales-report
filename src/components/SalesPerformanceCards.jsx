@@ -59,7 +59,7 @@ export default function SalesPerformanceCards({
     const b = to ? to.getTime() : Infinity
     const map = new Map()
     const get = (key, fallback) => {
-      if (!map.has(key)) map.set(key, { key, name: fallback || titleCase(key), availed: 0, srp: 0, appt: 0, showup: 0, noshow: 0 })
+      if (!map.has(key)) map.set(key, { key, name: fallback || titleCase(key), availed: 0, srp: 0, appt: 0, showup: 0, noshow: 0, cancelled: 0 })
       return map.get(key)
     }
     for (const r of salesRecords) {
@@ -69,10 +69,13 @@ export default function SalesPerformanceCards({
       c.availed += 1; c.srp += r.sales_amount || 0
     }
     for (const bk of bookings) {
-      if (!bk.coach || bk.cancelled === true || bk.status === 'Cancelled') continue
+      if (!bk.coach) continue
       const t = new Date(bk.startsAt).getTime(); if (t < a || t > b) continue
       const { key, name } = resolve(bk.coach)
       const c = get(key, name || bk.coach); c.name = name || bk.coach
+      // Cancelled bookings still count as an appointment that was made (per MJ),
+      // tracked separately — they don't go into the active Appointment/Show-up.
+      if (bk.cancelled === true || bk.status === 'Cancelled') { c.cancelled += 1; continue }
       c.appt += 1
       const att = attOf(bk, now)
       if (att === 'showed') c.showup += 1; else if (att === 'no_show') c.noshow += 1
@@ -113,6 +116,7 @@ export default function SalesPerformanceCards({
                 ['Appointment', c.appt],
                 ['Show Up', c.showup],
                 ['No Show', c.noshow],
+                ['Cancelled', c.cancelled],
               ].map(([l, v]) => (
                 <div key={l} className="flex items-center justify-between text-sm py-0.5">
                   <span className="text-white/70 text-xs font-medium uppercase tracking-wide">{l}</span>
