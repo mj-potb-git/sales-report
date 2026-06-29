@@ -74,9 +74,18 @@ export function coachFromCluster(cluster) {
 //
 // Extra LakbayHub fields are preserved on the mapped record under `meta` so
 // drill-down views can surface them without re-fetching.
+// A single POTB/AACIO sale is at most a few hundred-K; anything above this is a
+// data-entry typo (an extra run of zeros). One such record (₱30B under
+// "ACQUISITION - PRINCESS") blew up her SRP and the revenue totals. We DON'T
+// count a suspicious amount (treat it as 0) and flag it for review instead of
+// letting it pollute every total. The original value is kept in meta.
+const MAX_REASONABLE_AMOUNT = 1_000_000
+
 export function mapLakbayHubRecord(r, idx) {
-  const date    = r.date_paid || r.sales_call_date || null
-  const amount  = Number(r.amount_paid) || 0
+  const date       = r.date_paid || r.sales_call_date || null
+  const rawAmount  = Number(r.amount_paid) || 0
+  const suspicious = rawAmount > MAX_REASONABLE_AMOUNT
+  const amount     = suspicious ? 0 : rawAmount
   const closer  = r.sales_closer?.trim() || ''
   const cluster = r.cluster_name?.trim() || ''
 
@@ -87,7 +96,8 @@ export function mapLakbayHubRecord(r, idx) {
   // no cluster — not every missing closer.
   const reviewReasons = []
   if (!date)              reviewReasons.push('no date')         // can't be placed in any period
-  if (!amount)            reviewReasons.push('zero amount')     // paid record with no amount
+  if (suspicious)         reviewReasons.push(`suspicious amount (₱${rawAmount.toLocaleString()}) — not counted`)
+  else if (!amount)       reviewReasons.push('zero amount')     // paid record with no amount
   if (!closer && !cluster) reviewReasons.push('no attribution') // no closer AND no cluster
 
   return {
@@ -108,6 +118,7 @@ export function mapLakbayHubRecord(r, idx) {
       facebook:       r.facebook_profile,
       payment_link:   r.payment_link_used,
       cluster_id:     r.cluster_id,
+      ...(suspicious ? { raw_amount: rawAmount } : {}),
     },
   }
 }
