@@ -12,6 +12,7 @@ import {
   Minus, Activity,
 } from 'lucide-react'
 import { subscribeAttendance } from '../lib/attendance'
+import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
 import { fetchSalesRecords, formatPHP, formatPHPCompact } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 import { PRIMARY } from '../lib/theme'
@@ -151,13 +152,20 @@ function HeatCell({ attendees, bookings }) {
 
 // ---------------------------------------------------------------------------
 
-export default function SalesDashboard({ bookings = [] }) {
+export default function SalesDashboard({ bookings: liveBookings = [] }) {
   const [periodId, setPeriodId] = useState('month')
   const [monthKey, setMonthKey] = useState(currentMonthKey())
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when in custom mode
   const isCustom = periodId === 'custom' && customDates.length > 0
   // Stable "now" reference for past/future attendance derivation (set once on mount)
   const [nowMs] = useState(() => Date.now())
+
+  // Merge the live POTB feed with the uploaded YCBM report (account 'acquisition')
+  // — same as the Bookings/Acquisition tabs — so Operations includes the busy-slot
+  // bookings the live API can't paginate. Without this the matrix was undercounting.
+  const [repBump, setRepBump] = useState(0)
+  useEffect(() => subscribeReport(() => setRepBump(n => n + 1)), [])
+  const bookings = useMemo(() => mergeWithReport(liveBookings, 'acquisition'), [liveBookings, repBump])
 
   // Days driving the whole view. For custom: the exact picked dates (sorted).
   const days = useMemo(
