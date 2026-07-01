@@ -232,7 +232,9 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
   const bookingsCreatedByDate = useMemo(() => {
     const map = new Map()
     for (const b of bookings) {
-      const created = b.raw?.createdAt
+      // Live bookings carry createdAt on raw; uploaded-report bookings carry it
+      // at the top level. Read both so "Leads (Booking Made)" counts them all.
+      const created = b.createdAt || b.raw?.createdAt
       if (!created) continue
       // YCBM createdAt is ISO with timezone; convert to local YYYY-MM-DD
       const d = new Date(created)
