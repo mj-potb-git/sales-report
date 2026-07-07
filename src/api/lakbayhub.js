@@ -71,17 +71,30 @@ export function coachFromCluster(cluster) {
 // Extra LakbayHub fields are preserved on the mapped record under `meta` so
 // drill-down views can surface them without re-fetching.
 // A single POTB/AACIO sale is at most a few hundred-K; anything above this is a
-// data-entry typo (an extra run of zeros). One such record (₱30B under
-// "ACQUISITION - PRINCESS") blew up her SRP and the revenue totals. We DON'T
-// count a suspicious amount (treat it as 0) and flag it for review instead of
-// letting it pollute every total. The original value is kept in meta.
+// data-entry typo (an extra run of zeros — e.g. a ₱30B record under "ACQUISITION
+// - PRINCESS" that blew up her SRP and the revenue totals). Such a typo is almost
+// always a mistyped FULL payment, so instead of dropping it to 0 we CORRECT it to
+// the package's full price (the real intended amount) and flag it for review. The
+// original value is kept in meta.raw_amount.
 const MAX_REASONABLE_AMOUNT = 1_000_000
+
+// Standard full price per package (confirmed from the data's modal amounts).
+function packageFullPrice(pkg) {
+  const p = (pkg || '').toUpperCase()
+  if (p.includes('ADVENTURER')) return 69990
+  if (p.includes('TRAVELPRE'))  return 14999   // TRAVELPRENEUR / common "TRAVELPRENUER" misspelling
+  if (p.includes('STARTER'))    return 9999
+  return null
+}
 
 export function mapLakbayHubRecord(r, idx) {
   const date       = r.date_paid || r.sales_call_date || null
   const rawAmount  = Number(r.amount_paid) || 0
   const suspicious = rawAmount > MAX_REASONABLE_AMOUNT
-  const amount     = suspicious ? 0 : rawAmount
+  const fullPrice  = packageFullPrice(r.package_avail)
+  // Correct an absurd typo to the package's full price (best-guess intended
+  // value); fall back to 0 only if the package is unknown.
+  const amount     = suspicious ? (fullPrice || 0) : rawAmount
   const closer  = r.sales_closer?.trim() || ''
   const cluster = r.cluster_name?.trim() || ''
 
@@ -92,7 +105,7 @@ export function mapLakbayHubRecord(r, idx) {
   // no cluster — not every missing closer.
   const reviewReasons = []
   if (!date)              reviewReasons.push('no date')         // can't be placed in any period
-  if (suspicious)         reviewReasons.push(`suspicious amount (₱${rawAmount.toLocaleString()}) — not counted`)
+  if (suspicious)         reviewReasons.push(`amount typo (₱${rawAmount.toLocaleString()}) — corrected to ${fullPrice ? '₱' + fullPrice.toLocaleString() + ' (full package price)' : '₱0'}`)
   else if (!amount)       reviewReasons.push('zero amount')     // paid record with no amount
   if (!closer && !cluster) reviewReasons.push('no attribution') // no closer AND no cluster
 
