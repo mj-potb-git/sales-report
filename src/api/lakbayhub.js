@@ -79,7 +79,7 @@ export function coachFromCluster(cluster) {
 const MAX_REASONABLE_AMOUNT = 1_000_000
 
 // Standard full price per package (confirmed from the data's modal amounts).
-function packageFullPrice(pkg) {
+export function packageFullPrice(pkg) {
   const p = (pkg || '').toUpperCase()
   if (p.includes('ADVENTURER')) return 69990
   if (p.includes('TRAVELPRE'))  return 14999   // TRAVELPRENEUR / common "TRAVELPRENUER" misspelling

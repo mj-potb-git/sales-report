@@ -26,6 +26,7 @@ import HeroBand from './ui/HeroBand'
 import DataSourceBanner from './ui/DataSourceBanner'
 import RevenueTrend from './RevenueTrend'
 import SalesPerformanceCards from './SalesPerformanceCards'
+import DownPaymentsTracker from './DownPaymentsTracker'
 import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 import { comparePeriods } from '../api/lakbay'
@@ -419,6 +420,9 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
 
       {/* Incomplete LakbayHub records (missing date / amount / closer) */}
       <NeedsReview records={getReviewRecords()} />
+
+      {/* Down payments tracker — all outstanding partial payments, aged, per coach */}
+      <DownPaymentsTracker records={records} subtitle="POTB sign-ups (LakbayHub)" />
 
       {/* Deep analytics — collapsed by default to keep the tab scannable */}
       <button
