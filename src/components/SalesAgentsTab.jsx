@@ -266,6 +266,13 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
   const monthlyTotal = sum(filterByRange(records, rangeFor('monthly', today).start, rangeFor('monthly', today).end), 'sales_amount')
   const totalSignups = sum(ranged, 'signup_count')
 
+  // Pending/DP: real POTB sign-ups LakbayHub hasn't stamped with a date_paid yet
+  // (down payments / awaiting full payment) — excluded from the paid totals, so
+  // surfaced separately. Free 2GO accounts (₱0) are not sales, so left out.
+  const pendingSignups = getReviewRecords().filter(
+    r => (r.reviewReasons || []).includes('no date') && !/2go|free/i.test(r.team || ''),
+  ).length
+
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const byAgent = useMemo(() => totalsByAgent(ranged), [ranged])
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
@@ -362,7 +369,8 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
         value={formatPHP(sum(ranged, 'sales_amount'))}
         sub={`${ranged.length} sales${topAgent ? ` · top closer: ${topAgent.name}` : ''}`}
         stats={[
-          { label: '# Sales', value: String(ranged.length) },
+          { label: '# Sales (paid)', value: String(ranged.length) },
+          { label: 'Pending/DP', value: String(pendingSignups) },
           { label: 'Top Closer', value: topAgent ? topAgent.name.split(' ').slice(-1)[0] : '—' },
           { label: 'Conversion', value: `${conversionRate}%` },
           { label: 'Active Closers', value: String(byAgent.length) },
@@ -404,7 +412,7 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
 
       {/* Per-coach Sales Performance — LakbayHub (Availed/SRP) + YCBM
           (Appointment/Show Up/No Show) for the selected period. */}
-      <SalesPerformanceCards salesRecords={ranged} bookings={ycbm} from={start} to={end} periodLabel={periodLabel} loading={ycbmLoading} storageKey="acquisition" />
+      <SalesPerformanceCards salesRecords={ranged} bookings={ycbm} from={start} to={end} periodLabel={periodLabel} loading={ycbmLoading} storageKey="acquisition" aliases={{ ANGEL: 'JAS', ANGELYN: 'JAS' }} />
 
       {/* Detailed sales breakdown — how much each closer/cluster sold this period */}
       <SalesBreakdown records={ranged} periodLabel={periodLabel} />

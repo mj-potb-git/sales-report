@@ -47,7 +47,7 @@ function dateFromKey(k) {
 // Same AACIO coach under different names across LakbayHub clusters vs YCBM
 // teamMember → one canonical card. Keyed by first-name (uppercase).
 const AACIO_COACH_ALIASES = {
-  ANGEL: 'Angelyn', ANGELYN: 'Angelyn',            // AACIO ANGEL ↔ Coach Angelyn
+  ANGEL: 'JAS', ANGELYN: 'JAS',                    // AACIO ANGEL / Coach Angelyn = "JAS" (per MJ)
   PRINCESS: 'Princess Romelyn', ROMELYN: 'Princess Romelyn',
   SHEILA: 'Sheila', SHIELA: 'Sheila',              // spelling variants
 }

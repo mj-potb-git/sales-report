@@ -38,13 +38,20 @@ export function isExternalRecord(r) {
 // attribution (Top Closer, per-agent breakdown) shows a real name instead of
 // "Unassigned". Returns '' when the cluster has no recognizable coach name.
 const titleCase = (s) => (s || '').split(/\s+/).map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w).join(' ')
+
+// Display aliases — the LakbayHub cluster name isn't always what the team calls
+// the coach. Per MJ, "Angel"/"Angelyn" is the agent they log as "JAS". Applied
+// so every view (cards, Top Closer, per-agent, reports) reads the team's name.
+export const COACH_DISPLAY_ALIAS = { angel: 'JAS', angelyn: 'JAS' }
+const aliasCoach = (name) => COACH_DISPLAY_ALIAS[(name || '').toLowerCase()] || name
+
 export function coachFromCluster(cluster) {
   const t = (cluster || '').trim()
   if (!t) return ''
   let m
-  if ((m = t.match(/^acquisition\s*-\s*(.+)$/i)))     return titleCase(m[1].trim())
-  if ((m = t.match(/external\s+coach\s*-\s*(.+)$/i))) return titleCase(m[1].trim())
-  if ((m = t.match(/^aacio\s+(.+)$/i)))               return titleCase(m[1].trim())
+  if ((m = t.match(/^acquisition\s*-\s*(.+)$/i)))     return aliasCoach(titleCase(m[1].trim()))
+  if ((m = t.match(/external\s+coach\s*-\s*(.+)$/i))) return aliasCoach(titleCase(m[1].trim()))
+  if ((m = t.match(/^aacio\s+(.+)$/i)))               return aliasCoach(titleCase(m[1].trim()))
   return ''
 }
 
