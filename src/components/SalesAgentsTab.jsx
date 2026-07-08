@@ -119,15 +119,15 @@ function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], 
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-5">
           <SummaryCard icon={TrendingUp} label={`Sales · ${periodLabel}`} value={formatPHP(totalSales)} />
-          <SummaryCard icon={Users}      label="Bilang ng benta"          value={String(filtered.length)} />
+          <SummaryCard icon={Users}      label="Transactions"             value={String(filtered.length)} />
           <SummaryCard icon={Users}      label="Sign-ups"                 value={String(sum(filtered, 'signup_count'))} />
         </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
-          <p className="text-sm font-semibold text-gray-700">Mga binenta ({filtered.length}) · {periodLabel}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">Lahat ng benta ni {agent.name} sa napiling filter — i-cross-check vs manual.</p>
+          <p className="text-sm font-semibold text-gray-700">Sales ({filtered.length}) · {periodLabel}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">All of {agent.name}'s sales in the selected filter — cross-check vs your manual.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -140,7 +140,7 @@ function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], 
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Walang benta sa napiling filter.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No sales in the selected filter.</td></tr>
               ) : filtered.map(r => {
                 const pt = payType(r)
                 return (
@@ -154,6 +154,14 @@ function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], 
                 )
               })}
             </tbody>
+            {filtered.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50">
+                  <td className="px-4 py-2.5 font-semibold text-gray-700" colSpan={4}>TOTAL ({filtered.length} sales)</td>
+                  <td className="px-4 py-2.5 font-bold whitespace-nowrap" style={{ color: PRIMARY }}>{formatPHP(totalSales)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
