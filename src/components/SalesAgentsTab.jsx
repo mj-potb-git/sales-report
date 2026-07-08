@@ -29,6 +29,7 @@ import SalesPerformanceCards from './SalesPerformanceCards'
 import DownPaymentsTracker from './DownPaymentsTracker'
 import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
+import { packageFullPrice } from '../api/lakbayhub'
 import { comparePeriods } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
@@ -61,27 +62,45 @@ function SummaryCard({ icon: Icon, label, value, sub, accent }) {
 }
 
 // ---------------------------------------------------------------------------
-// Agent detail view
-function AgentDetail({ agent, allRecords, onBack }) {
-  const today = new Date()
-  const ranges = {
-    daily:   rangeFor('daily',   today),
-    weekly:  rangeFor('weekly',  today),
-    monthly: rangeFor('monthly', today),
+// Agent detail view — scoped to the SAME period/custom filter as the list, so
+// clicking a coach shows exactly the sales they made in that window (for
+// cross-checking against the manual tracker).
+function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], onBack }) {
+  const isCustom = periodId === 'custom' && customDates.length > 0
+  const fromKey = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d) }
+  let start, end, periodLabel
+  if (isCustom) {
+    const s = [...customDates].sort()
+    start = fromKey(s[0]); start.setHours(0, 0, 0, 0)
+    end = fromKey(s[s.length - 1]); end.setHours(23, 59, 59, 999)
+    periodLabel = customDates.length === 1 ? '1 custom day' : `${customDates.length} custom days`
+  } else {
+    const base = periodRange(periodId, monthKey); start = base.start; end = base.end
+    periodLabel = periodLabelFor(periodId, monthKey)
   }
-  const recs = allRecords.filter(r => r.sales_agent === agent.name)
-  const daily   = filterByRange(recs, ranges.daily.start,   ranges.daily.end)
-  const weekly  = filterByRange(recs, ranges.weekly.start,  ranges.weekly.end)
-  const monthly = filterByRange(recs, ranges.monthly.start, ranges.monthly.end)
-  const trend = dailyTrend(recs, 14, today)
-  const recent = [...recs].sort((a, b) => b.transaction_id.localeCompare(a.transaction_id)).slice(0, 8)
+  const customSet = new Set(customDates)
+  const filtered = allRecords
+    .filter(r => r.sales_agent === agent.name && r.date)
+    .filter(r => {
+      const t = new Date(r.date).getTime()
+      if (t < start.getTime() || t > end.getTime()) return false
+      return !isCustom || customSet.has(r.date)
+    })
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+  const totalSales = sum(filtered, 'sales_amount')
+  const fmtDate = (d) => new Date(d + (String(d).length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  const payType = (r) => {
+    const full = packageFullPrice(r.meta?.package); const paid = r.sales_amount || 0
+    if (!full || paid <= 0) return null
+    return paid >= full ? { t: 'Full', cls: 'bg-emerald-100 text-emerald-700' }
+                        : { t: `DP · bal ${formatPHP(full - paid)}`, cls: 'bg-amber-100 text-amber-700' }
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <button
-        onClick={onBack}
-        className="self-start flex items-center gap-1 text-sm text-gray-500 hover:text-[#1B4F4F] transition-colors"
-      >
+    <div className="flex flex-col gap-4 pb-24 sm:pb-6">
+      <button onClick={onBack}
+        className="self-start flex items-center gap-1 text-sm text-gray-500 hover:text-[#1B4F4F] transition-colors">
         <ArrowLeft size={14} /> Back to agents
       </button>
 
@@ -91,59 +110,49 @@ function AgentDetail({ agent, allRecords, onBack }) {
                style={{ backgroundColor: PRIMARY }}>
             {agent.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-lg font-bold text-gray-900">{agent.name}</p>
             <p className="text-sm text-gray-500">{agent.team}</p>
           </div>
+          <span className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">{periodLabel}</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-          <SummaryCard icon={TrendingUp} label="Daily Sales"   value={formatPHPCompact(sum(daily,   'sales_amount'))} />
-          <SummaryCard icon={TrendingUp} label="Weekly Sales"  value={formatPHPCompact(sum(weekly,  'sales_amount'))} sub="Mon–Sun" />
-          <SummaryCard icon={TrendingUp} label="Monthly Sales" value={formatPHPCompact(sum(monthly, 'sales_amount'))} />
-          <SummaryCard icon={Users}      label="Total Sign-ups (mo.)" value={String(sum(monthly, 'signup_count'))} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-5">
+          <SummaryCard icon={TrendingUp} label={`Sales · ${periodLabel}`} value={formatPHP(totalSales)} />
+          <SummaryCard icon={Users}      label="Bilang ng benta"          value={String(filtered.length)} />
+          <SummaryCard icon={Users}      label="Sign-ups"                 value={String(sum(filtered, 'signup_count'))} />
         </div>
-      </div>
-
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-        <p className="text-sm font-semibold text-gray-700 mb-3">14-Day Sales Trend</p>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={trend}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={formatPHPCompact} />
-            <Tooltip formatter={v => formatPHP(v)} />
-            <Line type="monotone" dataKey="sales" stroke={PRIMARY} strokeWidth={2.5}
-                  dot={{ r: 3, fill: PRIMARY }} activeDot={{ r: 5 }} />
-          </LineChart>
-        </ResponsiveContainer>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
-          <p className="text-sm font-semibold text-gray-700">Recent Transactions</p>
+          <p className="text-sm font-semibold text-gray-700">Mga binenta ({filtered.length}) · {periodLabel}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Lahat ng benta ni {agent.name} sa napiling filter — i-cross-check vs manual.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50">
-                {['Txn ID', 'Date', 'Customer', 'Sign-ups', 'Amount'].map(h => (
+                {['Date', 'Customer', 'Package', 'Payment', 'Amount'].map(h => (
                   <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {recent.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No transactions</td></tr>
-              ) : recent.map(r => (
-                <tr key={r.transaction_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 font-mono text-xs text-gray-500">{r.transaction_id}</td>
-                  <td className="px-4 py-2 text-gray-600">{r.date}</td>
-                  <td className="px-4 py-2 text-gray-800">{r.customer_name}</td>
-                  <td className="px-4 py-2 text-gray-600">{r.signup_count}</td>
-                  <td className="px-4 py-2 font-semibold text-gray-900">{formatPHP(r.sales_amount)}</td>
-                </tr>
-              ))}
+              {filtered.length === 0 ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Walang benta sa napiling filter.</td></tr>
+              ) : filtered.map(r => {
+                const pt = payType(r)
+                return (
+                  <tr key={r.transaction_id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{fmtDate(r.date)}</td>
+                    <td className="px-4 py-2 text-gray-800">{r.customer_name}</td>
+                    <td className="px-4 py-2 text-gray-500">{(r.meta?.package || '').replace(/\s*package\s*/i, '').trim() || '—'}</td>
+                    <td className="px-4 py-2">{pt ? <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${pt.cls}`}>{pt.t}</span> : '—'}</td>
+                    <td className="px-4 py-2 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(r.sales_amount)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -672,8 +681,10 @@ export default function SalesAgentsTab() {
   if (loading) return <div className="text-center py-8 text-gray-400">Loading sales data…</div>
   if (error)   return <div className="text-center py-8 text-red-500">{error.message}</div>
 
+  const effMonthKeyForDetail = monthKey || latestMonthKey(records.map(r => r.date)) || currentMonthKey()
   if (selectedAgent) {
     return <AgentDetail agent={selectedAgent} allRecords={records}
+                        periodId={periodId} monthKey={effMonthKeyForDetail} customDates={customDates}
                         onBack={() => setSelectedAgent(null)} />
   }
   if (selectedTeam) {
