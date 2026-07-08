@@ -3,7 +3,7 @@
 // A sale is a Down Payment when the amount paid is below the package's full
 // price (Starter ₱9,999 · Travelpreneur ₱14,999 · Adventurer ₱69,990).
 import { useMemo, useState } from 'react'
-import { Wallet, Clock } from 'lucide-react'
+import { Wallet, Clock, Download } from 'lucide-react'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
 import { coachFromCluster, packageFullPrice } from '../api/lakbayhub'
 
@@ -55,6 +55,23 @@ export default function DownPaymentsTracker({ records = [], title = 'Down Paymen
   const totalFull    = dps.reduce((s, d) => s + d.full, 0)
   const fmtDate = (d) => new Date(d + (String(d).length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 
+  function exportCSV() {
+    const rows = [['Customer', 'Coach', 'Package', 'Paid', 'Full Price', 'Balance', 'DP Date', 'Days Pending']]
+    for (const d of dps) {
+      rows.push([d.name, d.coach, d.package, d.paid, d.full, d.balance, d.date, d.days])
+    }
+    rows.push([])
+    rows.push([`TOTAL (${dps.length} DPs)`, '', '', totalPaid, totalFull, totalBalance, '', ''])
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `down-payments-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${month}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2 flex-wrap">
@@ -66,6 +83,11 @@ export default function DownPaymentsTracker({ records = [], title = 'Down Paymen
           <option value="all">Lahat ng buwan</option>
           {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
         </select>
+        <button onClick={exportCSV} disabled={dps.length === 0}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40"
+          style={{ backgroundColor: TEAL }}>
+          <Download size={13} /> Export CSV
+        </button>
       </div>
 
       {/* Totals — DP only */}
