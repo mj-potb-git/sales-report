@@ -34,11 +34,35 @@ const LEAD_TYPES = [
 // conversation is a real lead-gen outcome.
 const MSG_TYPES = ['onsite_conversion.messaging_conversation_started_7d']
 
+// PURCHASES — the money outcome. Meta reports the same purchase under several
+// aliases; `omni_purchase` is its de-duplicated cross-channel count (and the
+// matching `action_values` entry is the revenue). We pick the single highest-
+// priority type that's present so we never double-count across aliases.
+const PURCHASE_PRIORITY = [
+  'omni_purchase',
+  'onsite_web_purchase',
+  'onsite_conversion.purchase',
+  'offsite_conversion.fb_pixel_purchase',
+  'purchase',
+]
+
 const num = v => Number(v) || 0
 function sumActions(actions, types) {
   if (!Array.isArray(actions)) return 0
   return actions.filter(a => types.includes(a.action_type)).reduce((s, a) => s + num(a.value), 0)
 }
+// First present type in the priority list (no summing → no alias double-count).
+// Works for both `actions` (count) and `action_values` (revenue) — same shape.
+function pickByPriority(list, types) {
+  if (!Array.isArray(list)) return 0
+  for (const t of types) {
+    const hit = list.find(a => a.action_type === t)
+    if (hit && num(hit.value) > 0) return num(hit.value)
+  }
+  return 0
+}
+const purchaseCount = actions => pickByPriority(actions, PURCHASE_PRIORITY)
+const purchaseValue = values => pickByPriority(values, PURCHASE_PRIORITY)
 
 const peso = n => `₱${Math.round(n).toLocaleString()}`
 
@@ -92,7 +116,7 @@ export async function fetchAdPerformance({ since, until } = {}) {
     const now = new Date(); const from = new Date(now.getTime() - 29 * 86400000)
     since = ymd(from); until = ymd(now)
   }
-  const fields = 'ad_id,ad_name,campaign_name,adset_name,spend,impressions,clicks,ctr,frequency,actions'
+  const fields = 'ad_id,ad_name,campaign_name,adset_name,spend,impressions,clicks,ctr,frequency,actions,action_values'
   const histFields = 'ad_id,ad_name,campaign_name,spend,actions'
   const [insightsJson, adsJson, acctJson, histJson] = await Promise.all([
     get(`/insights?level=ad&fields=${fields}&${timeRangeQuery(since, until)}&limit=1000`),
@@ -105,13 +129,16 @@ export async function fetchAdPerformance({ since, until } = {}) {
   const accountNum = String(acctJson.id || '').replace(/^act_/, '')
   const statusById = new Map((adsJson.data || []).map(a => [a.id, a.effective_status]))
 
-  let totalSpend = 0, totalLeads = 0, totalMsg = 0
+  let totalSpend = 0, totalLeads = 0, totalMsg = 0, totalPurchases = 0, totalRevenue = 0
   const ads = (insightsJson.data || []).map(row => {
     const spend = Math.round(num(row.spend))
     const leads = sumActions(row.actions, LEAD_TYPES)
     const msg = sumActions(row.actions, MSG_TYPES)
     const results = leads + msg
+    const purchases = purchaseCount(row.actions)
+    const revenue = Math.round(purchaseValue(row.action_values))
     totalSpend += spend; totalLeads += leads; totalMsg += msg
+    totalPurchases += purchases; totalRevenue += revenue
     return {
       id: row.ad_id,
       name: row.ad_name || '(no name)',
@@ -119,6 +146,9 @@ export async function fetchAdPerformance({ since, until } = {}) {
       adset: row.adset_name || '',
       status: statusById.get(row.ad_id) || 'ARCHIVED',
       spend, leads, msg, results,
+      purchases, revenue,
+      cpp: purchases > 0 ? Math.round(spend / purchases) : null,   // cost per purchase
+      roas: spend > 0 && revenue > 0 ? revenue / spend : null,     // return on ad spend (x)
       impressions: num(row.impressions),
       clicks: num(row.clicks),
       ctr: num(row.ctr),               // % link clicks / impressions
@@ -138,6 +168,11 @@ export async function fetchAdPerformance({ since, until } = {}) {
   const winners = activeAds.filter(a => a.verdict.tag === 'winner')
     .sort((a, b) => (a.cpr ?? Infinity) - (b.cpr ?? Infinity))
   const wastedSpend = toTurnOff.reduce((s, a) => s + a.spend, 0)
+
+  // PURCHASE WINNERS — the ads that actually drove sales in this period, ranked
+  // by number of purchases (then revenue). These are the ones to scale up.
+  const purchaseWinners = ads.filter(a => a.purchases > 0)
+    .sort((a, b) => b.purchases - a.purchases || b.revenue - a.revenue)
 
   // --- "Turn ON" suggestions ------------------------------------------------
   // OFF ads with a strong LIFETIME record (cheap cost/lead + real volume) are
@@ -176,27 +211,36 @@ export async function fetchAdPerformance({ since, until } = {}) {
   const campMap = new Map()
   for (const a of ads) {
     const k = a.campaign || '(no campaign)'
-    if (!campMap.has(k)) campMap.set(k, { campaign: k, spend: 0, leads: 0, msg: 0, results: 0, ads: 0 })
+    if (!campMap.has(k)) campMap.set(k, { campaign: k, spend: 0, leads: 0, msg: 0, results: 0, purchases: 0, revenue: 0, ads: 0 })
     const c = campMap.get(k)
-    c.spend += a.spend; c.leads += a.leads; c.msg += a.msg; c.results += a.results; c.ads += 1
+    c.spend += a.spend; c.leads += a.leads; c.msg += a.msg; c.results += a.results
+    c.purchases += a.purchases; c.revenue += a.revenue; c.ads += 1
   }
   const campaigns = [...campMap.values()]
-    .map(c => ({ ...c, cpr: c.results > 0 ? Math.round(c.spend / c.results) : null }))
+    .map(c => ({
+      ...c,
+      cpr: c.results > 0 ? Math.round(c.spend / c.results) : null,
+      roas: c.spend > 0 && c.revenue > 0 ? c.revenue / c.spend : null,
+    }))
     .sort((a, b) => b.spend - a.spend)
 
   return {
-    ads, campaigns, toTurnOff, winners, toTurnOn,
+    ads, campaigns, toTurnOff, winners, toTurnOn, purchaseWinners,
     accountNum,
     range: { since, until },
     histAvgCpr: Math.round(histAvgCpr),
     summary: {
       totalSpend, totalLeads, totalMsg, totalResults,
+      totalPurchases, totalRevenue,
       avgCpr: Math.round(avgCpr),
+      cpp: totalPurchases > 0 ? Math.round(totalSpend / totalPurchases) : null,
+      roas: totalSpend > 0 && totalRevenue > 0 ? totalRevenue / totalSpend : null,
       adCount: ads.length,
       activeCount: activeAds.length,
       turnOffCount: toTurnOff.length,
       winnerCount: winners.length,
       turnOnCount: toTurnOn.length,
+      purchaseWinnerCount: purchaseWinners.length,
       wastedSpend,
     },
   }
