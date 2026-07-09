@@ -87,6 +87,19 @@ export function packageFullPrice(pkg) {
   return null
 }
 
+// The manual tracker records customers by their FACEBOOK display name while
+// LakbayHub stores the legal name (e.g. manual "kristian kent jenny yu" =
+// LakbayHub "Jeneve Yu"). LakbayHub keeps the FB name in facebook_profile —
+// expose it (only when it's a readable name, not a URL) so every view can show
+// both and cross-checking vs the manual matches instantly.
+export function fbName(record) {
+  const fb = (record?.meta?.facebook || '').trim()
+  if (!fb) return ''
+  if (/^https?:|facebook\.com|^www\.|^m\.me|^N\/?A$/i.test(fb)) return ''
+  const canon = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return canon(fb) === canon(record?.customer_name) ? '' : fb
+}
+
 export function mapLakbayHubRecord(r, idx) {
   const date       = r.date_paid || r.sales_call_date || null
   const rawAmount  = Number(r.amount_paid) || 0

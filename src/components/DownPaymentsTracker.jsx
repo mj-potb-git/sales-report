@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react'
 import { Wallet, Clock, Download } from 'lucide-react'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
-import { coachFromCluster, packageFullPrice } from '../api/lakbayhub'
+import { coachFromCluster, packageFullPrice, fbName } from '../api/lakbayhub'
 
 const TEAL = '#1B4F4F'
 const GOLD = '#F5A623'
@@ -33,6 +33,7 @@ export default function DownPaymentsTracker({ records = [], title = 'Down Paymen
       out.push({
         id: r.transaction_id,
         name: r.customer_name || 'Unknown',
+        fb: fbName(r),
         coach: coachFromCluster(r.team) || '—',
         package: (r.meta?.package || '').replace(/\s*package\s*/i, '').trim() || '—',
         paid, full, balance: full - paid, date: r.date, monthKey: String(r.date).slice(0, 7), days,
@@ -56,12 +57,12 @@ export default function DownPaymentsTracker({ records = [], title = 'Down Paymen
   const fmtDate = (d) => new Date(d + (String(d).length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 
   function exportCSV() {
-    const rows = [['Customer', 'Coach', 'Package', 'Paid', 'Full Price', 'Balance', 'DP Date', 'Days Pending']]
+    const rows = [['Customer', 'FB Name', 'Coach', 'Package', 'Paid', 'Full Price', 'Balance', 'DP Date', 'Days Pending']]
     for (const d of dps) {
-      rows.push([d.name, d.coach, d.package, d.paid, d.full, d.balance, d.date, d.days])
+      rows.push([d.name, d.fb || '', d.coach, d.package, d.paid, d.full, d.balance, d.date, d.days])
     }
     rows.push([])
-    rows.push([`TOTAL (${dps.length} DPs)`, '', '', totalPaid, totalFull, totalBalance, '', ''])
+    rows.push([`TOTAL (${dps.length} DPs)`, '', '', '', totalPaid, totalFull, totalBalance, '', ''])
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -128,7 +129,10 @@ export default function DownPaymentsTracker({ records = [], title = 'Down Paymen
                 const a = ageStyle(d.days)
                 return (
                   <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="px-4 py-2.5 font-medium text-gray-800">{d.name}</td>
+                    <td className="px-4 py-2.5 font-medium text-gray-800">
+                      {d.name}
+                      {d.fb && <div className="text-[11px] text-gray-400 font-normal">FB: {d.fb}</div>}
+                    </td>
                     <td className="px-3 py-2.5 text-gray-600">{d.coach}</td>
                     <td className="px-3 py-2.5 text-gray-500">{d.package}</td>
                     <td className="px-3 py-2.5 text-right text-gray-700">{formatPHP(d.paid)} <span className="text-gray-400 text-xs">/ {formatPHP(d.full)}</span></td>
