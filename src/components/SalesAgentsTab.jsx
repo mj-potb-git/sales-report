@@ -20,7 +20,7 @@ import LiveActivityFeed from './sales/LiveActivityFeed'
 import ClusterHealth from './sales/ClusterHealth'
 import DeltaBadge from './sales/DeltaBadge'
 import SalesBreakdown from './sales/SalesBreakdown'
-import NeedsReview, { AssignSaleDate } from './sales/NeedsReview'
+import NeedsReview from './sales/NeedsReview'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
 import DataSourceBanner from './ui/DataSourceBanner'
@@ -29,8 +29,7 @@ import SalesPerformanceCards from './SalesPerformanceCards'
 import DownPaymentsTracker from './DownPaymentsTracker'
 import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
-import { packageFullPrice, fbName } from '../api/lakbayhub'
-import { subscribeSaleOverrides } from '../lib/saleDateOverrides'
+import { packageFullPrice } from '../api/lakbayhub'
 import { comparePeriods } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
@@ -66,17 +65,7 @@ function SummaryCard({ icon: Icon, label, value, sub, accent }) {
 // Agent detail view — scoped to the SAME period/custom filter as the list, so
 // clicking a coach shows exactly the sales they made in that window (for
 // cross-checking against the manual tracker).
-function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], onBack, onRefresh }) {
-  // Re-render when a sale-date correction lands so the coach's no-date list
-  // updates immediately (the corrected sale then flows into the month table
-  // on the next data refresh, which we trigger via onRefresh).
-  const [, setOvBump] = useState(0)
-  useEffect(() => subscribeSaleOverrides(() => setOvBump(b => b + 1)), [])
-  // This coach's sales that LakbayHub left DATELESS — invisible in every
-  // month until MJ assigns the date (from the manual tracker).
-  const undated = getReviewRecords().filter(r => !r.date && r.sales_agent === agent.name)
-  const undatedTotal = sum(undated, 'sales_amount')
-
+function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], onBack }) {
   const isCustom = periodId === 'custom' && customDates.length > 0
   const fromKey = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d) }
   let start, end, periodLabel
@@ -154,17 +143,10 @@ function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], 
                 <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No sales in the selected filter.</td></tr>
               ) : filtered.map(r => {
                 const pt = payType(r)
-                const fb = fbName(r)
                 return (
                   <tr key={r.transaction_id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-gray-600 whitespace-nowrap">
-                      {fmtDate(r.date)}
-                      {r.corrected && <div className="text-[10px] text-teal-600 font-semibold">✎ dated manually</div>}
-                    </td>
-                    <td className="px-4 py-2 text-gray-800">
-                      {r.customer_name}
-                      {fb && <div className="text-[11px] text-gray-400">FB: {fb}</div>}
-                    </td>
+                    <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{fmtDate(r.date)}</td>
+                    <td className="px-4 py-2 text-gray-800">{r.customer_name}</td>
                     <td className="px-4 py-2 text-gray-500">{(r.meta?.package || '').replace(/\s*package\s*/i, '').trim() || '—'}</td>
                     <td className="px-4 py-2">{pt ? <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${pt.cls}`}>{pt.t}</span> : '—'}</td>
                     <td className="px-4 py-2 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(r.sales_amount)}</td>
@@ -183,44 +165,6 @@ function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], 
           </table>
         </div>
       </div>
-
-      {/* Sales LakbayHub left DATELESS — never counted in any month until a
-          date is assigned. Editable right here so cross-checking vs the manual
-          fixes the report on the spot. */}
-      {undated.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-red-200 overflow-hidden">
-          <div className="px-4 py-3 bg-red-50 border-b border-red-100">
-            <p className="text-sm font-semibold text-red-800">
-              ⚠ {undated.length} sale{undated.length > 1 ? 's' : ''} with NO DATE · {formatPHP(undatedTotal)}
-            </p>
-            <p className="text-[11px] text-red-600 mt-0.5">
-              Not counted in ANY month (LakbayHub has no payment date). Assign the date from your manual tracker to include them.
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <tbody className="divide-y divide-gray-50">
-                {undated.map(r => {
-                  const fb = fbName(r)
-                  return (
-                    <tr key={r.transaction_id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-gray-800">
-                        {r.customer_name}
-                        {fb && <div className="text-[11px] text-gray-400">FB: {fb}</div>}
-                      </td>
-                      <td className="px-4 py-2 text-gray-500 whitespace-nowrap">{(r.meta?.package || '').replace(/\s*package\s*/i, '').trim() || '—'}</td>
-                      <td className="px-4 py-2 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(r.sales_amount)}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">
-                        <AssignSaleDate record={r} onAssigned={() => onRefresh?.()} />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -492,7 +436,7 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
       <SalesBreakdown records={ranged} periodLabel={periodLabel} />
 
       {/* Incomplete LakbayHub records (missing date / amount / closer) */}
-      <NeedsReview records={getReviewRecords()} onAssigned={onRefresh} />
+      <NeedsReview records={getReviewRecords()} />
 
       {/* Down payments tracker — all outstanding partial payments, aged, per coach */}
       <DownPaymentsTracker records={records} subtitle="POTB sign-ups (LakbayHub)" />
@@ -749,7 +693,7 @@ export default function SalesAgentsTab() {
   if (selectedAgent) {
     return <AgentDetail agent={selectedAgent} allRecords={records}
                         periodId={periodId} monthKey={effMonthKeyForDetail} customDates={customDates}
-                        onBack={() => setSelectedAgent(null)} onRefresh={refresh} />
+                        onBack={() => setSelectedAgent(null)} />
   }
   if (selectedTeam) {
     return <TeamDetail team={selectedTeam} allRecords={records}

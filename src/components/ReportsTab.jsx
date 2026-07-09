@@ -20,7 +20,6 @@ import {
   endOfMonth, endOfWeek, getSalesSource, getExternalSalesRecords,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction } from '../api/fusioo'
-import { fbName } from '../api/lakbayhub'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   LineChart, Line, PieChart, Pie, Cell, Legend,
@@ -340,9 +339,9 @@ function DateCell({ r }) {
       <div className="flex items-center gap-1.5 group">
         <span className="text-gray-700 font-medium">{r.date}</span>
         {r.corrected && (
-          <span title={`Corrected from ${r.originalDate || 'no date'}`}
+          <span title={`Corrected from ${r.originalDate}`}
                 className="px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 text-[9px] font-semibold whitespace-nowrap">
-            ✎ was {r.originalDate || 'no date'}
+            ✎ was {r.originalDate}
           </span>
         )}
         <button
@@ -386,7 +385,6 @@ function DetailedList({ records }) {
       if (account !== 'All' && r.meta?.account_status !== account) return false
       if (!q) return true
       return (r.customer_name || '').toLowerCase().includes(q)
-          || (r.meta?.facebook || '').toLowerCase().includes(q)   // manual tracker uses FB names
           || (r.meta?.email || '').toLowerCase().includes(q)
           || (r.team || '').toLowerCase().includes(q)
           || (r.meta?.package || '').toLowerCase().includes(q)
@@ -451,7 +449,7 @@ function DetailedList({ records }) {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search name, FB name, email…"
+              placeholder="Search name, email, team…"
               className="pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-xl focus:outline-none focus:border-[#1B4F4F]"
             />
           </div>
@@ -493,10 +491,7 @@ function DetailedList({ records }) {
             ) : sorted.map(r => (
               <tr key={r.transaction_id} className="hover:bg-gray-50 transition-colors">
                 <DateCell r={r} />
-                <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">
-                  {r.customer_name}
-                  {fbName(r) && <div className="text-[11px] text-gray-400 font-normal">FB: {fbName(r)}</div>}
-                </td>
+                <td className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap">{r.customer_name}</td>
                 <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.meta?.package || '—'}</td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   <span className="px-2 py-0.5 bg-teal-50 text-teal-700 rounded-md text-[11px]">{r.team}</span>

@@ -45,31 +45,15 @@ export function getSalesSource() { return salesSource }
 
 // Records LakbayHub left incomplete (missing date / zero amount / no closer).
 // Surfaced in a "Needs Review" panel instead of being silently dropped.
-// Late-bound: review is recomputed from the RAW records on every read so a
-// date correction (assign-date on a no-date sale) drops the record off the
-// panel immediately and moves it into the right month everywhere.
-let potbRawRecords = []
-export function getReviewRecords() {
-  return buildReview(refreshReviewFlags(applyOverrides(potbRawRecords)))
-}
+let reviewRecords = []
+export function getReviewRecords() { return reviewRecords }
 
 // EXTERNAL COACH cluster sales — these belong to the AACIO tab, NOT to any
 // POTB view. fetchSalesRecords() returns POTB-only records; the external
 // split rides the same fetch (one API hit, two audiences) and is read via
 // this getter. Overrides re-apply on read so date corrections stay in sync.
 let externalRecords = []
-export function getExternalSalesRecords() { return refreshReviewFlags(applyOverrides(externalRecords)) }
-
-// A record's 'no date' flag is computed at map time — after a date correction
-// (saleDateOverrides) it goes stale. Recompute it so corrected records stop
-// showing as "needs review" and start counting in their assigned month.
-function refreshReviewFlags(records) {
-  return records.map((r) => {
-    if (!r.date || !Array.isArray(r.reviewReasons) || !r.reviewReasons.includes('no date')) return r
-    const reviewReasons = r.reviewReasons.filter(x => x !== 'no date')
-    return { ...r, reviewReasons, needsReview: reviewReasons.length > 0 }
-  })
-}
+export function getExternalSalesRecords() { return applyOverrides(externalRecords) }
 
 function buildReview(records) {
   return records
@@ -106,18 +90,14 @@ async function fetchFresh() {
         // only; everything POTB sees is internal.
         externalRecords = all.filter(isExternalRecord)
         const potb = all.filter(r => !isExternalRecord(r))
-        potbRawRecords = potb                      // review panel reads this (late-bound)
-        // Keep ALL records (incl. no-date) in the pipeline — date overrides
-        // apply at read time in fetchSalesRecords, so an assigned date can
-        // rescue a no-date sale into its true month. Aggregation consumers
-        // still only ever see dated records (filtered after overrides).
-        const dated = potb.filter(r => r.date)
-        if (dated.length > 0) {
-          console.info(`[lakbay] Loaded ${potb.length} POTB (${dated.length} dated) + ${externalRecords.length} external records from LakbayHub API`)
-          lastRealData = potb
+        reviewRecords = buildReview(potb)          // incl. records with no date
+        const mapped = potb.filter(r => r.date)    // only dated records feed aggregations
+        if (mapped.length > 0) {
+          console.info(`[lakbay] Loaded ${mapped.length} POTB + ${externalRecords.length} external records from LakbayHub API (${reviewRecords.length} need review)`)
+          lastRealData = mapped
           _lastRealAt = Date.now()
           salesSource = 'live'
-          return potb
+          return mapped
         }
       }
       console.warn('[lakbay] LakbayHub API returned no records, trying Supabase')
@@ -150,7 +130,7 @@ async function fetchFresh() {
       salesSource = 'cache'
       externalRecords = data.filter(isExternalRecord)
       const potb = data.filter(r => !isExternalRecord(r))
-      potbRawRecords = potb
+      reviewRecords = buildReview(potb)
       return potb
     }
     console.warn('[lakbay] Supabase cache empty, using mock')
@@ -162,8 +142,7 @@ async function fetchFresh() {
   console.info(`[lakbay] Loaded ${mockSalesRecords.length} mock records`)
   salesSource = 'mock'
   externalRecords = mockSalesRecords.filter(isExternalRecord)
-  potbRawRecords = mockSalesRecords.filter(r => !isExternalRecord(r))
-  return potbRawRecords
+  return mockSalesRecords.filter(r => !isExternalRecord(r))
 }
 
 /**
@@ -179,10 +158,8 @@ export async function fetchSalesRecords({ force = false } = {}) {
 
   inFlight = fetchFresh()
     .then(data => {
-      // Re-date any late-posted manual payments to their true close date,
-      // then drop records that STILL have no date (they live in Needs Review
-      // until a date is assigned — never silently counted in a wrong month).
-      const corrected = refreshReviewFlags(applyOverrides(data)).filter(r => r.date)
+      // Re-date any late-posted manual payments to their true close date
+      const corrected = applyOverrides(data)
       cachedData = corrected
       cachedAt = Date.now()
       return corrected
