@@ -102,3 +102,25 @@ existing `/signups/sales-report` row works:
 ```
 
 Either shape unblocks the dashboard. Thank you!
+
+---
+
+## What the dashboard will do with this (the business rule)
+
+Sales are counted **per payment, in the month the payment was actually made** —
+NOT lumped on one date. Concretely, once this endpoint exists the dashboard will:
+
+1. **Count the Down Payment in the month it was paid.** DP of ₱3,000 on May 31
+   → counts as ₱3,000 in **May's** sales report.
+2. **Count the balance/full payment in the month IT was paid.** Remaining ₱11,999
+   on June 8 → counts as ₱11,999 in **June's** sales report. (Same customer,
+   split across two months by real payment date.)
+3. **Flag on the customer drill-down that the sale was NOT paid in full upfront**
+   — i.e. show a "had a Down Payment" indicator even after the account is fully
+   paid, plus the exact **DP date** and **full-payment date**.
+
+None of this is possible today because `/signups/sales-report` collapses a
+customer to one `amount_paid` + one (often null) `date_paid`, erasing the DP.
+The per-payment rows above are exactly what's needed. Currently ~18 PAID records
+even come back with `date_paid: null`, so those sales are invisible in every
+month view until this lands.
