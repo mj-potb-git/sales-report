@@ -52,14 +52,33 @@ export function createAdminHandler({ url, serviceKey }) {
     if (!gate.ok) return { status: gate.status, body: { error: gate.error } }
 
     try {
-      // --- List users + roles ---
+      // --- List users + roles, with each user's LAST LOGIN from Supabase Auth ---
       if (method === 'GET') {
         const { data, error } = await admin
           .from('user_roles')
           .select('email, role, name, updated_at')
-          .order('updated_at', { ascending: false })
         if (error) throw error
-        return { status: 200, body: { users: data || [] } }
+
+        // Pull auth users to get last_sign_in_at (when they last logged in).
+        const authByEmail = new Map()
+        try {
+          const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+          for (const u of (list?.users || [])) {
+            if (u.email) authByEmail.set(u.email.toLowerCase(), u)
+          }
+        } catch { /* non-fatal — fall back to no login info */ }
+
+        const users = (data || []).map(r => {
+          const au = authByEmail.get(r.email)
+          return {
+            ...r,
+            lastSignInAt: au?.last_sign_in_at || null,
+            createdAt:    au?.created_at || null,
+          }
+        })
+        // Most-recently-active first; never-logged-in sink to the bottom.
+        users.sort((a, b) => (b.lastSignInAt || '').localeCompare(a.lastSignInAt || ''))
+        return { status: 200, body: { users } }
       }
 
       // --- Add user (create login + assign role + generate password) ---

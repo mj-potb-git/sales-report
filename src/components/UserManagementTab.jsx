@@ -241,7 +241,7 @@ export default function UserManagementTab() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
-                {['Email', 'Name', 'Role', 'Updated', ''].map(h => (
+                {['Email', 'Name', 'Role', 'Last login', ''].map(h => (
                   <th key={h} className="px-4 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
@@ -263,8 +263,10 @@ export default function UserManagementTab() {
                       {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                     </select>
                   </td>
-                  <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
-                    {u.updated_at ? new Date(u.updated_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
+                  <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+                    {u.lastSignInAt
+                      ? <span className="text-gray-500">{new Date(u.lastSignInAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                      : <span className="text-gray-300 italic">Never logged in</span>}
                   </td>
                   <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     <button onClick={() => resetPassword(u.email)} title="Reset password"
