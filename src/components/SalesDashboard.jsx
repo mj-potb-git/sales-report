@@ -577,9 +577,6 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
                   attendance = startsAt, sales = date_paid) — labels make it explicit.
                   Reconciles: Scheduled = Show Up + No-Show + Unmarked. */}
               <SectionHeaderRow label="# OF LEADS — APPOINTMENT FUNNEL" span={days.length + 1} color="#1B4F4F" />
-              <MetricRow label="Book an Appointment (booked this day)" tip="leads"
-                values={perDay.map(d => d.leads)}
-                formatter={v => v === 0 ? '—' : String(v)} bold />
               <MetricRow label="YCBM Scheduled (appointment this day)" tip="scheduled"
                 values={perDay.map(d => d.totalBookings)} bold />
               <MetricRow label="↳ Show Up (by appt date)" tip="showUp"
