@@ -90,7 +90,37 @@ Example response:
 - Same envelope: `{ status, code, message, data }`
 - Same host, so our existing proxy just forwards it
 
-Either shape unblocks us completely. Salamat! Let me know kung kailan mo
-makakayanan or kung may tanong sa data.
+Either shape unblocks us completely.
+
+---
+
+## SECOND ISSUE — `/signups/sales-report` is missing records
+
+Separate from the payment-dates request above, we're also finding **members
+who exist in LakbayHub but never appear in `/signups/sales-report`.** Examples
+(all confirmed present in our records, absent from the API response):
+Kath Gbc, Dor Ban, Ro Ma Sta Maria, Ness Rillera, April Rose Gatbunton Barlis,
+Joel ZXian JB Bayas, Olie Joaquin Palmos, Mica Corpuz, Michael Sy.
+
+What we've verified from our side:
+- The endpoint currently returns ~255 rows and it DOES include `PENDING`
+  payment/account statuses — so it's **not** filtered to paid-only; the missing
+  people are absent regardless of status.
+- Every other endpoint we've tried (`/signups`, `/payments`, `/invoices`,
+  `/transactions`, etc.) returns **500 "Route Not Found"** — so `/signups/
+  sales-report` is the ONLY window we have into the data.
+
+**Questions / requests:**
+1. **What is the inclusion rule for `/signups/sales-report`?** Why would a
+   signed-up or paid member NOT appear? Is it scoped to certain clusters,
+   account types, sub-accounts, or does a row require a linked sales-call /
+   payment record before it shows?
+2. **Please expose a complete list endpoint** that returns **ALL** members /
+   signups / payments with no hidden filtering — every stage, every cluster,
+   every status — so nothing is silently dropped from our reports.
+3. A **lookup-by-email** (`GET /signups/sales-report?email=...` or similar)
+   would also let us confirm whether a specific person exists in the system.
+
+Salamat! Let me know kung kailan mo makakayanan or kung may tanong sa data.
 
 — MJ
