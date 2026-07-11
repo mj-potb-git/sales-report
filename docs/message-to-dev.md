@@ -29,7 +29,11 @@ and **one `date_paid`** per member. So:
 2. Once a member is fully paid, there's **no trace** they ever made a DP, and no
    DP date.
 3. About **18 PAID records currently come back with `date_paid: null`**, so those
-   sales are invisible in every month view.
+   sales are invisible in every month view. Concrete example — **Leila Jules
+   Santamena** (`julessarino98@gmail.com`, cluster `ACQUISITION - MARTIN`):
+   `payment_status: PAID`, `account_status: ACTIVATED`, `amount_paid: 14999`,
+   but `date_paid: null` AND `sales_call_date: null`. She's fully paid yet
+   appears in no dated report. Every PAID row needs a real payment date.
 
 **What we're requesting:**
 
