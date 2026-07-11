@@ -121,10 +121,20 @@ who exist in LakbayHub but never appear in `/signups/sales-report`.** Examples
 Kath Gbc, Dor Ban, Ro Ma Sta Maria, Ness Rillera, April Rose Gatbunton Barlis,
 Joel ZXian JB Bayas, Olie Joaquin Palmos, Mica Corpuz, Michael Sy.
 
+Strongest example — **Athena Blanco** (`athenablanc76@gmail.com`, Travelpreneur):
+in the admin UI she is `Overall Balance: PAID` with **3 invoices** (₱3,000 PAID
+Apr 5; ₱11,999 PENDING Jul 10; ₱11,999 PAID Jul 10). She is a real, fully-paid
+member — yet she does **not appear at all** in `/signups/sales-report` (searched
+all 255 rows by name + email). Her entire ₱11,999 July-10 payment is invisible to us.
+
 What we've verified from our side:
 - The endpoint currently returns ~255 rows and it DOES include `PENDING`
   payment/account statuses — so it's **not** filtered to paid-only; the missing
   people are absent regardless of status.
+- Members with **recent July-10 invoice activity** (Athena, Leila) are the ones
+  missing or date-less — possibly the report is a stale snapshot that isn't
+  picking up recent invoice updates. Please confirm whether it's cached/regenerated
+  on a schedule.
 - Every other endpoint we've tried (`/signups`, `/payments`, `/invoices`,
   `/transactions`, etc.) returns **500 "Route Not Found"** — so `/signups/
   sales-report` is the ONLY window we have into the data.
