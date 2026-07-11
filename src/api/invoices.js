@@ -52,6 +52,16 @@ export function mapInvoice(inv) {
   const fullPrice = packageFullPrice(inv.package_avail)
   const amount = suspicious ? (fullPrice || 0) : rawAmount
   const status = String(inv.status || '').toUpperCase()
+  const createdDate = inv.created_date || (inv.created_at ? String(inv.created_at).slice(0, 10) : null)
+  // Payment date = when the customer actually PAID. For manual/bank payments the
+  // API stamps paid_at from `reviewed_at` (admin approval), which can lag the
+  // real payment by days — even into the next month. Per MJ, revenue is counted
+  // on the payment date, so when paid_at came from reviewed_at we fall back to
+  // the created/payment date instead of the (later) approval date.
+  let paidDate = inv.paid_at || null
+  if (paidDate && inv.paid_at_source === 'reviewed_at' && createdDate) {
+    paidDate = createdDate
+  }
   return {
     invoice_id: inv.invoice_id,
     xendit_id: inv.xendit_id,
@@ -59,8 +69,10 @@ export function mapInvoice(inv) {
     email: inv.email || '',
     amount,
     rawAmount: suspicious ? rawAmount : undefined,
-    paidDate: inv.paid_at || null,                 // YYYY-MM-DD when this payment landed
-    createdDate: inv.created_date || (inv.created_at ? String(inv.created_at).slice(0, 10) : null),
+    paidDate,                                       // YYYY-MM-DD when this payment landed
+    approvalDate: inv.paid_at || null,              // raw paid_at (approval date) for reference
+    paidAtSource: inv.paid_at_source || null,
+    createdDate,
     status,
     isPaid: PAID_STATUSES.has(status),
     paymentType: (inv.payment_type || 'unknown').toLowerCase(),  // down_payment | balance | full | unknown
