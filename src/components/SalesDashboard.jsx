@@ -61,14 +61,17 @@ function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x }
 function formatDayLabel(d) {
   return d.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
 }
-// Use LOCAL date components (not UTC). YCBM returns startsAt without TZ
-// so it's interpreted as local; bucketing must also use local components or
-// the columns end up one day off in PHT.
+// Bucket every date by the PHILIPPINE calendar date (Asia/Manila), NOT the
+// viewer's machine timezone. POTB operates on PH time, and other departments
+// may view this from a different timezone — pinning to Asia/Manila guarantees
+// a booking made at, e.g., 1 AM PHT lands on that PH day for everyone, matching
+// the team's own day boundary. (For a viewer already on PH time this is
+// identical to local components; for anyone else it stays correct.)
+const PH_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit',
+})
 function formatDateISO(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return PH_DATE_FMT.format(d instanceof Date ? d : new Date(d))
 }
 function hourLabel(h) {
   return h === 0 ? '12AM' : h < 12 ? `${h}AM` : h === 12 ? '12PM' : `${h - 12}PM`
