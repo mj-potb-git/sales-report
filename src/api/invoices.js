@@ -144,24 +144,37 @@ export function groupInvoicesByCustomer(invoices) {
     const paid = invs.filter(i => i.isPaid)
     const totalPaid = paid.reduce((s, i) => s + i.amount, 0)
     const dp = invs.find(i => i.paymentType === 'down_payment')
-    const balance = invs.find(i => i.paymentType === 'balance')
-    const full = invs.find(i => i.paymentType === 'full')
-    const fullPrice = packageFullPrice(invs[0].package)
+    // A member's invoices can carry DIFFERENT packages (a Starter down payment
+    // later upgraded to Travelpreneur, or a mis-tagged DP). Take the HIGHEST-tier
+    // package they hold so the full price + balance are sized correctly — using
+    // invs[0] alone mislabels an upgraded member and understates their balance.
+    let pkg = invs[0].package
+    let fullPrice = packageFullPrice(invs[0].package) || 0
+    for (const i of invs) {
+      const fp = packageFullPrice(i.package) || 0
+      if (fp > fullPrice) { fullPrice = fp; pkg = i.package }
+    }
+    const paidByDate = paid.filter(i => i.paidDate).sort((a, b) => String(a.paidDate).localeCompare(String(b.paidDate)))
+    const isFullyPaid = fullPrice ? totalPaid >= fullPrice : paid.some(i => i.paymentType === 'full')
+    // "Had a DP" = paid in more than one go (DP + balance), not a single full payment.
+    const hadDownPayment = Boolean(dp) || paid.length > 1 || (fullPrice ? totalPaid > 0 && totalPaid < fullPrice : false)
     out.push({
       key,
       customer_name: invs[0].customer_name,
       email: invs[0].email,
-      package: invs[0].package,
+      package: pkg,
       coach: invs.find(i => i.coach)?.coach || '',
       cluster: invs.find(i => i.cluster)?.cluster || '',
       isExternal: invs.some(i => i.isExternal),
       invoices: invs,
       totalPaid,
-      fullPrice,
-      hadDownPayment: Boolean(dp) || (fullPrice && totalPaid > 0 && totalPaid < fullPrice),
-      dpDate: dp?.paidDate || null,
-      fullPaymentDate: (full?.isPaid ? full.paidDate : null) || (balance?.isPaid ? balance.paidDate : null),
-      isFullyPaid: fullPrice ? totalPaid >= fullPrice : paid.some(i => i.paymentType === 'full'),
+      fullPrice: fullPrice || null,
+      hadDownPayment,
+      dpDate: dp?.paidDate || (hadDownPayment ? (paidByDate[0]?.paidDate || null) : null),
+      // The full-payment date is when the LAST payment landed (completing the
+      // package), not the first balance — a member can pay the balance in parts.
+      fullPaymentDate: isFullyPaid ? (paidByDate[paidByDate.length - 1]?.paidDate || null) : null,
+      isFullyPaid,
       hasPending: invs.some(i => !i.isPaid),
     })
   }
