@@ -168,6 +168,17 @@ to recover the cluster from — it can only be fixed at the invoice.
 the same way `/signups/sales-report` already does. That's what lets us credit
 the sale to the right coach.
 
+**The coach is derivable from the payment link.** In `/signups/sales-report`
+the `payment_link_used` maps 1:1 to a cluster/coach — we verified all 15
+distinct links map to exactly one cluster (e.g. `.../payment-link/1775638380898`
+→ `ACQUISITION - MARIA`, `.../1775700737638` → `ACQUISITION - ANGEL`). So the
+simplest fix on your side: **either** set `cluster_name` on the invoice from the
+payment link, **or** just **add `payment_link_used` to the `/signups/invoices`
+response** and we'll map it to the coach ourselves. This also recovers the
+Feb–Mar invoices (~400) that pre-date cluster tagging but still have a payment
+link. Right now `/signups/invoices` returns NO payment-link field at all, so we
+have no way to tag them.
+
 Salamat! Let me know kung kailan mo makakayanan or kung may tanong sa data.
 
 — MJ

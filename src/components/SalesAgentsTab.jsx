@@ -27,6 +27,7 @@ import DataSourceBanner from './ui/DataSourceBanner'
 import RevenueTrend from './RevenueTrend'
 import SalesPerformanceCards from './SalesPerformanceCards'
 import DownPaymentsTracker from './DownPaymentsTracker'
+import UnassignedSales from './UnassignedSales'
 import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
 import { periodRange, periodLabelFor, currentMonthKey, latestMonthKey } from '../lib/periods'
 import { packageFullPrice } from '../api/lakbayhub'
@@ -485,6 +486,8 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
 
       {/* Incomplete LakbayHub records (missing date / amount / closer) */}
       <NeedsReview records={getReviewRecords()} />
+
+      <UnassignedSales customers={getInvoiceCustomers()} />
 
       {/* Down payments tracker — all outstanding partial payments, aged, per coach */}
       <DownPaymentsTracker customers={getInvoiceCustomers()} subtitle="POTB sign-ups (LakbayHub)" />
