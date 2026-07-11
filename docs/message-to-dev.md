@@ -35,10 +35,25 @@ and **one `date_paid`** per member. So:
    but `date_paid: null` AND `sales_call_date: null`. She's fully paid yet
    appears in no dated report. Every PAID row needs a real payment date.
 
+**This data already exists in your admin UI — just not in the API.**
+
+Your LakbayHub member view has an **"Invoice Management"** panel that lists each
+member's invoices. Real example — Leila Jules Santamena (`julessarino98@gmail.com`)
+shows **2 invoices** in the UI:
+
+| Invoice ID | Amount | Status | Updated |
+|---|---|---|---|
+| invoice-20260710-170909 | ₱14,999.00 | PENDING | July 10, 2026 |
+| invoice-20260710-M83227 | ₱14,999.00 | PAID    | July 10, 2026 |
+
+But the API's `/signups/sales-report` returns her as a single row with
+`date_paid: null` and **no `invoices` field at all** — so none of that invoice
+detail reaches us. We just need that same Invoice Management data exposed via API.
+
 **What we're requesting:**
 
 A read-only endpoint that returns **one row per payment** (invoice/transaction),
-instead of one row per member:
+instead of one row per member — essentially the "Invoice Management" list:
 
 ```
 GET /signups/invoices        (or /signups/payments)
