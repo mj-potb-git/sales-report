@@ -33,7 +33,7 @@ import { packageFullPrice } from '../api/lakbayhub'
 import { comparePeriods } from '../api/lakbay'
 import {
   filterByRange, rangeFor, sum, totalsByAgent, totalsByTeam,
-  dailyTrend, formatPHP, formatPHPCompact, getSalesSource, getReviewRecords,
+  dailyTrend, formatPHP, formatPHPCompact, getSalesSource, getReviewRecords, getInvoiceCustomers,
 } from '../api/lakbay'
 
 const PRIMARY = '#1B4F4F'
@@ -65,7 +65,7 @@ function SummaryCard({ icon: Icon, label, value, sub, accent }) {
 // Agent detail view — scoped to the SAME period/custom filter as the list, so
 // clicking a coach shows exactly the sales they made in that window (for
 // cross-checking against the manual tracker).
-function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], onBack }) {
+function AgentDetail({ agent, allRecords, customers = [], periodId, monthKey, customDates = [], onBack }) {
   const isCustom = periodId === 'custom' && customDates.length > 0
   const fromKey = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d) }
   let start, end, periodLabel
@@ -89,13 +89,21 @@ function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], 
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
   const totalSales = sum(filtered, 'sales_amount')
-  const fmtDate = (d) => new Date(d + (String(d).length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  const fmtDate = (d) => d ? new Date(d + (String(d).length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+  // Real payment type from the invoice (not a paid-vs-full guess).
   const payType = (r) => {
-    const full = packageFullPrice(r.meta?.package); const paid = r.sales_amount || 0
-    if (!full || paid <= 0) return null
-    return paid >= full ? { t: 'Full', cls: 'bg-emerald-100 text-emerald-700' }
-                        : { t: `DP · bal ${formatPHP(full - paid)}`, cls: 'bg-amber-100 text-amber-700' }
+    switch (r.meta?.payment_type) {
+      case 'down_payment': return { t: 'Down Payment', cls: 'bg-amber-100 text-amber-700' }
+      case 'balance':      return { t: 'Balance',      cls: 'bg-blue-100 text-blue-700' }
+      case 'full':         return { t: 'Full',         cls: 'bg-emerald-100 text-emerald-700' }
+      default:             return null
+    }
   }
+  // This coach's members with their full payment history (all-time, so the DP
+  // and the balance show even if they landed in different months).
+  const coachCustomers = customers
+    .filter(c => c.coach === agent.name)
+    .sort((a, b) => String(b.dpDate || b.fullPaymentDate || '').localeCompare(String(a.dpDate || a.fullPaymentDate || '')))
 
   return (
     <div className="flex flex-col gap-4 pb-24 sm:pb-6">
@@ -157,7 +165,7 @@ function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], 
             {filtered.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-gray-200 bg-gray-50">
-                  <td className="px-4 py-2.5 font-semibold text-gray-700" colSpan={4}>TOTAL ({filtered.length} sales)</td>
+                  <td className="px-4 py-2.5 font-semibold text-gray-700" colSpan={4}>TOTAL ({filtered.length} payments)</td>
                   <td className="px-4 py-2.5 font-bold whitespace-nowrap" style={{ color: PRIMARY }}>{formatPHP(totalSales)}</td>
                 </tr>
               </tfoot>
@@ -165,6 +173,44 @@ function AgentDetail({ agent, allRecords, periodId, monthKey, customDates = [], 
           </table>
         </div>
       </div>
+
+      {/* Payment history by customer — all-time, so a Down Payment in one month
+          and the balance in another both show, with the exact dates MJ wants. */}
+      {coachCustomers.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <p className="text-sm font-semibold text-gray-700">Payment history by customer ({coachCustomers.length})</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">All-time — kung may DP muna, makikita kung kailan nag-DP at kailan nag-full payment.</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50">
+                  {['Customer', 'Package', 'Payment path', 'DP date', 'Full-payment date', 'Total paid'].map(h => (
+                    <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {coachCustomers.map(c => (
+                  <tr key={c.key} className="hover:bg-gray-50 align-top">
+                    <td className="px-4 py-2.5 text-gray-800">{c.customer_name}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{(c.package || '').replace(/\s*package\s*/i, '').trim() || '—'}</td>
+                    <td className="px-4 py-2.5">
+                      {c.hadDownPayment
+                        ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Had a DP{!c.isFullyPaid ? ' · balance pending' : ''}</span>
+                        : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">Paid in full</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{fmtDate(c.dpDate)}</td>
+                    <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{c.isFullyPaid ? fmtDate(c.fullPaymentDate) : <span className="text-amber-600">not yet</span>}</td>
+                    <td className="px-4 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(c.totalPaid)}{c.fullPrice ? <span className="text-gray-400 text-xs"> / {formatPHP(c.fullPrice)}</span> : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -287,8 +333,10 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
   // Pending/DP: real POTB sign-ups LakbayHub hasn't stamped with a date_paid yet
   // (down payments / awaiting full payment) — excluded from the paid totals, so
   // surfaced separately. Free 2GO accounts (₱0) are not sales, so left out.
-  const pendingSignups = getReviewRecords().filter(
-    r => (r.reviewReasons || []).includes('no date') && !/2go|free/i.test(r.team || ''),
+  // Pending/DP = members who've paid a partial (down payment) but not the full
+  // package yet — a real receivable, computed per-member from their invoices.
+  const pendingSignups = getInvoiceCustomers().filter(
+    c => c.totalPaid > 0 && !c.isFullyPaid && !/2go|free/i.test(c.cluster || ''),
   ).length
 
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
@@ -439,7 +487,7 @@ function Overview({ records, periodId, monthKey, onPeriod, onMonth, customDates 
       <NeedsReview records={getReviewRecords()} />
 
       {/* Down payments tracker — all outstanding partial payments, aged, per coach */}
-      <DownPaymentsTracker records={records} subtitle="POTB sign-ups (LakbayHub)" />
+      <DownPaymentsTracker customers={getInvoiceCustomers()} subtitle="POTB sign-ups (LakbayHub)" />
 
       {/* Deep analytics — collapsed by default to keep the tab scannable */}
       <button
@@ -691,7 +739,7 @@ export default function SalesAgentsTab() {
 
   const effMonthKeyForDetail = monthKey || latestMonthKey(records.map(r => r.date)) || currentMonthKey()
   if (selectedAgent) {
-    return <AgentDetail agent={selectedAgent} allRecords={records}
+    return <AgentDetail agent={selectedAgent} allRecords={records} customers={getInvoiceCustomers()}
                         periodId={periodId} monthKey={effMonthKeyForDetail} customDates={customDates}
                         onBack={() => setSelectedAgent(null)} />
   }

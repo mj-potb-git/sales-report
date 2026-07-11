@@ -7,9 +7,10 @@ import { AlertTriangle, ChevronDown, ChevronRight, Download } from 'lucide-react
 import { formatPHP } from '../../api/lakbay'
 
 const REASON_STYLE = {
-  'no date':        'bg-red-100 text-red-700',
-  'zero amount':    'bg-amber-100 text-amber-700',
-  'no attribution': 'bg-blue-100 text-blue-700',
+  'no date':         'bg-red-100 text-red-700',
+  'pending payment': 'bg-amber-100 text-amber-700',
+  'zero amount':     'bg-amber-100 text-amber-700',
+  'no attribution':  'bg-blue-100 text-blue-700',
 }
 
 function exportCsv(records) {

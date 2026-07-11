@@ -1,11 +1,14 @@
-// Down Payments tracker — every partial (DP) sale, tagged to its coach, with
-// how long the balance has been outstanding, so MJ can follow up on collections.
-// A sale is a Down Payment when the amount paid is below the package's full
-// price (Starter ₱9,999 · Travelpreneur ₱14,999 · Adventurer ₱69,990).
+// Down Payments tracker — every member who has paid a PARTIAL amount (a down
+// payment) but not yet the full package price, tagged to their coach, with how
+// long the balance has been outstanding, so MJ can follow up on collections.
+//
+// Sourced from invoice-level data (api/invoices → getInvoiceCustomers): a
+// member is a "down payment" when they have paid something but their total paid
+// is still below the package's full price. The DP date is their first payment;
+// the balance is what's left to collect.
 import { useMemo, useState } from 'react'
 import { Wallet, Clock, Download } from 'lucide-react'
-import { formatPHP, formatPHPCompact } from '../api/lakbay'
-import { coachFromCluster, packageFullPrice } from '../api/lakbayhub'
+import { formatPHP } from '../api/lakbay'
 
 const TEAL = '#1B4F4F'
 const GOLD = '#F5A623'
@@ -17,31 +20,32 @@ function ageStyle(days) {
   return { cls: 'bg-red-100 text-red-700', label: `${days}d` }
 }
 
-export default function DownPaymentsTracker({ records = [], title = 'Down Payments', subtitle = 'Sign-up sa LakbayHub' }) {
+export default function DownPaymentsTracker({ customers = [], title = 'Down Payments', subtitle = 'Sign-up sa LakbayHub' }) {
   const [nowMs] = useState(() => Date.now())
   const [month, setMonth] = useState('all')   // 'all' or 'YYYY-MM'
 
   const allDps = useMemo(() => {
     const out = []
-    for (const r of records) {
-      const full = packageFullPrice(r.meta?.package)
-      const paid = r.sales_amount || 0
-      if (!full || paid <= 0 || paid >= full) continue   // not a partial payment
-      if (!r.date) continue                              // no DP date → can't age it
-      const t = new Date(r.date).getTime()
+    for (const c of customers) {
+      if (/2go|free/i.test(c.cluster || '')) continue         // free accounts aren't sales
+      if (!(c.totalPaid > 0) || c.isFullyPaid) continue        // must be a real partial payment
+      if (!c.fullPrice) continue                               // unknown package → can't size the balance
+      const dpDate = c.dpDate || c.invoices.find(i => i.isPaid)?.paidDate
+      if (!dpDate) continue                                    // no dated payment → can't age it
+      const t = new Date(dpDate).getTime()
       const days = Math.max(0, Math.floor((nowMs - t) / 86400000))
       out.push({
-        id: r.transaction_id,
-        name: r.customer_name || 'Unknown',
-        coach: coachFromCluster(r.team) || '—',
-        package: (r.meta?.package || '').replace(/\s*package\s*/i, '').trim() || '—',
-        paid, full, balance: full - paid, date: r.date, monthKey: String(r.date).slice(0, 7), days,
+        id: c.key,
+        name: c.customer_name || 'Unknown',
+        coach: c.coach || '—',
+        package: (c.package || '').replace(/\s*package\s*/i, '').trim() || '—',
+        paid: c.totalPaid, full: c.fullPrice, balance: c.fullPrice - c.totalPaid,
+        date: dpDate, monthKey: String(dpDate).slice(0, 7), days,
       })
     }
     return out.sort((a, b) => b.days - a.days)   // longest-pending first
-  }, [records, nowMs])
+  }, [customers, nowMs])
 
-  // Month options (newest first) derived from the DP dates.
   const months = useMemo(() => {
     const set = new Set(allDps.map(d => d.monthKey).filter(Boolean))
     return [...set].sort((a, b) => b.localeCompare(a))
@@ -77,7 +81,7 @@ export default function DownPaymentsTracker({ records = [], title = 'Down Paymen
       <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2 flex-wrap">
         <Wallet size={16} style={{ color: GOLD }} />
         <h3 className="font-semibold text-gray-900">{title}</h3>
-        <span className="text-[11px] text-gray-500">{subtitle} · partial pa lang ang bayad</span>
+        <span className="text-[11px] text-gray-500">{subtitle} · may DP pero di pa fully paid</span>
         <select value={month} onChange={e => setMonth(e.target.value)}
           className="ml-auto rounded-lg border border-gray-200 px-2 py-1 text-xs bg-white">
           <option value="all">Lahat ng buwan</option>

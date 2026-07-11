@@ -17,10 +17,47 @@
 
 import { getSupabase } from './supabase'
 import { mockSalesRecords } from '../data/mockSalesData'
-import { fetchSignupsReport, mapLakbayHubRecord, isExternalRecord } from './lakbayhub'
+import { isExternalRecord } from './lakbayhub'
+import { fetchInvoices, groupInvoicesByCustomer } from './invoices'
 import {
   applyOverrides, startSaleOverridePoller, subscribeSaleOverrides,
 } from '../lib/saleDateOverrides'
+
+// Map one clean invoice → the internal sales-record schema every view already
+// consumes. A PAID invoice becomes a dated sale attributed to its payment date
+// (so DP-month vs balance-month split falls out for free). An unpaid invoice
+// becomes a dateless "pending payment" row for the Needs Review / DP list.
+// signup_count is 0 for a balance payment so a DP+balance member counts as one
+// sign-up, not two (revenue still sums both).
+function invoiceToRecord(inv) {
+  const reasons = []
+  if (!inv.isPaid) reasons.push('pending payment')
+  if (inv.rawAmount) reasons.push(`amount typo (₱${inv.rawAmount.toLocaleString()}) — corrected`)
+  if (!inv.coach && !inv.cluster) reasons.push('no attribution')
+  return {
+    sales_agent: inv.coach || 'Unassigned',
+    team: inv.cluster || 'No Cluster',
+    date: inv.isPaid ? inv.paidDate : null,
+    sales_amount: inv.amount,
+    signup_count: inv.paymentType === 'balance' ? 0 : 1,
+    transaction_id: inv.invoice_id,
+    customer_name: inv.customer_name,
+    needsReview: reasons.length > 0,
+    reviewReasons: reasons,
+    _external: inv.isExternal,
+    meta: {
+      email: inv.email,
+      package: inv.package,
+      payment_status: inv.status,
+      payment_type: inv.paymentType,
+      cluster_id: inv.clusterId,
+      invoice_id: inv.invoice_id,
+      paidDate: inv.paidDate,
+      createdDate: inv.createdDate,
+      ...(inv.rawAmount ? { raw_amount: inv.rawAmount } : {}),
+    },
+  }
+}
 
 // Boot the sale-date-correction sync once, and re-process records whenever a
 // correction changes so every report immediately reflects the true sale date.
@@ -55,6 +92,17 @@ export function getReviewRecords() { return reviewRecords }
 let externalRecords = []
 export function getExternalSalesRecords() { return applyOverrides(externalRecords) }
 
+// Raw clean invoices (all statuses, POTB + external) from the last fetch, so
+// customer-level views (Down Payments tracker, drill-down, pending/DP count)
+// can group payments per member without re-fetching.
+let allInvoices = []
+export function getInvoiceCustomers() {
+  return groupInvoicesByCustomer(allInvoices.filter(i => !i.isExternal))
+}
+export function getExternalInvoiceCustomers() {
+  return groupInvoicesByCustomer(allInvoices.filter(i => i.isExternal))
+}
+
 function buildReview(records) {
   return records
     .map((r) => {
@@ -77,41 +125,44 @@ let lastRealData = null
 let _lastRealAt  = 0
 
 async function fetchFresh() {
-  // 1. Live LakbayHub API ----------------------------------------------------
+  // 1. Live LakbayHub INVOICES API -------------------------------------------
+  // Per-payment source of truth. Each PAID invoice → a dated sale on its
+  // payment date; unpaid invoices → pending review rows. External (AACIO)
+  // invoices are split out for the AACIO tab exactly like before.
   if (Date.now() < rateLimitedUntil) {
-    console.warn('[lakbay] LakbayHub rate-limited; using last known real data if available')
+    console.warn('[lakbay] rate-limited; using last known real data if available')
     if (lastRealData) return lastRealData
   } else {
     try {
-      const raw = await fetchSignupsReport()
-      if (Array.isArray(raw) && raw.length > 0) {
-        const all  = raw.map((r, i) => mapLakbayHubRecord(r, i))
-        // External sales (AACIO cluster name OR known AACIO payment link) → AACIO
-        // only; everything POTB sees is internal.
-        externalRecords = all.filter(isExternalRecord)
-        const potb = all.filter(r => !isExternalRecord(r))
-        reviewRecords = buildReview(potb)          // incl. records with no date
-        const mapped = potb.filter(r => r.date)    // only dated records feed aggregations
+      const invoices = await fetchInvoices()
+      if (Array.isArray(invoices) && invoices.length > 0) {
+        allInvoices = invoices
+        const recs = invoices.map(invoiceToRecord)
+        // External split: keep ALL external recs (paid + pending) so the AACIO
+        // tab can show both its sales and its pending list.
+        externalRecords = recs.filter(r => r._external)
+        const potb = recs.filter(r => !r._external)
+        const mapped = potb.filter(r => r.date)           // PAID + dated feed aggregations
+        // Review = only PAID rows with a data-quality issue (typo / no
+        // attribution). Pending/DP is a customer-level concept surfaced via
+        // getInvoiceCustomers(), not one row per unpaid payment link.
+        reviewRecords = buildReview(mapped)
         if (mapped.length > 0) {
-          console.info(`[lakbay] Loaded ${mapped.length} POTB + ${externalRecords.length} external records from LakbayHub API (${reviewRecords.length} need review)`)
+          console.info(`[lakbay] Loaded ${mapped.length} POTB paid + ${externalRecords.length} external invoices (${reviewRecords.length} need review)`)
           lastRealData = mapped
           _lastRealAt = Date.now()
           salesSource = 'live'
           return mapped
         }
       }
-      console.warn('[lakbay] LakbayHub API returned no records, trying Supabase')
+      console.warn('[lakbay] Invoices API returned no records, trying Supabase')
     } catch (err) {
-      // Detect rate limit and back off
       if (/too many requests|rate limit|429/i.test(err.message)) {
         rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
-        console.warn(`[lakbay] LakbayHub rate-limited; backing off ${RATE_LIMIT_BACKOFF_MS / 1000}s`)
-        if (lastRealData) {
-          console.info(`[lakbay] Serving last-known ${lastRealData.length} real records`)
-          return lastRealData
-        }
+        console.warn(`[lakbay] rate-limited; backing off ${RATE_LIMIT_BACKOFF_MS / 1000}s`)
+        if (lastRealData) return lastRealData
       } else {
-        console.warn('[lakbay] LakbayHub API failed:', err.message)
+        console.warn('[lakbay] Invoices API failed:', err.message)
         if (lastRealData) return lastRealData
       }
     }

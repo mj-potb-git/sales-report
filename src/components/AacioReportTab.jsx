@@ -10,7 +10,7 @@ import {
 import useAacioData from '../hooks/useAacioData'
 import { dateKey } from '../api/ycbmAacio'
 import {
-  fetchSalesRecords, getExternalSalesRecords, getSalesSource,
+  fetchSalesRecords, getExternalSalesRecords, getSalesSource, getExternalInvoiceCustomers,
   filterByRange, sum, formatPHP, formatPHPCompact,
   totalsByAgent, totalsByTeam,
 } from '../api/lakbay'
@@ -575,7 +575,7 @@ export default function AacioReportTab() {
         periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)} />
 
       {/* Down payments tracker — all outstanding partial AACIO sign-ups, aged, per coach */}
-      <DownPaymentsTracker records={extSales} title="AACIO Down Payments" subtitle="External-cluster sign-ups" />
+      <DownPaymentsTracker customers={getExternalInvoiceCustomers()} title="AACIO Down Payments" subtitle="External-cluster sign-ups" />
 
       {/* Revenue trend (external-cluster LakbayHub sales) — Week/Month/Year */}
       <RevenueTrend records={extSales} />
