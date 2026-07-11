@@ -164,6 +164,15 @@ Examples: **Aura Aurea Banaag** (`aubanaag@yahoo.com`, coach should be Maria),
 members are NOT in `/signups/sales-report` either, so we have no other source
 to recover the cluster from — it can only be fixed at the invoice.
 
+**The cluster already exists on the member record — the invoice just doesn't
+inherit it.** In your admin **User List**, Aura Aurea Banaag's Cluster shows
+`ACQUISITION - MARIA`, yet her invoices come back with `cluster_name: null`.
+So the member→cluster link is already in your DB; please carry it onto the
+invoice rows (the invoice's member/company already resolves to that cluster).
+There is also NO user/member/company endpoint exposed to us (all return "Route
+Not Found"), so we cannot look the cluster up ourselves — it has to come on the
+invoice.
+
 **Request:** please populate `cluster_name` (+ `cluster_id`) on every invoice,
 the same way `/signups/sales-report` already does. That's what lets us credit
 the sale to the right coach.
