@@ -150,6 +150,24 @@ What we've verified from our side:
 3. A **lookup-by-email** (`GET /signups/sales-report?email=...` or similar)
    would also let us confirm whether a specific person exists in the system.
 
+---
+
+## THIRD ISSUE — invoices with `cluster_name: null` (coach attribution)
+
+The new `/signups/invoices` endpoint is great, thank you! One data gap: **56
+PAID invoices across 39 members come back with `cluster_name: null`** (and
+`cluster_id` null). Without the cluster we can't attribute the sale to a coach,
+so they all fall into "Unassigned" instead of under their actual coach.
+
+Examples: **Aura Aurea Banaag** (`aubanaag@yahoo.com`, coach should be Maria),
+**Athena Blanco** (`athenablanc76@gmail.com`). Most are from April. These
+members are NOT in `/signups/sales-report` either, so we have no other source
+to recover the cluster from — it can only be fixed at the invoice.
+
+**Request:** please populate `cluster_name` (+ `cluster_id`) on every invoice,
+the same way `/signups/sales-report` already does. That's what lets us credit
+the sale to the right coach.
+
 Salamat! Let me know kung kailan mo makakayanan or kung may tanong sa data.
 
 — MJ
