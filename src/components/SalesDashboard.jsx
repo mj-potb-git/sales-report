@@ -12,7 +12,7 @@ import {
   Minus, Activity,
 } from 'lucide-react'
 import { subscribeAttendance } from '../lib/attendance'
-import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
+import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
 import { fetchSalesRecords, formatPHP, formatPHPCompact } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 import { PRIMARY } from '../lib/theme'
@@ -165,7 +165,14 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
   // bookings the live API can't paginate. Without this the matrix was undercounting.
   const [repBump, setRepBump] = useState(0)
   useEffect(() => subscribeReport(() => setRepBump(n => n + 1)), [])
-  const bookings = useMemo(() => mergeWithReport(liveBookings, 'acquisition'), [liveBookings, repBump])
+  // Coaching only — exclude POTB Welcome Orientation so every Operations metric
+  // (Leads/Booked, Scheduled, Show-up, Time Slots) counts the same bookings as
+  // the Bookings + Acquisition tabs. Orientation is a post-signup welcome, not a
+  // lead/booking, and was inflating "Total # of Leads" by ~3-8/day.
+  const bookings = useMemo(
+    () => mergeWithReport(liveBookings, 'acquisition').filter(b => !isOrientation(b)),
+    [liveBookings, repBump],
+  )
 
   // Days driving the whole view. For custom: the exact picked dates (sorted).
   const days = useMemo(
