@@ -271,8 +271,11 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
     const allDayBookings = bookingsByDate.get(key) || []
     const dayBookings  = allDayBookings.filter(b => !isCancelled(b))   // active (scheduled) on this day
     const dayCancelled = allDayBookings.filter(isCancelled)
-    // Bookings created on this day (= "Book an Appointment" / lead generated)
-    const dayLeadsBooked = (bookingsCreatedByDate.get(key) || []).filter(b => !isCancelled(b)).length
+    // "Leads (Booking Made)" = ALL bookings created this day, matching YCBM's
+    // "Count of Booking Made" — a booking that was MADE is a lead even if later
+    // cancelled (cancellations are surfaced separately in the funnel). Orientation
+    // is already excluded upstream (bookings is filtered), so this is coaching-only.
+    const dayLeadsBooked = (bookingsCreatedByDate.get(key) || []).length
     const attendance = ycbmAttendanceStats(dayBookings, nowMs)
     const daySales = salesByDate.get(key) || []
     const salesAmount = daySales.reduce((a, r) => a + (r.sales_amount || 0), 0)
