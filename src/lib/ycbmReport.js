@@ -216,6 +216,22 @@ export function getReportBookings(account) {
   return Object.values(_store[account] || {})
 }
 
+/**
+ * REPLACE the entire report for an account with exactly these bookings — the
+ * latest YCBM export becomes the single source of truth (no accumulation of
+ * older uploads), so counts match the export exactly. Pushes the replaced set
+ * to Supabase so all viewers converge on it.
+ */
+export function replaceReport(account, bookings) {
+  const store = {}
+  for (const b of bookings) store[b.id] = b
+  _store[account] = store
+  writeLS(account, store)
+  notify()
+  pushToSupabase(account)
+  return { total: bookings.length }
+}
+
 /** Summary: total, date range. */
 export function getReportMeta(account) {
   const arr = getReportBookings(account)
