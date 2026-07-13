@@ -91,29 +91,34 @@ function AgentDetail({ agent, allRecords, customers = [], periodId, monthKey, cu
 
   const totalSales = sum(filtered, 'sales_amount')
   const fmtDate = (d) => d ? new Date(d + (String(d).length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
-  // Real payment type from the invoice (not a paid-vs-full guess).
-  const payType = (r) => {
-    switch (r.meta?.payment_type) {
-      case 'down_payment': return { t: 'Down Payment', cls: 'bg-amber-100 text-amber-700' }
-      case 'balance':      return { t: 'Balance',      cls: 'bg-blue-100 text-blue-700' }
-      case 'full':         return { t: 'Full',         cls: 'bg-emerald-100 text-emerald-700' }
-      default:             return null
-    }
-  }
   // This coach's members with their full payment history (all-time, so the DP
   // and the balance show even if they landed in different months).
   const coachCustomers = customers
     .filter(c => c.coach === agent.name)
     .sort((a, b) => String(b.dpDate || b.fullPaymentDate || '').localeCompare(String(a.dpDate || a.fullPaymentDate || '')))
-  // Some individual invoices come from LakbayHub with a blank package (e.g. a
-  // balance invoice). Fall back to the member's resolved package (from their
-  // other invoices) so the row shows "Adventurer" instead of "—".
-  const pkgByEmail = new Map(customers.map(c => [(c.email || '').toLowerCase(), c.package]))
-  const pkgFor = (r) => {
-    const p = (r.meta?.package || '').replace(/\s*package\s*/i, '').trim()
-    if (p) return p
-    const fb = pkgByEmail.get((r.meta?.email || '').toLowerCase()) || ''
-    return fb.replace(/\s*package\s*/i, '').trim() || '—'
+  // ONE row per client (not per payment) for the selected period, so a member
+  // who paid a DP and a balance shows ONCE — with both the DP and the full/
+  // balance payment (amount + date), even if they landed in different months.
+  // The payment detail comes from the client's full invoice history.
+  const custByEmail = new Map(coachCustomers.map(c => [(c.email || '').toLowerCase(), c]))
+  const custByName  = new Map(coachCustomers.map(c => [(c.customer_name || '').toLowerCase(), c]))
+  const clientMap = new Map()
+  for (const r of filtered) {
+    const key = ((r.meta?.email || r.customer_name || '').toLowerCase()).trim()
+    if (clientMap.has(key)) continue
+    const cust = custByEmail.get((r.meta?.email || '').toLowerCase())
+             || custByName.get((r.customer_name || '').toLowerCase()) || null
+    clientMap.set(key, { record: r, cust })
+  }
+  const clientRows = [...clientMap.values()]
+    .sort((a, b) => (b.record.date || '').localeCompare(a.record.date || ''))
+  // Extract a client's down payment + completing (full/balance) payment.
+  const paymentSplit = (c) => {
+    const invs = c?.invoices || []
+    const dp = invs.find(i => i.paymentType === 'down_payment' && i.isPaid) || null
+    const nonDp = invs.filter(i => i.isPaid && i.paymentType !== 'down_payment')
+      .sort((a, b) => String(a.paidDate || '').localeCompare(String(b.paidDate || '')))
+    return { dp, final: nonDp[nonDp.length - 1] || null }
   }
 
   return (
@@ -138,90 +143,59 @@ function AgentDetail({ agent, allRecords, customers = [], periodId, monthKey, cu
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-5">
           <SummaryCard icon={TrendingUp} label={`Sales · ${periodLabel}`} value={formatPHP(totalSales)} />
-          <SummaryCard icon={Users}      label="Transactions"             value={String(filtered.length)} />
-          <SummaryCard icon={Users}      label="Sign-ups"                 value={String(sum(filtered, 'signup_count'))} />
+          <SummaryCard icon={Users}      label="Clients"                  value={String(clientRows.length)} />
+          <SummaryCard icon={Users}      label="Payments"                 value={String(filtered.length)} />
         </div>
       </div>
 
+      {/* ONE row per client — DP + full/balance payment (amount + date) side by
+          side, so a member who paid in installments shows once (no double entry).
+          Cross-check vs the manual, which is also one line per client. */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
-          <p className="text-sm font-semibold text-gray-700">Sales ({filtered.length}) · {periodLabel}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">All of {agent.name}'s sales in the selected filter — cross-check vs your manual.</p>
+          <p className="text-sm font-semibold text-gray-700">Clients ({clientRows.length}) · {periodLabel}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Isang row bawat kliyente — makikita ang DP at full payment (petsa + halaga). Cross-check vs your manual.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50">
-                {['Date', 'Customer', 'Package', 'Payment', 'Amount'].map(h => (
-                  <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                {['Customer', 'Package', 'Down Payment', 'Full / Balance', 'Total paid'].map(h => (
+                  <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No sales in the selected filter.</td></tr>
-              ) : filtered.map(r => {
-                const pt = payType(r)
+              {clientRows.length === 0 ? (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No clients in the selected filter.</td></tr>
+              ) : clientRows.map(({ record, cust }) => {
+                const { dp, final } = paymentSplit(cust)
+                const pkg = ((cust?.package || record.meta?.package || '').replace(/\s*package\s*/i, '').trim()) || '—'
                 return (
-                  <tr key={r.transaction_id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{fmtDate(r.date)}</td>
-                    <td className="px-4 py-2 text-gray-800">{r.customer_name}</td>
-                    <td className="px-4 py-2 text-gray-500">{pkgFor(r)}</td>
-                    <td className="px-4 py-2">{pt ? <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${pt.cls}`}>{pt.t}</span> : '—'}</td>
-                    <td className="px-4 py-2 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(r.sales_amount)}</td>
+                  <tr key={record.transaction_id} className="hover:bg-gray-50 align-top">
+                    <td className="px-4 py-2.5 text-gray-800">{record.customer_name}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{pkg}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {dp
+                        ? <><span className="font-semibold text-amber-700">{formatPHP(dp.amount)}</span><div className="text-[11px] text-gray-400">{fmtDate(dp.paidDate)}</div></>
+                        : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {final
+                        ? <><span className="font-semibold text-emerald-700">{formatPHP(final.amount)}</span><div className="text-[11px] text-gray-400">{fmtDate(final.paidDate)} · {final.paymentType === 'full' ? 'Full' : 'Balance'}</div></>
+                        : (cust?.hadDownPayment ? <span className="text-amber-600 text-xs font-semibold">balance pending</span> : <span className="text-gray-400">—</span>)}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap font-semibold text-gray-900">
+                      {formatPHP(cust?.totalPaid ?? record.sales_amount)}{cust?.fullPrice ? <span className="text-gray-400 text-xs"> / {formatPHP(cust.fullPrice)}</span> : ''}
+                      {cust && !cust.isFullyPaid && <div className="text-[10px] text-amber-600 font-semibold">not fully paid</div>}
+                    </td>
                   </tr>
                 )
               })}
             </tbody>
-            {filtered.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-gray-200 bg-gray-50">
-                  <td className="px-4 py-2.5 font-semibold text-gray-700" colSpan={4}>TOTAL ({filtered.length} payments)</td>
-                  <td className="px-4 py-2.5 font-bold whitespace-nowrap" style={{ color: PRIMARY }}>{formatPHP(totalSales)}</td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
       </div>
-
-      {/* Payment history by customer — all-time, so a Down Payment in one month
-          and the balance in another both show, with the exact dates MJ wants. */}
-      {coachCustomers.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-700">Payment history by customer ({coachCustomers.length})</p>
-            <p className="text-[11px] text-gray-400 mt-0.5">All-time — kung may DP muna, makikita kung kailan nag-DP at kailan nag-full payment.</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50">
-                  {['Customer', 'Package', 'Payment path', 'DP date', 'Full-payment date', 'Total paid'].map(h => (
-                    <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {coachCustomers.map(c => (
-                  <tr key={c.key} className="hover:bg-gray-50 align-top">
-                    <td className="px-4 py-2.5 text-gray-800">{c.customer_name}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{(c.package || '').replace(/\s*package\s*/i, '').trim() || '—'}</td>
-                    <td className="px-4 py-2.5">
-                      {c.hadDownPayment
-                        ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Had a DP{!c.isFullyPaid ? ' · balance pending' : ''}</span>
-                        : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">Paid in full</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{fmtDate(c.dpDate)}</td>
-                    <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{c.isFullyPaid ? fmtDate(c.fullPaymentDate) : <span className="text-amber-600">not yet</span>}</td>
-                    <td className="px-4 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(c.totalPaid)}{c.fullPrice ? <span className="text-gray-400 text-xs"> / {formatPHP(c.fullPrice)}</span> : ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
