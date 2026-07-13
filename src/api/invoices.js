@@ -33,12 +33,14 @@ async function getMonth(month) {
   return json.data ?? []
 }
 
-// Earliest month with invoice data (business start — first invoice IDs are
-// 2025-12-01). Members can pay a DP one month and the balance many months
-// later (e.g. Cherrie Ann Alabastro: DP Dec 2025, balance Jun 2026), so we must
-// cover the whole history — not just a short rolling window — or their totals
-// and fully-paid status come out wrong.
-const START_MONTH = '2025-12'
+// Earliest month with invoice data (business history goes back to Sep 2025).
+// Members can pay a DP one month and the balance many months later (e.g. Aura
+// Aurea Banaag: DP Sep 2025, balance Jun 2026; Cherrie Dela Cruz: Dec 2025 →
+// Jun 2026), so we cover the whole history — not a short rolling window — or
+// their totals and fully-paid status come out wrong. NOTE: older months are
+// slow on LakbayHub's side (Sep 2025 ≈ 793 invoices, ~18s), so the initial
+// load takes ~18-20s; the 2-min cache amortizes it after that.
+const START_MONTH = '2025-09'
 
 // All YYYY-MM strings from START_MONTH through the current PH month.
 function monthsFromStart() {
