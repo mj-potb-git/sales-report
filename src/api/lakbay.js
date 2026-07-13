@@ -18,7 +18,7 @@
 import { getSupabase } from './supabase'
 import { mockSalesRecords } from '../data/mockSalesData'
 import { isExternalRecord } from './lakbayhub'
-import { fetchInvoices, groupInvoicesByCustomer } from './invoices'
+import { fetchInvoices, groupInvoicesByCustomer, invalidateInvoiceCache } from './invoices'
 import {
   applyOverrides, startSaleOverridePoller, subscribeSaleOverrides,
 } from '../lib/saleDateOverrides'
@@ -124,7 +124,7 @@ function buildReview(records) {
 let lastRealData = null
 let _lastRealAt  = 0
 
-async function fetchFresh() {
+async function fetchFresh(force = false) {
   // 1. Live LakbayHub INVOICES API -------------------------------------------
   // Per-payment source of truth. Each PAID invoice → a dated sale on its
   // payment date; unpaid invoices → pending review rows. External (AACIO)
@@ -134,7 +134,10 @@ async function fetchFresh() {
     if (lastRealData) return lastRealData
   } else {
     try {
-      const invoices = await fetchInvoices()
+      // Pass force through so a manual Refresh re-pulls invoices from LakbayHub
+      // (picks up source edits like a newly-assigned cluster) instead of the
+      // invoice module's cached copy.
+      const invoices = await fetchInvoices({ force })
       if (Array.isArray(invoices) && invoices.length > 0) {
         allInvoices = invoices
         const recs = invoices.map(invoiceToRecord)
@@ -207,7 +210,7 @@ export async function fetchSalesRecords({ force = false } = {}) {
   }
   if (inFlight) return inFlight
 
-  inFlight = fetchFresh()
+  inFlight = fetchFresh(force)
     .then(data => {
       // Re-date any late-posted manual payments to their true close date
       const corrected = applyOverrides(data)
@@ -220,11 +223,13 @@ export async function fetchSalesRecords({ force = false } = {}) {
   return inFlight
 }
 
-/** Force-clear the cache (for manual refresh buttons) */
+/** Force-clear the cache (for manual refresh buttons) — also drops the invoice
+ *  module cache so the next fetch re-pulls from LakbayHub (source edits show). */
 export function invalidateSalesCache() {
   cachedData = null
   cachedAt = 0
   rateLimitedUntil = 0
+  invalidateInvoiceCache()
 }
 
 // --- Date helpers -----------------------------------------------------------
