@@ -12,7 +12,7 @@ import {
   Minus, Activity,
 } from 'lucide-react'
 import { subscribeAttendance } from '../lib/attendance'
-import { mergeWithReport, subscribeReport, isOrientation } from '../lib/ycbmReport'
+import { mergeWithReport, subscribeReport, isOrientation, getReportBookings } from '../lib/ycbmReport'
 import { fetchSalesRecords, formatPHP, formatPHPCompact } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 import { PRIMARY } from '../lib/theme'
@@ -176,6 +176,14 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
     () => mergeWithReport(liveBookings, 'acquisition').filter(b => !isOrientation(b)),
     [liveBookings, repBump],
   )
+  // "Total # of Leads" (= YCBM "Count of Booking Made") is cross-checked against
+  // MJ's YCBM export, so count it from the UPLOADED report alone — NOT the
+  // live∪report union, which is a hair larger than a single export snapshot and
+  // caused per-day ±1-2. Falls back to the merged feed if nothing's uploaded yet.
+  const leadsBookings = useMemo(() => {
+    const rep = getReportBookings('acquisition').filter(b => !isOrientation(b))
+    return rep.length ? rep : bookings
+  }, [repBump, bookings])
 
   // Days driving the whole view. For custom: the exact picked dates (sorted).
   const days = useMemo(
@@ -241,7 +249,7 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
   // This is how MJ's spreadsheet defines "Leads (Booking Made)".
   const bookingsCreatedByDate = useMemo(() => {
     const map = new Map()
-    for (const b of bookings) {
+    for (const b of leadsBookings) {
       // Live bookings carry createdAt on raw; uploaded-report bookings carry it
       // at the top level. Read both so "Leads (Booking Made)" counts them all.
       const created = b.createdAt || b.raw?.createdAt
@@ -253,7 +261,7 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
       map.get(key).push(b)
     }
     return map
-  }, [bookings])
+  }, [leadsBookings])
 
   // Bookings whose appointment (startsAt) falls within the selected period —
   // feeds the Scheduling Insights day/time analysis.
