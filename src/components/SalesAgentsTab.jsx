@@ -105,6 +105,16 @@ function AgentDetail({ agent, allRecords, customers = [], periodId, monthKey, cu
   const coachCustomers = customers
     .filter(c => c.coach === agent.name)
     .sort((a, b) => String(b.dpDate || b.fullPaymentDate || '').localeCompare(String(a.dpDate || a.fullPaymentDate || '')))
+  // Some individual invoices come from LakbayHub with a blank package (e.g. a
+  // balance invoice). Fall back to the member's resolved package (from their
+  // other invoices) so the row shows "Adventurer" instead of "—".
+  const pkgByEmail = new Map(customers.map(c => [(c.email || '').toLowerCase(), c.package]))
+  const pkgFor = (r) => {
+    const p = (r.meta?.package || '').replace(/\s*package\s*/i, '').trim()
+    if (p) return p
+    const fb = pkgByEmail.get((r.meta?.email || '').toLowerCase()) || ''
+    return fb.replace(/\s*package\s*/i, '').trim() || '—'
+  }
 
   return (
     <div className="flex flex-col gap-4 pb-24 sm:pb-6">
@@ -156,7 +166,7 @@ function AgentDetail({ agent, allRecords, customers = [], periodId, monthKey, cu
                   <tr key={r.transaction_id} className="hover:bg-gray-50">
                     <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{fmtDate(r.date)}</td>
                     <td className="px-4 py-2 text-gray-800">{r.customer_name}</td>
-                    <td className="px-4 py-2 text-gray-500">{(r.meta?.package || '').replace(/\s*package\s*/i, '').trim() || '—'}</td>
+                    <td className="px-4 py-2 text-gray-500">{pkgFor(r)}</td>
                     <td className="px-4 py-2">{pt ? <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${pt.cls}`}>{pt.t}</span> : '—'}</td>
                     <td className="px-4 py-2 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(r.sales_amount)}</td>
                   </tr>

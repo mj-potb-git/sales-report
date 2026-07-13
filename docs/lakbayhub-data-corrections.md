@@ -9,7 +9,7 @@ Verified 2026-07-11.
 
 | # | Member | Email | Issue | Fix in LakbayHub |
 |---|---|---|---|---|
-| 1 | **Rosalina Palmos** | palmosplace008@gmail.com | Balance invoice recorded ₱49,990 but actual amount received = **₱49,999** (₱9 short). Adventurer, cluster ACQUISITION - ANGEL. | Correct the invoice amount to ₱49,999. |
+| 1 | **Rosalina Palmos** | palmosplace008@gmail.com | (a) Balance invoice `invoice-20260625-M36011` recorded ₱49,990 but actual received = **₱49,999** (₱9 short). (b) That same balance invoice has **`package_avail: null`** (blank) though the member is Adventurer. Cluster ACQUISITION - ANGEL. | Correct amount to ₱49,999 AND set package_avail = Adventurer on that invoice. |
 | 2 | **Vanessa Rillera** | vanessamendozarillera@gmail.com | Invoice has **no `cluster_name`** → shows as "Unassigned" (no coach credit). | Set the member/invoice cluster (coach). |
 | 3 | **Aura Aurea Banaag** | aubanaag@yahoo.com | Invoice `cluster_name` is null, though the **User List already shows Cluster = ACQUISITION - MARIA**. Invoice doesn't inherit the member cluster. | Carry the member's cluster (ACQUISITION - MARIA) onto her invoices. |
 | 4 | **Janna Mae Natividad** | jannamaednatividad@gmail.com | Tagged **ACQUISITION - ANGEL (internal)** but should be **AACIO**. The internal payment link (`.../1775700737638`) was used instead of Angel's AACIO link (`.../1778641884774`). | Re-tag her cluster to **AACIO ANGEL** (and use the AACIO link going forward). |
