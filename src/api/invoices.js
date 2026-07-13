@@ -20,9 +20,12 @@ const BASE = '/api/lakbay'
 const PAID_STATUSES = new Set(['PAID', 'SETTLED'])
 const MAX_REASONABLE_AMOUNT = 1_000_000
 
+// Older-month responses can take ~9s to generate on LakbayHub's side, so give
+// each month its own timeout instead of letting a slow one hang the whole load.
 async function getMonth(month) {
   const res = await fetch(`${BASE}/signups/invoices?month=${month}`, {
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(25000),
   })
   if (!res.ok) throw new Error(`Invoices API ${res.status}: ${res.statusText}`)
   const json = await res.json()
@@ -30,16 +33,24 @@ async function getMonth(month) {
   return json.data ?? []
 }
 
-// Rolling window of YYYY-MM strings, newest first, ending at the current month.
-// PH time so the "current month" matches the team's calendar.
-function recentMonths(n) {
+// Earliest month with invoice data (business start — first invoice IDs are
+// 2025-12-01). Members can pay a DP one month and the balance many months
+// later (e.g. Cherrie Ann Alabastro: DP Dec 2025, balance Jun 2026), so we must
+// cover the whole history — not just a short rolling window — or their totals
+// and fully-paid status come out wrong.
+const START_MONTH = '2025-12'
+
+// All YYYY-MM strings from START_MONTH through the current PH month.
+function monthsFromStart() {
   const now = new Date()
   const y = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', year: 'numeric' }).format(now))
-  const m = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', month: 'numeric' }).format(now)) - 1
+  const m = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', month: 'numeric' }).format(now))
+  const [sy, sm] = START_MONTH.split('-').map(Number)
   const out = []
-  for (let i = 0; i < n; i++) {
-    const d = new Date(y, m - i, 1)
-    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  let yy = sy, mm = sm
+  while (yy < y || (yy === y && mm <= m)) {
+    out.push(`${yy}-${String(mm).padStart(2, '0')}`)
+    mm++; if (mm > 12) { mm = 1; yy++ }
   }
   return out
 }
@@ -87,7 +98,9 @@ export function mapInvoice(inv) {
 }
 
 // --- Module cache (TTL + in-flight dedup + rate-limit backoff) --------------
-const CACHE_TTL_MS = 30_000
+// Longer TTL (2 min) because we now fetch the full business history (~8 months)
+// and older months are slow (~9s each) — no point re-running that every 30s.
+const CACHE_TTL_MS = 120_000
 const RATE_LIMIT_BACKOFF_MS = 120_000
 let cache = null
 let cachedAt = 0
@@ -96,18 +109,19 @@ let rateLimitedUntil = 0
 let lastReal = null
 
 /**
- * Fetch and merge invoices across the last `months` months (default 6, enough
- * to cover the 90-day period views). Deduped by invoice_id. Cached with TTL.
- * Returns [] and leaves `cache` null on total failure so callers can fall back.
+ * Fetch and merge invoices across the FULL business history (START_MONTH →
+ * current). Covers members who pay a DP in one month and the balance many
+ * months later, so their totals + fully-paid status are correct. Deduped by
+ * invoice_id, cached with TTL. Returns [] / keeps last-known on failure.
  */
-export async function fetchInvoices({ months = 6, force = false } = {}) {
+export async function fetchInvoices({ force = false } = {}) {
   const now = Date.now()
   if (!force && cache && now - cachedAt < CACHE_TTL_MS) return cache
   if (inFlight) return inFlight
   if (now < rateLimitedUntil && lastReal) return lastReal
 
   inFlight = (async () => {
-    const wanted = recentMonths(months)
+    const wanted = monthsFromStart()
     const results = await Promise.all(wanted.map(m => getMonth(m).catch(err => {
       if (/429|too many|rate limit/i.test(err.message)) rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
       console.warn(`[invoices] month ${m} failed:`, err.message)
