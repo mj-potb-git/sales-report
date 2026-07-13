@@ -105,21 +105,24 @@ function AgentDetail({ agent, allRecords, customers = [], periodId, monthKey, cu
   const clientMap = new Map()
   for (const r of filtered) {
     const key = ((r.meta?.email || r.customer_name || '').toLowerCase()).trim()
-    if (clientMap.has(key)) continue
-    const cust = custByEmail.get((r.meta?.email || '').toLowerCase())
-             || custByName.get((r.customer_name || '').toLowerCase()) || null
-    clientMap.set(key, { record: r, cust })
+    if (!clientMap.has(key)) {
+      const cust = custByEmail.get((r.meta?.email || '').toLowerCase())
+               || custByName.get((r.customer_name || '').toLowerCase()) || null
+      clientMap.set(key, { record: r, cust, periodAmount: 0, periodPayments: [] })
+    }
+    const e = clientMap.get(key)
+    e.periodAmount += (r.sales_amount || 0)   // ONLY what was actually paid in this period
+    e.periodPayments.push(r)
   }
   const clientRows = [...clientMap.values()]
     .sort((a, b) => (b.record.date || '').localeCompare(a.record.date || ''))
-  // Extract a client's down payment + completing (full/balance) payment.
-  const paymentSplit = (c) => {
-    const invs = c?.invoices || []
-    const dp = invs.find(i => i.paymentType === 'down_payment' && i.isPaid) || null
-    const nonDp = invs.filter(i => i.isPaid && i.paymentType !== 'down_payment')
-      .sort((a, b) => String(a.paidDate || '').localeCompare(String(b.paidDate || '')))
-    return { dp, final: nonDp[nonDp.length - 1] || null }
-  }
+  // A client's PAID invoices that fall OUTSIDE the selected period (e.g. the
+  // balance paid in July while viewing June) — shown as an indicator only;
+  // they are counted in THEIR own month, not added to this period's total.
+  const periodInvoiceIds = new Set(filtered.map(r => r.transaction_id))
+  const otherMonthPayments = (c) =>
+    (c?.invoices || []).filter(i => i.isPaid && i.paidDate && !periodInvoiceIds.has(i.invoice_id))
+  const typeLabel = (t) => t === 'down_payment' ? 'DP' : t === 'full' ? 'Full' : t === 'balance' ? 'Balance' : 'Pay'
 
   return (
     <div className="flex flex-col gap-4 pb-24 sm:pb-6">
@@ -148,19 +151,20 @@ function AgentDetail({ agent, allRecords, customers = [], periodId, monthKey, cu
         </div>
       </div>
 
-      {/* ONE row per client — DP + full/balance payment (amount + date) side by
-          side, so a member who paid in installments shows once (no double entry).
-          Cross-check vs the manual, which is also one line per client. */}
+      {/* ONE row per client. The amount counted here is ONLY what was paid in
+          the selected period (e.g. June); a payment made in another month
+          (e.g. balance paid in July) shows in "Other months" as an indicator
+          and is counted in ITS month, not here. Footer totals the period. */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100">
           <p className="text-sm font-semibold text-gray-700">Clients ({clientRows.length}) · {periodLabel}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">Isang row bawat kliyente — makikita ang DP at full payment (petsa + halaga). Cross-check vs your manual.</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Isang row bawat kliyente. Ang bilang dito = bayad sa {periodLabel} LANG. Kung may bayad sa ibang buwan (hal. full sa July), nasa "Other months" — doon bibilangin.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50">
-                {['Customer', 'Package', 'Down Payment', 'Full / Balance', 'Total paid'].map(h => (
+                {['Customer', 'Package', `Paid · ${periodLabel}`, 'Other months', `${periodLabel} total`].map(h => (
                   <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -168,31 +172,46 @@ function AgentDetail({ agent, allRecords, customers = [], periodId, monthKey, cu
             <tbody className="divide-y divide-gray-50">
               {clientRows.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No clients in the selected filter.</td></tr>
-              ) : clientRows.map(({ record, cust }) => {
-                const { dp, final } = paymentSplit(cust)
+              ) : clientRows.map(({ record, cust, periodAmount, periodPayments }) => {
+                const others = otherMonthPayments(cust)
                 const pkg = ((cust?.package || record.meta?.package || '').replace(/\s*package\s*/i, '').trim()) || '—'
                 return (
                   <tr key={record.transaction_id} className="hover:bg-gray-50 align-top">
                     <td className="px-4 py-2.5 text-gray-800">{record.customer_name}</td>
                     <td className="px-4 py-2.5 text-gray-500">{pkg}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      {dp
-                        ? <><span className="font-semibold text-amber-700">{formatPHP(dp.amount)}</span><div className="text-[11px] text-gray-400">{fmtDate(dp.paidDate)}</div></>
-                        : <span className="text-gray-400">—</span>}
+                      {periodPayments.map((r, i) => (
+                        <div key={i}>
+                          <span className="font-semibold text-gray-800">{typeLabel(r.meta?.payment_type)} {formatPHP(r.sales_amount)}</span>
+                          <span className="text-[11px] text-gray-400"> · {fmtDate(r.date)}</span>
+                        </div>
+                      ))}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      {final
-                        ? <><span className="font-semibold text-emerald-700">{formatPHP(final.amount)}</span><div className="text-[11px] text-gray-400">{fmtDate(final.paidDate)} · {final.paymentType === 'full' ? 'Full' : 'Balance'}</div></>
-                        : (cust?.hadDownPayment ? <span className="text-amber-600 text-xs font-semibold">balance pending</span> : <span className="text-gray-400">—</span>)}
+                      {others.length === 0
+                        ? <span className="text-gray-300">—</span>
+                        : others.map((i, idx) => (
+                            <div key={idx} className="text-[11px] text-amber-600">
+                              {typeLabel(i.paymentType)} {formatPHP(i.amount)} · {fmtDate(i.paidDate)}
+                            </div>
+                          ))}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap font-semibold text-gray-900">
-                      {formatPHP(cust?.totalPaid ?? record.sales_amount)}{cust?.fullPrice ? <span className="text-gray-400 text-xs"> / {formatPHP(cust.fullPrice)}</span> : ''}
+                      {formatPHP(periodAmount)}
                       {cust && !cust.isFullyPaid && <div className="text-[10px] text-amber-600 font-semibold">not fully paid</div>}
                     </td>
                   </tr>
                 )
               })}
             </tbody>
+            {clientRows.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50">
+                  <td className="px-4 py-2.5 font-semibold text-gray-700" colSpan={4}>TOTAL · {periodLabel} ({clientRows.length} client{clientRows.length > 1 ? 's' : ''})</td>
+                  <td className="px-4 py-2.5 font-bold whitespace-nowrap" style={{ color: PRIMARY }}>{formatPHP(totalSales)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
