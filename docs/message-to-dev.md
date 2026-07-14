@@ -188,6 +188,45 @@ Feb–Mar invoices (~400) that pre-date cluster tagging but still have a payment
 link. Right now `/signups/invoices` returns NO payment-link field at all, so we
 have no way to tag them.
 
+---
+
+## FOURTH ISSUE — re-clustering a member does NOT update their invoices
+
+When we move a member to a different cluster in the admin **User List** (e.g.
+re-tagging someone from an internal `ACQUISITION -` cluster to an `AACIO`
+cluster), the change is **not reflected in `/signups/invoices`.** The invoice
+rows keep the **old** `cluster_name` / `cluster_id` that was frozen at the time
+each payment was made.
+
+Concrete, current example — **Janna Mae Natividad**
+(`jannamaednatividad@gmail.com`, Travelpreneur). We have moved her to an **AACIO**
+cluster in the User List, but `/signups/invoices?month=2026-06` still returns all
+three of her invoices with the OLD cluster:
+
+| invoice_id | amount | paid_at | cluster_name (returned) | cluster_id | sales_type |
+|---|---|---|---|---|---|
+| invoice-20260610-222941 | 5000 | (pending) | `ACQUISITION - ANGEL` | 4cb69ddd-8762-4310-b9cc-b4bfafac4d8c | internal |
+| invoice-20260610-225002 | 5000 | 2026-06-10 | `ACQUISITION - ANGEL` | 4cb69ddd-8762-4310-b9cc-b4bfafac4d8c | internal |
+| invoice-20260613-171145 | 9999 | 2026-06-13 | `ACQUISITION - ANGEL` | 4cb69ddd-8762-4310-b9cc-b4bfafac4d8c | internal |
+
+Because our POTB-vs-AACIO split (and coach attribution) reads `cluster_name`
+straight off each invoice, her sales stay under POTB/Acquisition even though she
+now belongs to AACIO. `sales_type` is likewise still `internal`.
+
+**Request:** when a member's cluster changes, please reflect it on their invoices
+via ONE of these (either is fine):
+1. **Live-resolve** `cluster_name` / `cluster_id` / `sales_type` on the
+   `/signups/invoices` response from the member's **current** cluster (join at
+   read-time), instead of returning the value frozen at payment time; **or**
+2. **Back-fill** existing invoices' `cluster_name` / `cluster_id` / `sales_type`
+   whenever a member is re-clustered.
+
+Either way, once the API returns her under AACIO, our dashboard moves her
+automatically — no manual step on our end. This is the behaviour MJ expects:
+edit the cluster once in LakbayHub → the sale shows up under the correct team.
+
+---
+
 Salamat! Let me know kung kailan mo makakayanan or kung may tanong sa data.
 
 — MJ
