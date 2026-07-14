@@ -17,12 +17,16 @@ import useYcbmData from './hooks/useYcbmData'
 import { getSettings, subscribeSettings } from './lib/settings'
 import { startAttendancePoller } from './lib/attendance'
 import { startReportSync } from './lib/ycbmReport'
+import { startVersionWatch } from './lib/version'
 import { getSession, onAuthChange, signOut } from './lib/auth'
 import { fetchProfile, allowedTabsForRole, ROLE_LABELS } from './lib/roles'
 
-// Boot attendance sync + shared YCBM-report sync once on app load (idempotent)
+// Boot attendance sync + shared YCBM-report sync once on app load (idempotent).
+// startVersionWatch auto-reloads the tab when a new build ships, so no viewer
+// ever runs stale cached code (the root cause of the report re-polluting).
 startAttendancePoller()
 startReportSync()
+startVersionWatch()
 
 function SkeletonLoader() {
   return (

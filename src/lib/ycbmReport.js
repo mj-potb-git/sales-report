@@ -189,24 +189,12 @@ export function startReportSync() {
   }, POLL_MS)
 }
 
-/**
- * Merge freshly-parsed report bookings into the accumulated store.
- * Dedups by booking Id: new → added; already-seen → updated (latest wins).
- * Updates memory + localStorage immediately, then pushes the shared copy to
- * Supabase in the background. Returns { added, updated, total }.
- */
-export function mergeReport(account, bookings) {
-  const store = _store[account] || (_store[account] = {})
-  let added = 0, updated = 0
-  for (const b of bookings) {
-    if (store[b.id]) updated++; else added++
-    store[b.id] = b
-  }
-  writeLS(account, store)
-  notify()
-  pushToSupabase(account)   // background — share with all viewers
-  return { added, updated, total: Object.keys(store).length }
-}
+// NOTE: the old `mergeReport` (plain union — add/update, never remove) was
+// REMOVED. It accumulated stale bookings forever: a booking deleted/rescheduled
+// in YCBM stayed in the shared report and inflated Total # of Leads (the Jul 3
+// +2 / Jul 6 +1 bug). The ONLY write path now is `updateReportWindow`, which
+// rebuilds the uploaded date window from scratch so every daily upload is
+// self-healing. Do not reintroduce a union writer.
 
 /** All accumulated report bookings for an account. */
 export function getReportBookings(account) {
