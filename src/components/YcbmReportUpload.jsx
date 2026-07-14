@@ -4,7 +4,7 @@
 // upload daily and cross-check without losing older data.
 import { useState, useEffect } from 'react'
 import { Upload, FileCheck2, Trash2 } from 'lucide-react'
-import { parseReportCSV, replaceReport, getReportMeta, clearReport, subscribeReport } from '../lib/ycbmReport'
+import { parseReportCSV, updateReportWindow, getReportMeta, clearReport, subscribeReport } from '../lib/ycbmReport'
 
 export default function YcbmReportUpload({ account, label = 'YCBM report' }) {
   const [meta, setMeta] = useState(() => getReportMeta(account))
@@ -23,11 +23,10 @@ export default function YcbmReportUpload({ account, label = 'YCBM report' }) {
     try {
       const rows = parseReportCSV(await file.text())
       if (!rows.length) throw new Error('Walang nabasang bookings sa file.')
-      // REPLACE (not accumulate): the latest export is the single source of
-      // truth, so counts match the YCBM export exactly (no leftover bookings
-      // from older uploads).
-      const { total } = replaceReport(account, rows)
-      setFlash(`✓ Na-save! ${total} bookings — ito na ang buong report (pinalitan ang luma). Eksaktong katugma ng YCBM export mo.`)
+      // Windowed update: refresh the days this upload covers (no stale, no
+      // double) and keep older months from previous uploads.
+      const { total, uploaded, windowMin, windowMax } = updateReportWindow(account, rows)
+      setFlash(`✓ Na-update! ${uploaded} bookings mula ${windowMin} hanggang ${windowMax} — na-refresh ang mga araw na 'yon (walang doble, walang luma). ${total} total sa report.`)
       setTimeout(() => setFlash(null), 9000)
     } catch (e2) { setErr(e2.message) }
     finally { e.target.value = '' }

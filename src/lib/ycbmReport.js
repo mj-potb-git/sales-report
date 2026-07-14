@@ -217,19 +217,32 @@ export function getReportBookings(account) {
 }
 
 /**
- * REPLACE the entire report for an account with exactly these bookings — the
- * latest YCBM export becomes the single source of truth (no accumulation of
- * older uploads), so counts match the export exactly. Pushes the replaced set
- * to Supabase so all viewers converge on it.
+ * WINDOWED UPDATE — the workflow is a DAILY upload of the last ~30 days from
+ * YCBM. So for the DATE RANGE this upload covers (by booking-made date), the
+ * upload is the source of truth: drop any existing bookings in that window
+ * (removes stale/cancelled-and-deleted ones, prevents leftovers) and set it to
+ * exactly the upload. Bookings OUTSIDE the window (older months from previous
+ * uploads) are kept. Result: updates + adds, never doubles, never keeps stale
+ * inside the uploaded window — so counts match the YCBM export for those days.
  */
-export function replaceReport(account, bookings) {
-  const store = {}
-  for (const b of bookings) store[b.id] = b
+export function updateReportWindow(account, bookings) {
+  const store = { ...(_store[account] || {}) }
+  const dates = bookings.map(b => b.createdAt).filter(Boolean).sort()
+  const lo = dates.length ? dates[0].slice(0, 10) : null
+  const hi = dates.length ? dates[dates.length - 1].slice(0, 10) : null
+  if (lo && hi) {
+    for (const id of Object.keys(store)) {
+      const c = store[id].createdAt
+      const d = c ? String(c).slice(0, 10) : null
+      if (d && d >= lo && d <= hi) delete store[id]   // clear the window; upload replaces it
+    }
+  }
+  for (const b of bookings) store[b.id] = b            // add/refresh uploaded (dedup by id)
   _store[account] = store
   writeLS(account, store)
   notify()
   pushToSupabase(account)
-  return { total: bookings.length }
+  return { total: Object.keys(store).length, uploaded: bookings.length, windowMin: lo || '', windowMax: hi || '' }
 }
 
 /** Summary: total, date range. */
