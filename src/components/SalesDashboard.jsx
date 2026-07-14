@@ -172,8 +172,13 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
   // (Leads/Booked, Scheduled, Show-up, Time Slots) counts the same bookings as
   // the Bookings + Acquisition tabs. Orientation is a post-signup welcome, not a
   // lead/booking, and was inflating "Total # of Leads" by ~3-8/day.
+  // Non-lead booking types to exclude so counts match MJ's YCBM coaching export:
+  // Welcome Orientation (post-signup) and Walk-in appointments are NOT coaching
+  // leads and are not in the coaching pivot.
+  const notCoachingLead = (b) =>
+    isOrientation(b) || /walk\s*-?\s*in/i.test(b.raw?.title || b.title || b.appointmentType || '')
   const bookings = useMemo(
-    () => mergeWithReport(liveBookings, 'acquisition').filter(b => !isOrientation(b)),
+    () => mergeWithReport(liveBookings, 'acquisition').filter(b => !notCoachingLead(b)),
     [liveBookings, repBump],
   )
   // "Total # of Leads" (= YCBM "Count of Booking Made") is cross-checked against
@@ -181,9 +186,9 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
   // live∪report union, which is a hair larger than a single export snapshot and
   // caused per-day ±1-2. Falls back to the merged feed if nothing's uploaded yet.
   const leadsBookings = useMemo(() => {
-    const rep = getReportBookings('acquisition').filter(b => !isOrientation(b))
+    const rep = getReportBookings('acquisition').filter(b => !notCoachingLead(b))
     return rep.length ? rep : bookings
-  }, [repBump, bookings])
+  }, [repBump, bookings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Days driving the whole view. For custom: the exact picked dates (sorted).
   const days = useMemo(
