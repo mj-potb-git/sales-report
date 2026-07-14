@@ -148,21 +148,18 @@ async function reconcile(account) {
   }
 
   const remoteArr = row && Array.isArray(row.bookings) ? row.bookings : []
-  const remoteIds = new Set(remoteArr.map(b => b.id))
-  const local = _store[account] || {}
-  const localIds = Object.keys(local)
-
-  // Union (remote wins per id for freshest attendance), keeping all local ids.
-  const union = { ...local }
-  for (const b of remoteArr) union[b.id] = b
-  _store[account] = union
-  writeLS(account, union)
+  // REMOTE-AUTHORITATIVE (no union). Uploads write the windowed report to the
+  // shared row, so the shared row IS the source of truth — mirror it exactly.
+  // This kills the old accumulate-forever behaviour where stale bookings from
+  // earlier uploads never died (Jul 3 +2, Jul 6 +1). Safety: an empty/failed
+  // read never wipes local.
+  if (!remoteArr.length) return
+  const next = {}
+  for (const b of remoteArr) next[b.id] = b
+  _store[account] = next
+  writeLS(account, next)
   if (row) _updatedAt[account] = row.updated_at
   notify()
-
-  // Heal: local holds ids the shared row lacks → push the fuller union up.
-  const localOnly = localIds.some(id => !remoteIds.has(id))
-  if (localOnly) await pushToSupabase(account)
 }
 
 let _started = false
