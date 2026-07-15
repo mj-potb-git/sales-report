@@ -138,6 +138,65 @@ function Rank({ n }) {
   return <div className={`tv-rank ${n <= 3 ? 'tv-rank-top' : ''}`}>{medal || n}</div>
 }
 
+// One department column: header (Today + MTD + agent count) then the full list
+// of every agent with sales this month, auto-scrolling if it overflows.
+function DeptColumn({ source, stats, agents, loading }) {
+  const color = SOURCE_COLORS[source]
+  const textColor = SOURCE_TEXT[source] || color
+  const lead = agents[0]?.mtdSales || 1
+  const wrapRef = useRef(null)
+  const scrollRef = useRef(null)
+  const [scrollPx, setScrollPx] = useState(0)
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current, list = scrollRef.current
+    if (!wrap || !list) { setScrollPx(0); return }
+    const over = list.scrollHeight - wrap.clientHeight
+    setScrollPx(over > 8 ? over : 0)
+  }, [agents.length, stats.mtdSales])
+
+  return (
+    <div className="tv-col" style={{ borderTop: `5px solid ${color}` }}>
+      <div className="tv-col-head">
+        <div className="tv-col-title" style={{ color: textColor }}>
+          <span className="tv-team-dot" style={{ background: color }} />
+          {SOURCE_LABELS[source]}
+        </div>
+        <div className="tv-col-stats">
+          <div className="tv-col-stat"><span>TODAY</span><b>{formatPHP(stats.todaySales || 0)}</b></div>
+          <div className="tv-col-stat"><span>MTD</span><b style={{ color: textColor }}>{formatPHP(stats.mtdSales || 0)}</b></div>
+        </div>
+        <div className="tv-col-count">{agents.length} agent{agents.length === 1 ? '' : 's'} may benta</div>
+      </div>
+      <div className="tv-col-list" ref={wrapRef}>
+        {agents.length === 0 ? (
+          <div className="tv-empty">{loading ? 'Naglo-load…' : 'Wala pang benta.'}</div>
+        ) : (
+          <div className="tv-col-scroll" ref={scrollRef}
+               style={scrollPx ? { '--sp': `${scrollPx}px`, animation: 'tvscroll 30s linear infinite' } : undefined}>
+            {agents.map((a, i) => {
+              const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1
+              return (
+                <div key={a.key} className={`tv-crow ${i < 3 ? 'tv-crow-top' : ''}`}>
+                  <div className={`tv-crank ${i < 3 ? 'medal' : ''}`}>{medal}</div>
+                  <Avatar name={a.name} photo={a.photo} size={40} color={color} />
+                  <div className="tv-crow-main">
+                    <div className="tv-crow-name">{a.name}</div>
+                    <div className="tv-crow-bar"><span style={{ width: `${Math.max(5, (a.mtdSales / lead) * 100)}%`, background: color }} /></div>
+                  </div>
+                  <div className="tv-crow-right">
+                    <div className="tv-crow-amt">{formatPHP(a.mtdSales)}</div>
+                    {a.todaySales > 0 && <div className="tv-crow-today">+{formatPHPCompact(a.todaySales)} today</div>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main board ──────────────────────────────────────────────────────────────
 
 export default function TvApp() {
@@ -155,30 +214,9 @@ export default function TvApp() {
   const timeLabel = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
   const monthLabel = now.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
 
-  // Auto-rotate the leaderboard spotlight through each team every 30s:
-  // Acquisition → Account Officers → AACIO → (loop). Each team gets its own
-  // slide with its faces + today/MTD totals.
-  const [teamIdx, setTeamIdx] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setTeamIdx(i => (i + 1) % SOURCE_ORDER.length), 30_000)
-    return () => clearInterval(id)
-  }, [])
-  const activeSource = SOURCE_ORDER[teamIdx]
-  const teamBoard = leaderboard.filter(a => a.source === activeSource) // ALL agents, not just tops
-  const teamStats = bySource[activeSource] || {}
-  const teamLead = teamBoard[0]?.mtdSales || 1
-
-  // Auto-scroll the full roster when it overflows the panel (so everyone gets
-  // seen within the team's 30s slide, not just the top few).
-  const wrapRef = useRef(null)
-  const scrollRef = useRef(null)
-  const [scrollPx, setScrollPx] = useState(0)
-  useLayoutEffect(() => {
-    const wrap = wrapRef.current, list = scrollRef.current
-    if (!wrap || !list) { setScrollPx(0); return }
-    const over = list.scrollHeight - wrap.clientHeight
-    setScrollPx(over > 8 ? over : 0)
-  }, [activeSource, teamBoard.length, mtdSales])
+  // All agents with sales this month, grouped per department (no cap — kung
+  // ilan sila, ayun ang makikita; auto-scrolls if a column overflows).
+  const deptAgents = (source) => leaderboard.filter(a => a.source === source)
 
   // Sound: play the fanfare whenever a new-sale celebration appears.
   const [soundOn, setSoundOn] = useState(isSoundEnabled())
@@ -203,82 +241,33 @@ export default function TvApp() {
         </div>
       </header>
 
-      {/* Hero totals */}
-      <section className="tv-hero">
-        <div className="tv-hero-today">
-          <span className="tv-hero-label">TODAY'S SALES</span>
-          <span className="tv-hero-amount">{formatPHP(todaySales)}</span>
-          <span className="tv-hero-sub">{todayCount} sale{todayCount === 1 ? '' : 's'} closed today</span>
-          <div className="tv-source-chips">
-            {SOURCE_ORDER.map(s => (
-              <div key={s} className={`tv-chip ${s === activeSource ? 'tv-chip-active' : ''}`}
-                   style={{ borderColor: s === activeSource ? SOURCE_COLORS[s] : `${SOURCE_COLORS[s]}55` }}>
-                <span className="tv-chip-dot" style={{ background: SOURCE_COLORS[s] }} />
-                <span className="tv-chip-label">{SOURCE_LABELS[s]}</span>
-                <span className="tv-chip-value">{formatPHPCompact(bySource[s]?.todaySales || 0)}</span>
-              </div>
-            ))}
-          </div>
+      {/* Compact overall strip: company Today + MTD + target ring */}
+      <section className="tv-strip">
+        <div className="tv-strip-stat">
+          <span className="tv-strip-label">TODAY · ALL TEAMS</span>
+          <span className="tv-strip-value">{formatPHP(todaySales)}</span>
+          <span className="tv-strip-sub">{todayCount} sale{todayCount === 1 ? '' : 's'} today</span>
         </div>
-
-        <div className="tv-hero-month">
-          <TargetRing pct={targetPct} />
-          <div className="tv-month-stats">
-            <StatBlock label={`MONTH-TO-DATE · ${monthLabel}`} value={formatPHP(mtdSales)}
-                       sub={`${mtdCount} sales · goal ${formatPHPCompact(monthlyTarget)}`} />
+        <div className="tv-strip-div" />
+        <div className="tv-strip-stat">
+          <span className="tv-strip-label">MONTH-TO-DATE · {monthLabel}</span>
+          <span className="tv-strip-value">{formatPHP(mtdSales)}</span>
+          <span className="tv-strip-sub">{mtdCount} sales</span>
+        </div>
+        <div className="tv-strip-ring">
+          <TargetRing pct={targetPct} size={116} />
+          <div className="tv-strip-goal">
+            <span className="tv-strip-label">GOAL</span>
+            <span className="tv-strip-goalval">{formatPHPCompact(monthlyTarget)}</span>
           </div>
         </div>
       </section>
 
-      {/* Leaderboard — rotates through each team every 30s */}
-      <section className="tv-board" style={{ borderTop: `5px solid ${SOURCE_COLORS[activeSource]}` }}>
-        <div className="tv-board-head">
-          <h2 style={{ color: SOURCE_TEXT[activeSource] }}>
-            <span className="tv-team-dot" style={{ background: SOURCE_COLORS[activeSource] }} />
-            {SOURCE_LABELS[activeSource]} · Top Performers
-          </h2>
-          <div className="tv-board-stats">
-            <span className="tv-bstat">Today <b>{formatPHP(teamStats.todaySales || 0)}</b></span>
-            <span className="tv-bstat">MTD <b>{formatPHP(teamStats.mtdSales || 0)}</b></span>
-            <div className="tv-rot-dots">
-              {SOURCE_ORDER.map((s, i) => (
-                <span key={s} className={`tv-rot-dot ${i === teamIdx ? 'on' : ''}`}
-                      style={i === teamIdx ? { background: SOURCE_COLORS[s] } : undefined} />
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="tv-board-list" key={activeSource} ref={wrapRef}>
-          {teamBoard.length === 0 ? (
-            <div className="tv-empty">
-              {loading ? 'Naglo-load ng sales…' : `Wala pang sales ang ${SOURCE_LABELS[activeSource]} this month.`}
-            </div>
-          ) : (
-            <div className="tv-board-scroll" ref={scrollRef}
-                 style={scrollPx ? { '--sp': `${scrollPx}px`, animation: 'tvscroll 26s ease-in-out infinite' } : undefined}>
-              {teamBoard.map((a, i) => {
-                const color = SOURCE_COLORS[activeSource]
-                return (
-                  <div key={a.key} className={`tv-row ${i < 3 ? 'tv-row-top' : ''}`}>
-                    <Rank n={i + 1} />
-                    <Avatar name={a.name} photo={a.photo} size={56} color={color} />
-                    <div className="tv-row-main">
-                      <div className="tv-row-name">{a.name}</div>
-                      <div className="tv-row-meta">
-                        {a.team && <span className="tv-row-source" style={{ color: SOURCE_TEXT[activeSource] }}>{a.team}</span>}
-                        {a.todaySales > 0 && <span className="tv-row-today">+{formatPHPCompact(a.todaySales)} today</span>}
-                      </div>
-                      <div className="tv-row-bar">
-                        <span style={{ width: `${Math.max(4, (a.mtdSales / teamLead) * 100)}%`, background: color }} />
-                      </div>
-                    </div>
-                    <div className="tv-row-amount">{formatPHP(a.mtdSales)}</div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+      {/* Three departments side-by-side — ALL agents with sales */}
+      <section className="tv-cols">
+        {SOURCE_ORDER.map(s => (
+          <DeptColumn key={s} source={s} stats={bySource[s] || {}} agents={deptAgents(s)} loading={loading} />
+        ))}
       </section>
 
       {/* One-time sound enable (browsers block audio until a gesture) */}
@@ -377,6 +366,45 @@ function TvStyles() {
     .tv-row-bar span { display: block; height: 100%; border-radius: 999px; transition: width .8s ease; }
     .tv-row-amount { font-size: 2vw; font-weight: 900; flex-shrink: 0; color: #1B4F4F; }
     .tv-empty { height: 100%; display: grid; place-items: center; color: #94A3B8; font-size: 1.4vw; font-weight: 700; }
+
+    /* Compact overall strip */
+    .tv-strip { display: flex; align-items: center; gap: 2vw; background: #FFFFFF; border: 1px solid rgba(27,79,79,0.08);
+      box-shadow: 0 6px 24px rgba(27,79,79,0.06); border-radius: 1.2vw; padding: 1.6vh 2vw; }
+    .tv-strip-stat { display: flex; flex-direction: column; }
+    .tv-strip-label { font-size: 0.85vw; letter-spacing: 0.16em; color: #5B8079; font-weight: 800; text-transform: uppercase; }
+    .tv-strip-value { font-size: 2.8vw; font-weight: 900; line-height: 1.05; color: #1B4F4F; }
+    .tv-strip-sub { font-size: 0.9vw; color: #64748B; font-weight: 600; }
+    .tv-strip-div { width: 1px; align-self: stretch; background: rgba(27,79,79,0.10); }
+    .tv-strip-ring { margin-left: auto; display: flex; align-items: center; gap: 1vw; }
+    .tv-strip-goal { display: flex; flex-direction: column; }
+    .tv-strip-goalval { font-size: 1.6vw; font-weight: 900; color: #1B4F4F; }
+
+    /* Three department columns */
+    .tv-cols { flex: 1; min-height: 0; display: flex; gap: 1.4vw; }
+    .tv-col { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #FFFFFF;
+      border: 1px solid rgba(27,79,79,0.08); box-shadow: 0 6px 24px rgba(27,79,79,0.06);
+      border-radius: 1.2vw; overflow: hidden; }
+    .tv-col-head { padding: 1.4vh 1.2vw; border-bottom: 1px solid rgba(27,79,79,0.07); }
+    .tv-col-title { font-size: 1.5vw; font-weight: 900; display: flex; align-items: center; gap: 0.6vw; }
+    .tv-col-stats { display: flex; gap: 1.6vw; margin-top: 0.8vh; }
+    .tv-col-stat { display: flex; flex-direction: column; }
+    .tv-col-stat span { font-size: 0.75vw; letter-spacing: 0.1em; color: #94A3B8; font-weight: 800; }
+    .tv-col-stat b { font-size: 1.5vw; font-weight: 900; color: #1B4F4F; line-height: 1.1; }
+    .tv-col-count { font-size: 0.85vw; color: #94A3B8; font-weight: 700; margin-top: 0.6vh; }
+    .tv-col-list { flex: 1; min-height: 0; overflow: hidden; padding: 0.8vh 0.9vw; }
+    .tv-col-scroll { display: flex; flex-direction: column; gap: 0.7vh; }
+    .tv-crow { display: flex; align-items: center; gap: 0.7vw; padding: 0.6vh 0.6vw; border-radius: 0.7vw;
+      background: #FBFDFD; border: 1px solid rgba(27,79,79,0.05); }
+    .tv-crow-top { background: #F0F9FC; border-color: rgba(28,169,214,0.18); }
+    .tv-crank { width: 1.8vw; text-align: center; font-size: 1vw; font-weight: 900; color: #94A3B8; flex-shrink: 0; }
+    .tv-crank.medal { font-size: 1.4vw; }
+    .tv-crow-main { flex: 1; min-width: 0; }
+    .tv-crow-name { font-size: 1.15vw; font-weight: 800; color: #143C3C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tv-crow-bar { height: 0.5vh; border-radius: 999px; background: rgba(27,79,79,0.08); overflow: hidden; margin-top: 0.3vh; }
+    .tv-crow-bar span { display: block; height: 100%; border-radius: 999px; }
+    .tv-crow-right { text-align: right; flex-shrink: 0; }
+    .tv-crow-amt { font-size: 1.15vw; font-weight: 900; color: #1B4F4F; font-variant-numeric: tabular-nums; }
+    .tv-crow-today { font-size: 0.8vw; font-weight: 700; color: #10b981; }
 
     .tv-avatar { border-radius: 50%; overflow: hidden; display: grid; place-items: center; color: #fff;
       font-weight: 800; flex-shrink: 0; border: 2px solid rgba(27,79,79,0.10); box-shadow: 0 2px 6px rgba(27,79,79,0.10); }

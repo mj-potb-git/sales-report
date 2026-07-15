@@ -27,14 +27,23 @@ export const SOURCE_LABELS = {
 
 export const SOURCE_ORDER = ['acquisition', 'officers', 'aacio']
 
+// Resolve to a fallback if a promise takes too long — so one slow source
+// (e.g. Fusioo's long pagination) never leaves the whole board blank. The slow
+// fetch keeps warming its cache in the background; the next 30s poll picks it up.
+function withTimeout(promise, ms, fallback) {
+  return Promise.race([promise, new Promise(res => setTimeout(() => res(fallback), ms))])
+}
+
 // One combined fetch. fetchSalesRecords() warms the external split, so we read
 // getExternalSalesRecords() right after it resolves. Fusioo is independent.
 async function fetchAll() {
+  const fusiooP = fetchAllBookingTransactions()
+    .then(rows => rows.map(mapBookingTransaction))
+    .catch(err => { console.warn('[tv] fusioo failed:', err.message); return [] })
+
   const [potb, fusiooRaw] = await Promise.all([
     fetchSalesRecords(),
-    fetchAllBookingTransactions()
-      .then(rows => rows.map(mapBookingTransaction))
-      .catch(err => { console.warn('[tv] fusioo failed:', err.message); return [] }),
+    withTimeout(fusiooP, 12_000, []),   // show the board even if Officers is slow
   ])
   const aacio = getExternalSalesRecords()
 
