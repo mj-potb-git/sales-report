@@ -469,6 +469,11 @@ export function timeAgo(date) {
 export const formatPHP = n =>
   '₱' + Math.round(n).toLocaleString('en-PH')
 
+// Exact peso value with centavos (2 decimal places), e.g. ₱13,200.00 — used
+// where MJ needs the precise amount, not a rounded/compact figure.
+export const formatPHP2 = n =>
+  '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export const formatPHPCompact = n => {
   if (n >= 1_000_000) return '₱' + (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
   if (n >= 1_000)     return '₱' + (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
