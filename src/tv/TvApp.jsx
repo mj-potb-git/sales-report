@@ -8,10 +8,12 @@
 //
 // Data + new-sale detection live in useTvData; photos in agentPhotos.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Volume2 } from 'lucide-react'
 import useTvData, { SOURCE_LABELS, SOURCE_ORDER } from './useTvData'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
 import { getSettings } from '../lib/settings'
+import { enableSound, playCelebration, isSoundEnabled } from './sound'
 
 // Category colors aligned to the dashboard palette (cyan / gold / teal-violet).
 // SOURCE_COLORS = the vivid fill (dots, bars, avatars, ring).
@@ -162,9 +164,25 @@ export default function TvApp() {
     return () => clearInterval(id)
   }, [])
   const activeSource = SOURCE_ORDER[teamIdx]
-  const teamBoard = leaderboard.filter(a => a.source === activeSource).slice(0, 8)
+  const teamBoard = leaderboard.filter(a => a.source === activeSource) // ALL agents, not just tops
   const teamStats = bySource[activeSource] || {}
   const teamLead = teamBoard[0]?.mtdSales || 1
+
+  // Auto-scroll the full roster when it overflows the panel (so everyone gets
+  // seen within the team's 30s slide, not just the top few).
+  const wrapRef = useRef(null)
+  const scrollRef = useRef(null)
+  const [scrollPx, setScrollPx] = useState(0)
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current, list = scrollRef.current
+    if (!wrap || !list) { setScrollPx(0); return }
+    const over = list.scrollHeight - wrap.clientHeight
+    setScrollPx(over > 8 ? over : 0)
+  }, [activeSource, teamBoard.length, mtdSales])
+
+  // Sound: play the fanfare whenever a new-sale celebration appears.
+  const [soundOn, setSoundOn] = useState(isSoundEnabled())
+  useEffect(() => { if (celebration) playCelebration() }, [celebration])
 
   return (
     <div className="tv-root">
@@ -230,33 +248,45 @@ export default function TvApp() {
             </div>
           </div>
         </div>
-        <div className="tv-board-list" key={activeSource}>
+        <div className="tv-board-list" key={activeSource} ref={wrapRef}>
           {teamBoard.length === 0 ? (
             <div className="tv-empty">
               {loading ? 'Naglo-load ng sales…' : `Wala pang sales ang ${SOURCE_LABELS[activeSource]} this month.`}
             </div>
-          ) : teamBoard.map((a, i) => {
-            const color = SOURCE_COLORS[activeSource]
-            return (
-              <div key={a.key} className={`tv-row ${i < 3 ? 'tv-row-top' : ''}`}>
-                <Rank n={i + 1} />
-                <Avatar name={a.name} photo={a.photo} size={64} color={color} />
-                <div className="tv-row-main">
-                  <div className="tv-row-name">{a.name}</div>
-                  <div className="tv-row-meta">
-                    {a.team && <span className="tv-row-source" style={{ color: SOURCE_TEXT[activeSource] }}>{a.team}</span>}
-                    {a.todaySales > 0 && <span className="tv-row-today">+{formatPHPCompact(a.todaySales)} today</span>}
+          ) : (
+            <div className="tv-board-scroll" ref={scrollRef}
+                 style={scrollPx ? { '--sp': `${scrollPx}px`, animation: 'tvscroll 26s ease-in-out infinite' } : undefined}>
+              {teamBoard.map((a, i) => {
+                const color = SOURCE_COLORS[activeSource]
+                return (
+                  <div key={a.key} className={`tv-row ${i < 3 ? 'tv-row-top' : ''}`}>
+                    <Rank n={i + 1} />
+                    <Avatar name={a.name} photo={a.photo} size={56} color={color} />
+                    <div className="tv-row-main">
+                      <div className="tv-row-name">{a.name}</div>
+                      <div className="tv-row-meta">
+                        {a.team && <span className="tv-row-source" style={{ color: SOURCE_TEXT[activeSource] }}>{a.team}</span>}
+                        {a.todaySales > 0 && <span className="tv-row-today">+{formatPHPCompact(a.todaySales)} today</span>}
+                      </div>
+                      <div className="tv-row-bar">
+                        <span style={{ width: `${Math.max(4, (a.mtdSales / teamLead) * 100)}%`, background: color }} />
+                      </div>
+                    </div>
+                    <div className="tv-row-amount">{formatPHP(a.mtdSales)}</div>
                   </div>
-                  <div className="tv-row-bar">
-                    <span style={{ width: `${Math.max(4, (a.mtdSales / teamLead) * 100)}%`, background: color }} />
-                  </div>
-                </div>
-                <div className="tv-row-amount">{formatPHP(a.mtdSales)}</div>
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          )}
         </div>
       </section>
+
+      {/* One-time sound enable (browsers block audio until a gesture) */}
+      {!soundOn && (
+        <button className="tv-sound-btn" onClick={async () => { const ok = await enableSound(); setSoundOn(ok) }}>
+          <Volume2 style={{ width: '1.4vw', height: '1.4vw' }} /> I-enable ang sound
+        </button>
+      )}
 
       {celebration && <Celebration data={celebration} onDone={clearCelebration} />}
     </div>
@@ -326,8 +356,13 @@ function TvStyles() {
     .tv-rot-dot { width: 0.8vw; height: 0.8vw; border-radius: 50%; background: rgba(27,79,79,0.15); transition: all .3s; }
     .tv-rot-dot.on { transform: scale(1.3); }
     .tv-chip-active { box-shadow: 0 0 0 2px rgba(28,169,214,0.15); transform: translateY(-2px); transition: all .3s; }
-    .tv-board-list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.9vh; overflow: hidden; animation: tvslide .5s ease; }
+    .tv-board-list { flex: 1; min-height: 0; overflow: hidden; animation: tvslide .5s ease; }
+    .tv-board-scroll { display: flex; flex-direction: column; gap: 0.9vh; }
     @keyframes tvslide { from{opacity:0; transform:translateX(2vw)} to{opacity:1; transform:translateX(0)} }
+    @keyframes tvscroll { 0%,10%{transform:translateY(0)} 90%,100%{transform:translateY(calc(-1 * var(--sp)))} }
+    .tv-sound-btn { position: fixed; bottom: 2vh; right: 2vw; z-index: 40; display: inline-flex; align-items: center; gap: 0.6vw;
+      padding: 1vh 1.4vw; border-radius: 999px; border: 1px solid rgba(28,169,214,0.35); background: #FFFFFF; color: #0E6E93;
+      font-size: 1vw; font-weight: 800; cursor: pointer; box-shadow: 0 6px 20px rgba(27,79,79,0.12); animation: tvpulse 2.4s infinite; }
     .tv-row { display: flex; align-items: center; gap: 1.2vw; padding: 0.9vh 1vw; border-radius: 1vw;
       background: #FBFDFD; border: 1px solid rgba(27,79,79,0.05); }
     .tv-row-top { background: #F0F9FC; border-color: rgba(28,169,214,0.18); }
@@ -341,7 +376,7 @@ function TvStyles() {
     .tv-row-bar { height: 0.7vh; border-radius: 999px; background: rgba(27,79,79,0.08); overflow: hidden; }
     .tv-row-bar span { display: block; height: 100%; border-radius: 999px; transition: width .8s ease; }
     .tv-row-amount { font-size: 2vw; font-weight: 900; flex-shrink: 0; color: #1B4F4F; }
-    .tv-empty { flex: 1; display: grid; place-items: center; color: #94A3B8; font-size: 1.4vw; font-weight: 700; }
+    .tv-empty { height: 100%; display: grid; place-items: center; color: #94A3B8; font-size: 1.4vw; font-weight: 700; }
 
     .tv-avatar { border-radius: 50%; overflow: hidden; display: grid; place-items: center; color: #fff;
       font-weight: 800; flex-shrink: 0; border: 2px solid rgba(27,79,79,0.10); box-shadow: 0 2px 6px rgba(27,79,79,0.10); }
