@@ -153,7 +153,18 @@ export default function TvApp() {
   const timeLabel = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })
   const monthLabel = now.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
 
-  const top = leaderboard.slice(0, 10)
+  // Auto-rotate the leaderboard spotlight through each team every 30s:
+  // Acquisition → Account Officers → AACIO → (loop). Each team gets its own
+  // slide with its faces + today/MTD totals.
+  const [teamIdx, setTeamIdx] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTeamIdx(i => (i + 1) % SOURCE_ORDER.length), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  const activeSource = SOURCE_ORDER[teamIdx]
+  const teamBoard = leaderboard.filter(a => a.source === activeSource).slice(0, 8)
+  const teamStats = bySource[activeSource] || {}
+  const teamLead = teamBoard[0]?.mtdSales || 1
 
   return (
     <div className="tv-root">
@@ -182,7 +193,8 @@ export default function TvApp() {
           <span className="tv-hero-sub">{todayCount} sale{todayCount === 1 ? '' : 's'} closed today</span>
           <div className="tv-source-chips">
             {SOURCE_ORDER.map(s => (
-              <div key={s} className="tv-chip" style={{ borderColor: `${SOURCE_COLORS[s]}55` }}>
+              <div key={s} className={`tv-chip ${s === activeSource ? 'tv-chip-active' : ''}`}
+                   style={{ borderColor: s === activeSource ? SOURCE_COLORS[s] : `${SOURCE_COLORS[s]}55` }}>
                 <span className="tv-chip-dot" style={{ background: SOURCE_COLORS[s] }} />
                 <span className="tv-chip-label">{SOURCE_LABELS[s]}</span>
                 <span className="tv-chip-value">{formatPHPCompact(bySource[s]?.todaySales || 0)}</span>
@@ -200,18 +212,31 @@ export default function TvApp() {
         </div>
       </section>
 
-      {/* Leaderboard */}
-      <section className="tv-board">
+      {/* Leaderboard — rotates through each team every 30s */}
+      <section className="tv-board" style={{ borderTop: `5px solid ${SOURCE_COLORS[activeSource]}` }}>
         <div className="tv-board-head">
-          <h2>🏆 TOP PERFORMERS · {monthLabel}</h2>
-          <span className="tv-board-note">Month-to-date sales</span>
+          <h2 style={{ color: SOURCE_TEXT[activeSource] }}>
+            <span className="tv-team-dot" style={{ background: SOURCE_COLORS[activeSource] }} />
+            {SOURCE_LABELS[activeSource]} · Top Performers
+          </h2>
+          <div className="tv-board-stats">
+            <span className="tv-bstat">Today <b>{formatPHP(teamStats.todaySales || 0)}</b></span>
+            <span className="tv-bstat">MTD <b>{formatPHP(teamStats.mtdSales || 0)}</b></span>
+            <div className="tv-rot-dots">
+              {SOURCE_ORDER.map((s, i) => (
+                <span key={s} className={`tv-rot-dot ${i === teamIdx ? 'on' : ''}`}
+                      style={i === teamIdx ? { background: SOURCE_COLORS[s] } : undefined} />
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="tv-board-list">
-          {top.length === 0 ? (
-            <div className="tv-empty">{loading ? 'Naglo-load ng sales…' : 'Wala pang sales this month.'}</div>
-          ) : top.map((a, i) => {
-            const color = SOURCE_COLORS[a.source] || '#334155'
-            const lead = top[0].mtdSales || 1
+        <div className="tv-board-list" key={activeSource}>
+          {teamBoard.length === 0 ? (
+            <div className="tv-empty">
+              {loading ? 'Naglo-load ng sales…' : `Wala pang sales ang ${SOURCE_LABELS[activeSource]} this month.`}
+            </div>
+          ) : teamBoard.map((a, i) => {
+            const color = SOURCE_COLORS[activeSource]
             return (
               <div key={a.key} className={`tv-row ${i < 3 ? 'tv-row-top' : ''}`}>
                 <Rank n={i + 1} />
@@ -219,11 +244,11 @@ export default function TvApp() {
                 <div className="tv-row-main">
                   <div className="tv-row-name">{a.name}</div>
                   <div className="tv-row-meta">
-                    <span className="tv-row-source" style={{ color: SOURCE_TEXT[a.source] || color }}>{SOURCE_LABELS[a.source]}</span>
+                    {a.team && <span className="tv-row-source" style={{ color: SOURCE_TEXT[activeSource] }}>{a.team}</span>}
                     {a.todaySales > 0 && <span className="tv-row-today">+{formatPHPCompact(a.todaySales)} today</span>}
                   </div>
                   <div className="tv-row-bar">
-                    <span style={{ width: `${Math.max(4, (a.mtdSales / lead) * 100)}%`, background: color }} />
+                    <span style={{ width: `${Math.max(4, (a.mtdSales / teamLead) * 100)}%`, background: color }} />
                   </div>
                 </div>
                 <div className="tv-row-amount">{formatPHP(a.mtdSales)}</div>
@@ -291,9 +316,18 @@ function TvStyles() {
     .tv-board { flex: 1; min-height: 0; background: #FFFFFF; border: 1px solid rgba(27,79,79,0.08);
       box-shadow: 0 6px 24px rgba(27,79,79,0.06); border-radius: 1.6vw; padding: 2vh 2vw; display: flex; flex-direction: column; }
     .tv-board-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 1.2vh; }
-    .tv-board-head h2 { font-size: 1.8vw; font-weight: 900; margin: 0; color: #1B4F4F; }
+    .tv-board-head h2 { font-size: 1.8vw; font-weight: 900; margin: 0; display: flex; align-items: center; gap: 0.7vw; }
+    .tv-team-dot { width: 1.1vw; height: 1.1vw; border-radius: 50%; display: inline-block; }
     .tv-board-note { font-size: 1vw; color: #94A3B8; font-weight: 700; }
-    .tv-board-list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.9vh; overflow: hidden; }
+    .tv-board-stats { display: flex; align-items: center; gap: 1.4vw; }
+    .tv-bstat { font-size: 1vw; color: #64748B; font-weight: 700; }
+    .tv-bstat b { color: #1B4F4F; font-weight: 900; margin-left: 0.3vw; }
+    .tv-rot-dots { display: flex; gap: 0.5vw; align-items: center; }
+    .tv-rot-dot { width: 0.8vw; height: 0.8vw; border-radius: 50%; background: rgba(27,79,79,0.15); transition: all .3s; }
+    .tv-rot-dot.on { transform: scale(1.3); }
+    .tv-chip-active { box-shadow: 0 0 0 2px rgba(28,169,214,0.15); transform: translateY(-2px); transition: all .3s; }
+    .tv-board-list { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.9vh; overflow: hidden; animation: tvslide .5s ease; }
+    @keyframes tvslide { from{opacity:0; transform:translateX(2vw)} to{opacity:1; transform:translateX(0)} }
     .tv-row { display: flex; align-items: center; gap: 1.2vw; padding: 0.9vh 1vw; border-radius: 1vw;
       background: #FBFDFD; border: 1px solid rgba(27,79,79,0.05); }
     .tv-row-top { background: #F0F9FC; border-color: rgba(28,169,214,0.18); }
