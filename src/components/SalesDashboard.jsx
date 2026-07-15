@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { subscribeAttendance } from '../lib/attendance'
 import { mergeWithReport, subscribeReport, isOrientation, getReportBookings } from '../lib/ycbmReport'
-import { fetchSalesRecords, formatPHP, formatPHP2, formatPHPCompact } from '../api/lakbay'
+import { fetchSalesRecords, formatPHP2 } from '../api/lakbay'
 import { fetchMetaDailyMap } from '../api/meta'
 import { PRIMARY } from '../lib/theme'
 import OpsAlerts from './sales/OpsAlerts'
@@ -475,11 +475,11 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
           <h2 className="text-sm font-semibold text-gray-700">Sales · LakbayHub Revenue & Conversion</h2>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={compareLabel} />
+          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHP2(totals.sales)} sub={`${totals.salesCount} sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={compareLabel} />
           <KpiCard icon={Users}      label="# of Sales"    value={String(totals.salesCount)} accent="#FFF4E0" delta={delta.salesCount} compareLabel={compareLabel} />
           <KpiCard icon={TrendingUp} label="Book → Sale %" value={`${overallBookToSale}%`} sub="bookings → sales" />
           <KpiCard icon={TrendingUp} label="Show → Sale %" value={overallShowToSale === null ? '—' : `${overallShowToSale}%`} sub="showed-up → sales" />
-          <KpiCard icon={DollarSign} label="Avg Order"     value={totals.salesCount === 0 ? '—' : formatPHPCompact(totals.sales / totals.salesCount)} sub="per sale" />
+          <KpiCard icon={DollarSign} label="Avg Order"     value={totals.salesCount === 0 ? '—' : formatPHP2(totals.sales / totals.salesCount)} sub="per sale" />
         </div>
       </div>
 
@@ -519,7 +519,7 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
             <div key={i} className="bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-gray-900">{formatDayLabel(d.day)}</span>
-                <span className="text-sm font-extrabold" style={{ color: PRIMARY }}>{d.salesAmount === 0 ? '—' : formatPHPCompact(d.salesAmount)}</span>
+                <span className="text-sm font-extrabold" style={{ color: PRIMARY }}>{d.salesAmount === 0 ? '—' : formatPHP2(d.salesAmount)}</span>
               </div>
               <div className="grid grid-cols-4 gap-2 mt-2 text-center">
                 {[
@@ -580,7 +580,7 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
                 formatter={v => v === 0 ? '—' : formatPHP2(v)} bold />
               <MetricRow label="Total Gross Revenue (by paid date)" tip="revenue"
                 values={perDay.map(d => d.salesAmount)}
-                formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
+                formatter={v => v === 0 ? '—' : formatPHP2(v)} bold />
               <MetricRow label="Return On Ads Spent" tip="roas"
                 values={perDay.map(d => d.roas)}
                 formatter={v => v === null ? '—' : `${v.toFixed(2)}x`} bold />
@@ -592,10 +592,10 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
                 formatter={v => v === 0 ? '—' : String(v)} bold />
               <MetricRow label="Average CPL (Cost Per Lead)" tip="cpl"
                 values={perDay.map(d => d.cpl)}
-                formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
+                formatter={v => v === null ? '—' : formatPHP2(v)} accent />
               <MetricRow label="Profit" tip="profit"
                 values={perDay.map(d => d.profit)}
-                formatter={v => v === 0 ? '—' : (v >= 0 ? formatPHPCompact(v) : `−${formatPHPCompact(-v)}`)}
+                formatter={v => v === 0 ? '—' : (v >= 0 ? formatPHP2(v) : `−${formatPHP2(-v)}`)}
                 bold />
 
               {/* # OF LEADS — appointment funnel.
@@ -623,7 +623,7 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
               <SectionHeaderRow label="EFFICIENCY" span={days.length + 1} color="#1B4F4F" />
               <MetricRow label="Actual CAC (Customer Acquisition Cost)" tip="cac"
                 values={perDay.map(d => d.cac)}
-                formatter={v => v === null ? '—' : formatPHPCompact(v)} accent />
+                formatter={v => v === null ? '—' : formatPHP2(v)} accent />
               <MetricRow label="Actual SUR (Showed ÷ tracked)" tip="sur"
                 values={perDay.map(d => d.showUpPct)}
                 formatter={v => v === null ? '—' : `${v}%`} bold />
@@ -673,11 +673,11 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 p-4">
-          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} closed sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={compareLabel} />
+          <KpiCard icon={DollarSign} label="Gross Revenue" value={formatPHP2(totals.sales)} sub={`${totals.salesCount} closed sales`} accent="#FFF4E0" delta={delta.sales} compareLabel={compareLabel} />
           <KpiCard icon={Users}      label="# of Sales"    value={String(totals.salesCount)}     accent="#FFF4E0" delta={delta.salesCount} compareLabel={compareLabel} />
           <KpiCard icon={TrendingUp} label="Book → Sale"   value={`${overallBookToSale}%`}       sub={`${totals.salesCount} sales of ${totals.bookings} bookings`} />
           <KpiCard icon={TrendingUp} label="Show → Sale"   value={overallShowToSale === null ? '—' : `${overallShowToSale}%`} sub={overallShowToSale === null ? 'mark show-ups first' : `${totals.salesCount} sales of ${totals.showed} attendees`} />
-          <KpiCard icon={DollarSign} label="Avg Order"     value={totals.salesCount === 0 ? '—' : formatPHPCompact(totals.sales / totals.salesCount)} sub="per closed sale" />
+          <KpiCard icon={DollarSign} label="Avg Order"     value={totals.salesCount === 0 ? '—' : formatPHP2(totals.sales / totals.salesCount)} sub="per closed sale" />
         </div>
       </section>
 
@@ -704,12 +704,12 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-4">
           <KpiCard icon={DollarSign} label="Total Ads Spent"    value={formatPHP2(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={compareLabel} />
-          <KpiCard icon={DollarSign} label="Total Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={compareLabel} />
+          <KpiCard icon={DollarSign} label="Total Gross Revenue" value={formatPHP2(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={compareLabel} />
           <KpiCard icon={TrendingUp} label="Return On Ads Spent" value={totalROAS === null ? '—' : `${totalROAS.toFixed(2)}x`} sub="revenue / spend" accent="#fef3c7" />
           <KpiCard icon={TrendingUp} label="AR% (Ads/Revenue)"   value={totalARPct === null ? '—' : `${totalARPct}%`} sub="ad cost / revenue" />
           <KpiCard icon={Users}      label="Total Leads"         value={String(totals.leads)} sub="bookings made" delta={delta.leads} compareLabel={compareLabel} />
-          <KpiCard icon={DollarSign} label="Average CPL"         value={totalCPL === null ? '—' : formatPHPCompact(totalCPL)} sub="cost per lead" />
-          <KpiCard icon={DollarSign} label="Profit"              value={totals.profit === 0 ? '—' : (totals.profit >= 0 ? formatPHPCompact(totals.profit) : `−${formatPHPCompact(-totals.profit)}`)} sub="revenue − spend" accent={totals.profit >= 0 ? '#dcfce7' : '#fee2e2'} />
+          <KpiCard icon={DollarSign} label="Average CPL"         value={totalCPL === null ? '—' : formatPHP2(totalCPL)} sub="cost per lead" />
+          <KpiCard icon={DollarSign} label="Profit"              value={totals.profit === 0 ? '—' : (totals.profit >= 0 ? formatPHP2(totals.profit) : `−${formatPHP2(-totals.profit)}`)} sub="revenue − spend" accent={totals.profit >= 0 ? '#dcfce7' : '#fee2e2'} />
         </div>
       </section>
     </div>
@@ -743,7 +743,7 @@ function FunnelVisualization({ leads, bookings, showed, unmarked, salesCount, re
           Conversion Funnel
         </h2>
         <span className="text-[11px] text-gray-500">
-          Total revenue from this funnel: <span className="font-bold text-gray-900">{formatPHP(revenue)}</span>
+          Total revenue from this funnel: <span className="font-bold text-gray-900">{formatPHP2(revenue)}</span>
         </span>
       </div>
       <div className="flex flex-col gap-2">
