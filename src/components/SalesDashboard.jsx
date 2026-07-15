@@ -577,7 +577,7 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
               <SectionHeaderRow label="SPEND & REVENUE" span={days.length + 1} color="#1B4F4F" />
               <MetricRow label="Total Ads Spent"
                 values={perDay.map(d => d.spend)}
-                formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
+                formatter={v => v === 0 ? '—' : formatPHP(v)} bold />
               <MetricRow label="Total Gross Revenue (by paid date)" tip="revenue"
                 values={perDay.map(d => d.salesAmount)}
                 formatter={v => v === 0 ? '—' : formatPHPCompact(v)} bold />
@@ -703,7 +703,7 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
           )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-4">
-          <KpiCard icon={DollarSign} label="Total Ads Spent"    value={formatPHPCompact(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={compareLabel} />
+          <KpiCard icon={DollarSign} label="Total Ads Spent"    value={formatPHP(totals.spend)} accent="#dbeafe" delta={delta.spend} compareLabel={compareLabel} />
           <KpiCard icon={DollarSign} label="Total Gross Revenue" value={formatPHPCompact(totals.sales)} sub={`${totals.salesCount} sales`} accent="#dcfce7" delta={delta.sales} compareLabel={compareLabel} />
           <KpiCard icon={TrendingUp} label="Return On Ads Spent" value={totalROAS === null ? '—' : `${totalROAS.toFixed(2)}x`} sub="revenue / spend" accent="#fef3c7" />
           <KpiCard icon={TrendingUp} label="AR% (Ads/Revenue)"   value={totalARPct === null ? '—' : `${totalARPct}%`} sub="ad cost / revenue" />
