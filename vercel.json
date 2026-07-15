@@ -13,6 +13,8 @@
     { "source": "/api/aacio/:path*",  "destination": "/api/proxy" },
     { "source": "/api/lakbay/:path*", "destination": "/api/proxy" },
     { "source": "/api/fusioo/:path*", "destination": "/api/proxy" },
-    { "source": "/api/meta/:path*",   "destination": "/api/proxy" }
+    { "source": "/api/meta/:path*",   "destination": "/api/proxy" },
+    { "source": "/tv",        "destination": "/index.html" },
+    { "source": "/tv/:path*", "destination": "/index.html" }
   ]
 }
