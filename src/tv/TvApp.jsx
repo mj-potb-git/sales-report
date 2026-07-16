@@ -13,7 +13,7 @@ import { Volume2 } from 'lucide-react'
 import useTvData, { SOURCE_LABELS, SOURCE_ORDER } from './useTvData'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
 import { getSettings } from '../lib/settings'
-import { enableSound, playCelebration, isSoundEnabled } from './sound'
+import { enableSound, playCelebration, speak, isSoundEnabled } from './sound'
 
 // Category colors aligned to the dashboard palette (cyan / gold / teal-violet).
 // SOURCE_COLORS = the vivid fill (dots, bars, avatars, ring).
@@ -108,7 +108,8 @@ function Celebration({ data, onDone }) {
         })}
       </div>
       <div className="tv-celebrate-card" style={{ boxShadow: `0 0 120px ${color}66` }}>
-        <div className="tv-celebrate-badge">🎉 NEW SALE!</div>
+        <div className="tv-celebrate-congrats">🎉 CONGRATULATIONS! 🎉</div>
+        <div className="tv-celebrate-badge" style={{ color: textColor }}>NEW SALE</div>
         <Avatar name={data.agent} photo={data.photo} size={160} color={color} />
         <div className="tv-celebrate-name">{data.agent}</div>
         <div className="tv-celebrate-amount" style={{ color: textColor }}>{formatPHP(data.amount)}</div>
@@ -218,9 +219,24 @@ export default function TvApp() {
   // ilan sila, ayun ang makikita; auto-scrolls if a column overflows).
   const deptAgents = (source) => leaderboard.filter(a => a.source === source)
 
-  // Sound: play the fanfare whenever a new-sale celebration appears.
+  // Champion spotlight: highlight the #1 agent of the month per department,
+  // flashing to the next department every 15 seconds.
+  const [champIdx, setChampIdx] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setChampIdx(i => (i + 1) % SOURCE_ORDER.length), 15_000)
+    return () => clearInterval(id)
+  }, [])
+  const champSource = SOURCE_ORDER[champIdx]
+  const champion = leaderboard.filter(a => a.source === champSource)[0] || null
+
+  // Sound + voice: fanfare AND a spoken congratulations on each new sale.
   const [soundOn, setSoundOn] = useState(isSoundEnabled())
-  useEffect(() => { if (celebration) playCelebration() }, [celebration])
+  useEffect(() => {
+    if (!celebration) return
+    playCelebration()
+    const pesos = Math.round(celebration.amount).toLocaleString('en-US')
+    speak(`Congratulations ${celebration.agent}! New sale, ${pesos} pesos!`)
+  }, [celebration])
 
   return (
     <div className="tv-root">
@@ -241,24 +257,44 @@ export default function TvApp() {
         </div>
       </header>
 
-      {/* Compact overall strip: company Today + MTD + target ring */}
+      {/* Champion spotlight (flashes per department every 15s) + overall */}
       <section className="tv-strip">
-        <div className="tv-strip-stat">
-          <span className="tv-strip-label">TODAY · ALL TEAMS</span>
-          <span className="tv-strip-value">{formatPHP(todaySales)}</span>
-          <span className="tv-strip-sub">{todayCount} sale{todayCount === 1 ? '' : 's'} today</span>
-        </div>
-        <div className="tv-strip-div" />
-        <div className="tv-strip-stat">
-          <span className="tv-strip-label">MONTH-TO-DATE · {monthLabel}</span>
-          <span className="tv-strip-value">{formatPHP(mtdSales)}</span>
-          <span className="tv-strip-sub">{mtdCount} sales</span>
-        </div>
-        <div className="tv-strip-ring">
-          <TargetRing pct={targetPct} size={116} />
-          <div className="tv-strip-goal">
-            <span className="tv-strip-label">GOAL</span>
-            <span className="tv-strip-goalval">{formatPHPCompact(monthlyTarget)}</span>
+        {champion ? (
+          <div className="tv-champ" key={`${champSource}-${champion.key}`}
+               style={{ borderColor: `${SOURCE_COLORS[champSource]}55` }}>
+            <div className="tv-champ-crown" style={{ background: SOURCE_COLORS[champSource] }}>🏆</div>
+            <Avatar name={champion.name} photo={champion.photo} size={96} color={SOURCE_COLORS[champSource]} />
+            <div className="tv-champ-info">
+              <span className="tv-champ-badge" style={{ color: SOURCE_TEXT[champSource] }}>
+                TOP {SOURCE_LABELS[champSource]} · {monthLabel}
+              </span>
+              <span className="tv-champ-name">{champion.name}</span>
+              <span className="tv-champ-amt" style={{ color: SOURCE_TEXT[champSource] }}>
+                {formatPHP(champion.mtdSales)}
+                {champion.todaySales > 0 && <em className="tv-champ-today"> · +{formatPHPCompact(champion.todaySales)} today</em>}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="tv-champ tv-champ-empty">
+            <span className="tv-strip-label">{loading ? 'Naglo-load ng champions…' : 'Wala pang benta this month.'}</span>
+          </div>
+        )}
+
+        <div className="tv-strip-right">
+          <div className="tv-strip-stat">
+            <span className="tv-strip-label">TODAY · ALL TEAMS</span>
+            <span className="tv-strip-value">{formatPHP(todaySales)}</span>
+            <span className="tv-strip-sub">{todayCount} sale{todayCount === 1 ? '' : 's'} today</span>
+          </div>
+          <div className="tv-strip-div" />
+          <div className="tv-strip-stat">
+            <span className="tv-strip-label">MTD · {monthLabel}</span>
+            <span className="tv-strip-value">{formatPHP(mtdSales)}</span>
+            <span className="tv-strip-sub">{mtdCount} sales</span>
+          </div>
+          <div className="tv-strip-ring">
+            <TargetRing pct={targetPct} size={104} />
           </div>
         </div>
       </section>
@@ -367,17 +403,29 @@ function TvStyles() {
     .tv-row-amount { font-size: 2vw; font-weight: 900; flex-shrink: 0; color: #1B4F4F; }
     .tv-empty { height: 100%; display: grid; place-items: center; color: #94A3B8; font-size: 1.4vw; font-weight: 700; }
 
-    /* Compact overall strip */
-    .tv-strip { display: flex; align-items: center; gap: 2vw; background: #FFFFFF; border: 1px solid rgba(27,79,79,0.08);
-      box-shadow: 0 6px 24px rgba(27,79,79,0.06); border-radius: 1.2vw; padding: 1.6vh 2vw; }
+    /* Champion band (spotlight left, overall right) */
+    .tv-strip { display: flex; align-items: stretch; gap: 1.4vw; }
+    .tv-champ { flex: 1; min-width: 0; display: flex; align-items: center; gap: 1.4vw; background: #FFFFFF;
+      border: 2px solid; box-shadow: 0 6px 24px rgba(27,79,79,0.06); border-radius: 1.2vw; padding: 1.4vh 1.6vw;
+      position: relative; animation: tvflash 0.6s ease; }
+    .tv-champ-empty { justify-content: center; border-color: rgba(27,79,79,0.08) !important; }
+    @keyframes tvflash { 0%{opacity:0; transform:scale(.97)} 55%{opacity:1; transform:scale(1.015)} 100%{transform:scale(1)} }
+    .tv-champ-crown { position: absolute; top: -1.1vw; left: 1.2vw; width: 2.4vw; height: 2.4vw; border-radius: 50%;
+      display: grid; place-items: center; font-size: 1.3vw; box-shadow: 0 4px 12px rgba(27,79,79,0.2); }
+    .tv-champ-info { display: flex; flex-direction: column; min-width: 0; }
+    .tv-champ-badge { font-size: 1vw; letter-spacing: 0.12em; font-weight: 800; text-transform: uppercase; }
+    .tv-champ-name { font-size: 2.6vw; font-weight: 900; line-height: 1.05; color: #143C3C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tv-champ-amt { font-size: 1.9vw; font-weight: 900; }
+    .tv-champ-today { font-style: normal; font-size: 1vw; color: #10b981; font-weight: 700; }
+
+    .tv-strip-right { display: flex; align-items: center; gap: 1.4vw; background: #FFFFFF; border: 1px solid rgba(27,79,79,0.08);
+      box-shadow: 0 6px 24px rgba(27,79,79,0.06); border-radius: 1.2vw; padding: 1.4vh 1.6vw; }
     .tv-strip-stat { display: flex; flex-direction: column; }
-    .tv-strip-label { font-size: 0.85vw; letter-spacing: 0.16em; color: #5B8079; font-weight: 800; text-transform: uppercase; }
-    .tv-strip-value { font-size: 2.8vw; font-weight: 900; line-height: 1.05; color: #1B4F4F; }
-    .tv-strip-sub { font-size: 0.9vw; color: #64748B; font-weight: 600; }
+    .tv-strip-label { font-size: 0.8vw; letter-spacing: 0.14em; color: #5B8079; font-weight: 800; text-transform: uppercase; }
+    .tv-strip-value { font-size: 2.2vw; font-weight: 900; line-height: 1.05; color: #1B4F4F; }
+    .tv-strip-sub { font-size: 0.8vw; color: #64748B; font-weight: 600; }
     .tv-strip-div { width: 1px; align-self: stretch; background: rgba(27,79,79,0.10); }
-    .tv-strip-ring { margin-left: auto; display: flex; align-items: center; gap: 1vw; }
-    .tv-strip-goal { display: flex; flex-direction: column; }
-    .tv-strip-goalval { font-size: 1.6vw; font-weight: 900; color: #1B4F4F; }
+    .tv-strip-ring { display: flex; align-items: center; }
 
     /* Three department columns */
     .tv-cols { flex: 1; min-height: 0; display: flex; gap: 1.4vw; }
@@ -417,7 +465,9 @@ function TvStyles() {
       box-shadow: 0 24px 80px rgba(27,79,79,0.22); border-radius: 2vw; padding: 4vh 5vw;
       display: flex; flex-direction: column; align-items: center; gap: 1.4vh; animation: tvpop .5s cubic-bezier(.2,1.4,.4,1); }
     @keyframes tvpop { from{transform:scale(.6);opacity:0} to{transform:scale(1);opacity:1} }
-    .tv-celebrate-badge { font-size: 2.4vw; font-weight: 900; letter-spacing: 0.06em; color: #1B4F4F; }
+    .tv-celebrate-congrats { font-size: 3.2vw; font-weight: 900; letter-spacing: 0.02em; color: #1B4F4F; text-align: center;
+      background: linear-gradient(90deg,#1B4F4F,#1CA9D6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .tv-celebrate-badge { font-size: 1.6vw; font-weight: 900; letter-spacing: 0.18em; }
     .tv-celebrate-name { font-size: 3.4vw; font-weight: 900; color: #143C3C; }
     .tv-celebrate-amount { font-size: 5vw; font-weight: 900; line-height: 1; }
     .tv-celebrate-source { font-size: 1.3vw; font-weight: 800; padding: 0.8vh 1.6vw; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.1em; }
