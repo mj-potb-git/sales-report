@@ -109,6 +109,13 @@ let cachedAt = 0
 let inFlight = null
 let rateLimitedUntil = 0
 let lastReal = null
+// Per-month last-known-good RAW invoices ('YYYY-MM' → array). LakbayHub
+// rate-limits (~10 RPM) and we fire every month in parallel, so on a busy
+// moment some months (often the freshest, biggest ones) transiently fail. We
+// keep each month's last successful payload here and HEAL a failed month from
+// it, instead of letting a partial success clobber good data and drop the
+// current month to 0. A month is only ever replaced by a newer SUCCESS.
+let monthCache = new Map()
 
 /**
  * Fetch and merge invoices across the FULL business history (START_MONTH →
@@ -124,20 +131,35 @@ export async function fetchInvoices({ force = false } = {}) {
 
   inFlight = (async () => {
     const wanted = monthsFromStart()
-    const results = await Promise.all(wanted.map(m => getMonth(m).catch(err => {
-      if (/429|too many|rate limit/i.test(err.message)) rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
-      console.warn(`[invoices] month ${m} failed:`, err.message)
-      return null
-    })))
-    if (results.every(r => r === null)) {
-      // total failure — keep last known good
+    const results = await Promise.all(wanted.map(async (m) => {
+      try {
+        return { m, arr: await getMonth(m) }
+      } catch (err) {
+        if (/429|too many|rate limit/i.test(err.message)) rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
+        console.warn(`[invoices] month ${m} failed:`, err.message)
+        return { m, arr: null }
+      }
+    }))
+
+    // Fold successes into the per-month cache; failed months keep their prior
+    // payload (heal) so a transient miss never drops that month to 0.
+    let fresh = 0, healed = 0, missing = 0
+    for (const { m, arr } of results) {
+      if (Array.isArray(arr)) { monthCache.set(m, arr); fresh++ }
+      else if (monthCache.has(m)) { healed++ }
+      else { missing++ }
+    }
+
+    if (monthCache.size === 0) {
+      // Never had any data at all (cold start where everything failed).
       if (lastReal) return lastReal
       throw new Error('All invoice month fetches failed')
     }
+
+    // Merge every cached month (fresh + healed), dedup by invoice_id, map.
     const seen = new Set()
     const all = []
-    for (const arr of results) {
-      if (!Array.isArray(arr)) continue
+    for (const arr of monthCache.values()) {
       for (const inv of arr) {
         if (!inv?.invoice_id || seen.has(inv.invoice_id)) continue
         seen.add(inv.invoice_id)
@@ -147,7 +169,7 @@ export async function fetchInvoices({ force = false } = {}) {
     cache = all
     cachedAt = Date.now()
     lastReal = all
-    console.info(`[invoices] loaded ${all.length} invoices across ${wanted.length} months`)
+    console.info(`[invoices] loaded ${all.length} invoices across ${monthCache.size} months (${fresh} fresh, ${healed} healed, ${missing} missing)`)
     return all
   })().finally(() => { inFlight = null })
 
