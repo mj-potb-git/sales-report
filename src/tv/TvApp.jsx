@@ -163,10 +163,18 @@ function DeptColumn({ source, stats, agents, loading }) {
           {SOURCE_LABELS[source]}
         </div>
         <div className="tv-col-stats">
-          <div className="tv-col-stat"><span>TODAY</span><b>{formatPHP(stats.todaySales || 0)}</b></div>
-          <div className="tv-col-stat"><span>MTD</span><b style={{ color: textColor }}>{formatPHP(stats.mtdSales || 0)}</b></div>
+          <div className="tv-col-stat">
+            <span>TODAY</span>
+            <b>{formatPHP(stats.todaySales || 0)}</b>
+            <em>{stats.todayCount || 0} benta today</em>
+          </div>
+          <div className="tv-col-stat">
+            <span>MTD</span>
+            <b style={{ color: textColor }}>{formatPHP(stats.mtdSales || 0)}</b>
+            <em>{stats.mtdCount || 0} benta this month</em>
+          </div>
         </div>
-        <div className="tv-col-count">{agents.length} agent{agents.length === 1 ? '' : 's'} may benta</div>
+        <div className="tv-col-count">{agents.length} agent{agents.length === 1 ? '' : 's'} may benta this month</div>
       </div>
       <div className="tv-col-list" ref={wrapRef}>
         {agents.length === 0 ? (
@@ -437,6 +445,7 @@ function TvStyles() {
     .tv-col-stat { display: flex; flex-direction: column; }
     .tv-col-stat span { font-size: 0.75vw; letter-spacing: 0.1em; color: #94A3B8; font-weight: 800; }
     .tv-col-stat b { font-size: 1.5vw; font-weight: 900; color: #1B4F4F; line-height: 1.1; }
+    .tv-col-stat em { font-style: normal; font-size: 0.72vw; color: #94A3B8; font-weight: 700; }
     .tv-col-count { font-size: 0.85vw; color: #94A3B8; font-weight: 700; margin-top: 0.6vh; }
     .tv-col-list { flex: 1; min-height: 0; overflow: hidden; padding: 0.8vh 0.9vw; }
     .tv-col-scroll { display: flex; flex-direction: column; gap: 0.7vh; }
