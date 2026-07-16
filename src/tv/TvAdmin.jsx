@@ -113,7 +113,7 @@ function LoginScreen({ onSignedIn }) {
           <Lock className="w-6 h-6" style={{ color: '#1B4F4F' }} />
         </div>
         <h1 className="text-lg font-bold text-center" style={{ color: '#1B4F4F' }}>Agent Photos — Owner login</h1>
-        <p className="text-sm text-gray-500 text-center mt-1 mb-5">Mag-login gamit ang dashboard account mo.</p>
+        <p className="text-sm text-gray-500 text-center mt-1 mb-5">Log in with your dashboard account.</p>
         {err && <p className="text-sm text-red-600 bg-red-50 rounded-lg p-2 mb-3">{err}</p>}
         <input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@pinoyonlinebiz.com"
                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm mb-2.5 focus:outline-none focus:ring-2 focus:ring-teal-500/30" />
@@ -122,7 +122,7 @@ function LoginScreen({ onSignedIn }) {
         <button type="submit" disabled={busy}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
                 style={{ backgroundColor: '#1B4F4F' }}>
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Mag-login
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Log in
         </button>
       </form>
     </div>
@@ -164,8 +164,8 @@ export default function TvAdmin() {
     return (
       <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: '#F4F8F8' }}>
         <div className="max-w-sm w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
-          <h1 className="text-lg font-bold" style={{ color: '#1B4F4F' }}>Walang access</h1>
-          <p className="text-sm text-gray-500 mt-2">Naka-login ka bilang <b>{email}</b>, pero owner/admin lang ang pwedeng mag-upload.</p>
+          <h1 className="text-lg font-bold" style={{ color: '#1B4F4F' }}>No access</h1>
+          <p className="text-sm text-gray-500 mt-2">You're logged in as <b>{email}</b>, but only owner/admin accounts can upload.</p>
           <button onClick={signOut} className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: '#1B4F4F' }}>
             <LogOut className="w-4 h-4" /> Log out
           </button>
@@ -205,7 +205,7 @@ function TvAdminInner() {
           <div className="flex-1">
             <h1 className="text-lg font-bold" style={{ color: '#1B4F4F' }}>Agent Photos</h1>
             <p className="text-xs text-gray-500">
-              {withPhoto}/{filtered.length} may litrato · lalabas sa TV within ~1 min
+              {withPhoto}/{filtered.length} with photo · shows on the TV within ~1 min
             </p>
           </div>
           <button onClick={signOut} title="Log out"
@@ -218,7 +218,7 @@ function TvAdminInner() {
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={q} onChange={e => setQ(e.target.value)}
-              placeholder="Hanapin ang agent..."
+              placeholder="Search agent..."
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30"
             />
           </div>
@@ -228,10 +228,10 @@ function TvAdminInner() {
       <main className="max-w-3xl mx-auto px-4 py-5 flex flex-col gap-2.5">
         {loading && knownAgents.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-16 text-gray-400">
-            <Loader2 className="w-5 h-5 animate-spin" /> Naglo-load ng agents...
+            <Loader2 className="w-5 h-5 animate-spin" /> Loading agents...
           </div>
         ) : filtered.length === 0 ? (
-          <p className="text-center text-gray-400 py-16 text-sm">Walang nahanap na agent.</p>
+          <p className="text-center text-gray-400 py-16 text-sm">No agents found.</p>
         ) : (
           filtered.map(a => (
             <AgentRow

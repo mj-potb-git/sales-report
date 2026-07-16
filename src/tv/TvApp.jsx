@@ -166,19 +166,19 @@ function DeptColumn({ source, stats, agents, loading }) {
           <div className="tv-col-stat">
             <span>TODAY</span>
             <b>{formatPHP(stats.todaySales || 0)}</b>
-            <em>{stats.todayCount || 0} benta today</em>
+            <em>{stats.todayCount || 0} sale{(stats.todayCount || 0) === 1 ? '' : 's'} today</em>
           </div>
           <div className="tv-col-stat">
             <span>MTD</span>
             <b style={{ color: textColor }}>{formatPHP(stats.mtdSales || 0)}</b>
-            <em>{stats.mtdCount || 0} benta this month</em>
+            <em>{stats.mtdCount || 0} sale{(stats.mtdCount || 0) === 1 ? '' : 's'} this month</em>
           </div>
         </div>
-        <div className="tv-col-count">{agents.length} agent{agents.length === 1 ? '' : 's'} may benta this month</div>
+        <div className="tv-col-count">{agents.length} agent{agents.length === 1 ? '' : 's'} with sales this month</div>
       </div>
       <div className="tv-col-list" ref={wrapRef}>
         {agents.length === 0 ? (
-          <div className="tv-empty">{loading ? 'Naglo-load…' : 'Wala pang benta.'}</div>
+          <div className="tv-empty">{loading ? 'Loading…' : 'No sales yet.'}</div>
         ) : (
           <div className="tv-col-scroll" ref={scrollRef}
                style={scrollPx ? { '--sp': `${scrollPx}px`, animation: 'tvscroll 30s linear infinite' } : undefined}>
@@ -284,7 +284,7 @@ export default function TvApp() {
           </div>
         ) : (
           <div className="tv-champ tv-champ-empty">
-            <span className="tv-strip-label">{loading ? 'Naglo-load ng champions…' : 'Wala pang benta this month.'}</span>
+            <span className="tv-strip-label">{loading ? 'Loading champions…' : 'No sales yet this month.'}</span>
           </div>
         )}
 
@@ -316,7 +316,7 @@ export default function TvApp() {
       {/* One-time sound enable (browsers block audio until a gesture) */}
       {!soundOn && (
         <button className="tv-sound-btn" onClick={async () => { const ok = await enableSound(); setSoundOn(ok) }}>
-          <Volume2 style={{ width: '1.4vw', height: '1.4vw' }} /> I-enable ang sound
+          <Volume2 style={{ width: '1.4vw', height: '1.4vw' }} /> Enable sound
         </button>
       )}
 
