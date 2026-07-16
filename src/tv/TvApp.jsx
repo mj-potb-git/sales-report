@@ -13,7 +13,7 @@ import { Volume2 } from 'lucide-react'
 import useTvData, { SOURCE_LABELS, SOURCE_ORDER } from './useTvData'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
 import { getSettings } from '../lib/settings'
-import { enableSound, playCelebration, speak, isSoundEnabled } from './sound'
+import { enableSound, celebrate, isSoundEnabled } from './sound'
 
 // Category colors aligned to the dashboard palette (cyan / gold / teal-violet).
 // SOURCE_COLORS = the vivid fill (dots, bars, avatars, ring).
@@ -233,9 +233,8 @@ export default function TvApp() {
   const [soundOn, setSoundOn] = useState(isSoundEnabled())
   useEffect(() => {
     if (!celebration) return
-    playCelebration()
     const pesos = Math.round(celebration.amount).toLocaleString('en-US')
-    speak(`Congratulations ${celebration.agent}! New sale, ${pesos} pesos!`)
+    celebrate(`Congratulations ${celebration.agent}! New sale, ${pesos} pesos!`)
   }, [celebration])
 
   return (

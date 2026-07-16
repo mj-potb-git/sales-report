@@ -1,27 +1,45 @@
-// Celebration sound + voice announcement for the TV board.
+// Celebration sound + voice for the TV board — as LOUD and hype as possible so
+// it carries across the floor: a triumphant fanfare, a crowd APPLAUSE swell,
+// and a spoken congratulations by name. All synthesized (no audio files).
 //
-// Sound is a triumphant fanfare generated with the Web Audio API (no asset).
-// Voice uses the browser's built-in speech synthesis (voice AI) to announce
-// the seller by name — "Congratulations <name>! New sale!".
+// A brick-wall limiter keeps everything hot without distorting. Real loudness
+// still depends on the TV's own volume — turn that up too.
 //
 // Browsers block audio until a user gesture, and a TV kiosk gets none after
-// load — so the board shows a one-time "Enable sound" button. One tap unlocks
-// both the fanfare and the voice for the whole session.
+// load — so the board shows a one-time "Enable sound" button that unlocks
+// everything for the whole session.
 
 let ctx = null
+let master = null      // everything routes here → limiter → speakers
 let enabled = false
 
 export function isSoundEnabled() { return enabled }
 
+function ensureGraph() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)()
+  if (!master) {
+    master = ctx.createGain()
+    master.gain.value = 1
+    // Limiter so layered fanfare + applause stay loud but never clip harshly.
+    const limiter = ctx.createDynamicsCompressor()
+    limiter.threshold.value = -3
+    limiter.knee.value = 0
+    limiter.ratio.value = 20
+    limiter.attack.value = 0.002
+    limiter.release.value = 0.2
+    master.connect(limiter)
+    limiter.connect(ctx.destination)
+  }
+}
+
 /** Resume/create audio + warm the voice engine on a user gesture. */
 export async function enableSound() {
   try {
-    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)()
+    ensureGraph()
     if (ctx.state === 'suspended') await ctx.resume()
     enabled = true
-    // Warm the speech engine (voice list often loads lazily on first use).
     try { window.speechSynthesis?.getVoices() } catch { /* ignore */ }
-    playFanfare(0.25, true)   // gentle confirmation
+    playFanfare(0.3, true)   // gentle confirmation
     return true
   } catch (err) {
     console.warn('[tv] enableSound failed:', err.message)
@@ -29,13 +47,23 @@ export async function enableSound() {
   }
 }
 
-/** Loud celebration fanfare (no-op until sound is enabled). */
-export function playCelebration() {
+/** Full celebration: loud fanfare + applause, then a spoken congratulations. */
+export function celebrate(text) {
   if (!ctx || !enabled) return
-  playFanfare(0.8, false)
+  playFanfare(1.0, false)
+  playApplause(0.9, 3.6)
+  // Let the fanfare peak pass, then announce over the applause tail.
+  setTimeout(() => speak(text), 1300)
 }
 
-/** Speak a congratulations line via the browser voice (no-op if not enabled). */
+/** Loud fanfare only (kept for compatibility). */
+export function playCelebration() {
+  if (!ctx || !enabled) return
+  playFanfare(1.0, false)
+  playApplause(0.9, 3.6)
+}
+
+/** Speak a congratulations line via the browser voice (voice AI). */
 export function speak(text) {
   if (!enabled) return
   try {
@@ -46,24 +74,19 @@ export function speak(text) {
     u.pitch = 1.15
     u.volume = 1
     const voices = synth.getVoices()
-    // Prefer a clear English voice; fall back to the default.
     const pick = voices.find(v => /Google US English|Samantha|en-US/i.test(`${v.name} ${v.lang}`))
              || voices.find(v => /^en/i.test(v.lang))
     if (pick) u.voice = pick
-    synth.cancel()      // interrupt any previous announcement
+    synth.cancel()
     synth.speak(u)
   } catch (err) {
     console.warn('[tv] speak failed:', err.message)
   }
 }
 
-// A richer, louder fanfare: a fast ascending run, then a sustained major triad.
+// A bright ascending run + a sustained major triad.
 function playFanfare(vol, soft) {
   const t0 = ctx.currentTime
-  const master = ctx.createGain()
-  master.gain.value = 1
-  master.connect(ctx.destination)
-
   const run = [523.25, 659.25, 783.99, 1046.5, 1318.51] // C5 E5 G5 C6 E6
   run.forEach((freq, i) => {
     const osc = ctx.createOscillator()
@@ -77,20 +100,51 @@ function playFanfare(vol, soft) {
     osc.connect(gain); gain.connect(master)
     osc.start(t); osc.stop(t + 0.5)
   })
-
   if (soft) return
-
-  // Sustained triumphant chord after the run (C major, C5-E5-G5-C6).
   const chordAt = t0 + run.length * 0.09 + 0.05
   ;[523.25, 659.25, 783.99, 1046.5].forEach(freq => {
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-    osc.type = 'triangle'
+    osc.type = 'sawtooth'
     osc.frequency.value = freq
     gain.gain.setValueAtTime(0, chordAt)
-    gain.gain.linearRampToValueAtTime(vol * 0.7, chordAt + 0.04)
-    gain.gain.exponentialRampToValueAtTime(0.0008, chordAt + 1.1)
+    gain.gain.linearRampToValueAtTime(vol * 0.6, chordAt + 0.04)
+    gain.gain.exponentialRampToValueAtTime(0.0008, chordAt + 1.3)
     osc.connect(gain); gain.connect(master)
-    osc.start(chordAt); osc.stop(chordAt + 1.2)
+    osc.start(chordAt); osc.stop(chordAt + 1.4)
   })
+}
+
+// Crowd applause: filtered noise that swells in, sustains, then fades — with a
+// scatter of sharper "clap" transients on top so it reads as a real ovation.
+function playApplause(vol, dur = 3.4) {
+  const sr = ctx.sampleRate
+  const len = Math.floor(sr * dur)
+  const buffer = ctx.createBuffer(1, len, sr)
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
+  // scatter louder clap transients
+  const claps = Math.floor(dur * 22)
+  for (let c = 0; c < claps; c++) {
+    const start = Math.floor(Math.random() * (len - 400))
+    const amp = 1.5 + Math.random()
+    for (let j = 0; j < 300; j++) {
+      data[start + j] += (Math.random() * 2 - 1) * amp * Math.exp(-j / 60)
+    }
+  }
+
+  const src = ctx.createBufferSource()
+  src.buffer = buffer
+  const bp = ctx.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.frequency.value = 1700
+  bp.Q.value = 0.6
+  const gain = ctx.createGain()
+  const t0 = ctx.currentTime
+  gain.gain.setValueAtTime(0.0001, t0)
+  gain.gain.linearRampToValueAtTime(vol, t0 + 0.5)          // swell in
+  gain.gain.setValueAtTime(vol, t0 + dur - 1.2)             // hold
+  gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur)  // fade out
+  src.connect(bp); bp.connect(gain); gain.connect(master)
+  src.start(t0); src.stop(t0 + dur)
 }
