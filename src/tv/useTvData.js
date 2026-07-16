@@ -16,13 +16,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import usePolling from '../hooks/usePolling'
 import {
   fetchSalesRecords, getExternalSalesRecords,
-  filterByRange, rangeFor, parseDate,
+  filterByRange, rangeFor, parseDate, startOfMonth,
 } from '../api/lakbay'
-import { fetchAllBookingTransactions, mapBookingTransaction } from '../api/fusioo'
+import { fetchRecentBookingTransactions, mapBookingTransaction } from '../api/fusioo'
 import { fetchPhotoMap, nameKey } from './agentPhotos'
 
-const SALES_POLL_MS    = 30_000  // LakbayHub (Acquisition + AACIO)
-const OFFICERS_POLL_MS = 60_000  // Fusioo (Account Officers) — slower, independent
+const SALES_POLL_MS    = 30_000   // LakbayHub (Acquisition + AACIO)
+const OFFICERS_POLL_MS = 300_000  // Fusioo (Account Officers) — 5 min; Fusioo has a
+                                  // strict HOURLY rate limit, so poll gently and only
+                                  // fetch this month's rows (see fetchOfficersHalf).
 
 export const SOURCE_LABELS = {
   acquisition: 'Acquisition',
@@ -40,9 +42,11 @@ async function fetchSalesHalf() {
   return { potb, aacio }
 }
 
-// Fusioo half: Account Officers. No timeout — let the pagination finish.
+// Fusioo half: Account Officers. Only fetch THIS MONTH's rows (the board only
+// shows today + MTD), which keeps it to ~1-2 pages and well under Fusioo's
+// hourly rate limit. Newest-first, stops paginating at the start of the month.
 async function fetchOfficersHalf() {
-  const rows = await fetchAllBookingTransactions()
+  const rows = await fetchRecentBookingTransactions({ sinceDate: startOfMonth(new Date()) })
   return rows.map(mapBookingTransaction)
 }
 

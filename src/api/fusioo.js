@@ -78,6 +78,51 @@ export async function fetchAllBookingTransactions({
   return _inFlight
 }
 
+// Lightweight fetch for views that only need RECENT transactions (e.g. the TV
+// board's this-month totals). Records come back newest-first, so we stop
+// paginating as soon as a page's oldest row predates `sinceDate` — usually just
+// 1-2 pages instead of ~14. This keeps Fusioo well under its hourly rate limit
+// even with the board polling and multiple screens open. Separate cache so it
+// never clobbers the full-history cache used by the Officers tab.
+let _recentCache = null
+let _recentAt = 0
+let _recentInFlight = null
+const RECENT_TTL_MS = 240_000 // 4 min
+
+export async function fetchRecentBookingTransactions({
+  sinceDate,
+  appId = BOOKING_TX_APP_ID,
+  maxPages = 40,
+  force = false,
+} = {}) {
+  const now = Date.now()
+  if (!force && _recentCache && (now - _recentAt) < RECENT_TTL_MS) return _recentCache
+  if (_recentInFlight) return _recentInFlight
+
+  const cutoff = sinceDate ? new Date(sinceDate).getTime() : 0
+
+  _recentInFlight = (async () => {
+    const all = []
+    for (let i = 0; i < maxPages; i++) {
+      const offset = i * PAGE_SIZE
+      const j = await get(`/records/apps/${appId}?limit=${PAGE_SIZE}&offset=${offset}&sort_by=transaction_date&order=desc`)
+      const page = j.data || []
+      all.push(...page)
+      if (page.length < PAGE_SIZE) break
+      // Stop once the oldest row on this page is before the cutoff date.
+      const last = page[page.length - 1]
+      const lastMs = new Date(last?.transaction_date || last?.created || 0).getTime()
+      if (cutoff && lastMs < cutoff) break
+    }
+    _recentCache = all
+    _recentAt = Date.now()
+    _recentInFlight = null
+    return all
+  })()
+
+  return _recentInFlight
+}
+
 // --- Field name -> normalized agent/team helpers --------------------------
 
 function firstStr(val) {
