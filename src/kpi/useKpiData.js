@@ -196,6 +196,11 @@ export const WEIGHTS = {
   memo:         5,
 }
 
+// Adventurer sign-ups target: hitting 10% of total sign-ups earns the FULL
+// adventurer weight. Below 10% scales proportionally (e.g. 5% → half); 10%+
+// caps at full. Per MJ.
+export const ADV_TARGET_PCT = 10
+
 // Turn a raw scorecard + manual inputs into rates and weighted points.
 // Each rate is the formula from the sheet's Description column; the weighted
 // point is rate% × weight (capped at the weight). Memo is all-or-nothing.
@@ -213,7 +218,8 @@ export function scoreCard(card, manual) {
   const pts = {
     showUp:     (clamp(showUpRate)  / 100) * WEIGHTS.showUp,
     closing:    (clamp(closingRate) / 100) * WEIGHTS.closing,
-    adventurer: (clamp(advRate)     / 100) * WEIGHTS.adventurer,
+    // Scored against the 10% target: full weight at 10%+, proportional below.
+    adventurer: (Math.min(advRate, ADV_TARGET_PCT) / ADV_TARGET_PCT) * WEIGHTS.adventurer,
     qa:         qaScore != null ? (clamp(qaScore) / 100) * WEIGHTS.qa : 0,
     memo:       hasMemo ? 0 : WEIGHTS.memo,
   }
@@ -222,6 +228,7 @@ export function scoreCard(card, manual) {
   return {
     qaScore, hasMemo,
     showUpRate, closingRate, advRate, totalSignups,
+    advTargetPct: ADV_TARGET_PCT,
     points: pts,
     total,
   }

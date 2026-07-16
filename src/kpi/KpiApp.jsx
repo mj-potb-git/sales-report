@@ -166,7 +166,7 @@ export default function KpiApp() {
                   {card ? card.travelpreneur : 0} TP / {card ? card.starter : 0} Str.
                 </div>
               </td>
-              <td className="c kpi-target">{score ? score.totalSignups : 0} total sign-ups</td>
+              <td className="c kpi-target">{score ? score.advTargetPct : 10}% of {score ? score.totalSignups : 0} sign-ups</td>
               <td className="c kpi-weight">{WEIGHTS.adventurer}%</td>
             </tr>
             {/* QA Score — manual */}
@@ -236,7 +236,7 @@ export default function KpiApp() {
                      weight={WEIGHTS.showUp} points={score.points.showUp} />
             <CalcRow label="Closing Rate" formula={`${card.signUps} / ${card.showUps} = ${pct(score.closingRate, 1)}`}
                      weight={WEIGHTS.closing} points={score.points.closing} />
-            <CalcRow label="Adventurers sign up" formula={`${card.adventurer} / ${score.totalSignups} = ${pct(score.advRate, 1)}`}
+            <CalcRow label="Adventurers sign up" formula={`${card.adventurer}/${score.totalSignups} = ${pct(score.advRate, 1)} vs ${score.advTargetPct}% target`}
                      weight={WEIGHTS.adventurer} points={score.points.adventurer} />
             <CalcRow label="QA Score" formula={score.qaScore != null ? pct(score.qaScore, 1) : 'not yet rated'}
                      weight={WEIGHTS.qa} points={score.points.qa} />
