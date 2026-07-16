@@ -182,7 +182,7 @@ export default function KpiApp() {
                     placeholder="0"
                     disabled={!card}
                     onChange={e => {
-                      const v = e.target.value === '' ? null : Number(e.target.value)
+                      const v = e.target.value === '' ? null : Math.max(0, Math.min(100, Number(e.target.value)))
                       persist({ qa_score: v })
                     }}
                   />
