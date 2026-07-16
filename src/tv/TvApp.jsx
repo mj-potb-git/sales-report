@@ -204,7 +204,7 @@ export default function TvApp() {
   const {
     loading, error, lastFetched,
     todaySales, todayCount, mtdSales, mtdCount,
-    bySource, leaderboard,
+    bySource, leaderboard, sourceLoading,
     celebration, clearCelebration,
   } = useTvData()
   const now = useClock()
@@ -302,7 +302,7 @@ export default function TvApp() {
       {/* Three departments side-by-side — ALL agents with sales */}
       <section className="tv-cols">
         {SOURCE_ORDER.map(s => (
-          <DeptColumn key={s} source={s} stats={bySource[s] || {}} agents={deptAgents(s)} loading={loading} />
+          <DeptColumn key={s} source={s} stats={bySource[s] || {}} agents={deptAgents(s)} loading={sourceLoading[s]} />
         ))}
       </section>
 

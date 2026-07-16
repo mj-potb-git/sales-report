@@ -5,6 +5,10 @@
 //   • Officers    — booking sales (Fusioo)          → fetchAllBookingTransactions()
 //   • AACIO       — external team (LakbayHub split)  → getExternalSalesRecords()
 //
+// Acquisition + AACIO share one fast poll (LakbayHub). Account Officers (Fusioo)
+// paginates slowly, so it polls INDEPENDENTLY — it never blocks or gets cut off
+// by the other two, and simply fills in once its (slower) fetch completes.
+//
 // Every record is tagged with its `source` so the leaderboard can colour/group
 // and the celebration knows which board a new sale belongs to.
 
@@ -17,7 +21,8 @@ import {
 import { fetchAllBookingTransactions, mapBookingTransaction } from '../api/fusioo'
 import { fetchPhotoMap, nameKey } from './agentPhotos'
 
-const POLL_INTERVAL_MS = 30_000 // matches the slowest source's safe cadence
+const SALES_POLL_MS    = 30_000  // LakbayHub (Acquisition + AACIO)
+const OFFICERS_POLL_MS = 60_000  // Fusioo (Account Officers) — slower, independent
 
 export const SOURCE_LABELS = {
   acquisition: 'Acquisition',
@@ -27,36 +32,18 @@ export const SOURCE_LABELS = {
 
 export const SOURCE_ORDER = ['acquisition', 'officers', 'aacio']
 
-// Resolve to a fallback if a promise takes too long — so one slow source
-// (e.g. Fusioo's long pagination) never leaves the whole board blank. The slow
-// fetch keeps warming its cache in the background; the next 30s poll picks it up.
-function withTimeout(promise, ms, fallback) {
-  return Promise.race([promise, new Promise(res => setTimeout(() => res(fallback), ms))])
+// LakbayHub half: Acquisition (POTB) + AACIO (external split). fetchSalesRecords()
+// warms the external split, so we read getExternalSalesRecords() right after.
+async function fetchSalesHalf() {
+  const potb = await fetchSalesRecords()
+  const aacio = getExternalSalesRecords()
+  return { potb, aacio }
 }
 
-// One combined fetch. fetchSalesRecords() warms the external split, so we read
-// getExternalSalesRecords() right after it resolves. Fusioo is independent.
-async function fetchAll() {
-  const fusiooP = fetchAllBookingTransactions()
-    .then(rows => rows.map(mapBookingTransaction))
-    .catch(err => { console.warn('[tv] fusioo failed:', err.message); return [] })
-
-  const [potb, fusiooRaw] = await Promise.all([
-    fetchSalesRecords(),
-    withTimeout(fusiooP, 12_000, []),   // show the board even if Officers is slow
-  ])
-  const aacio = getExternalSalesRecords()
-
-  const tag = (recs, source) =>
-    (recs || [])
-      .filter(r => r && r.date && Number(r.sales_amount) >= 0)
-      .map(r => ({ ...r, source }))
-
-  return [
-    ...tag(potb, 'acquisition'),
-    ...tag(fusiooRaw, 'officers'),
-    ...tag(aacio, 'aacio'),
-  ]
+// Fusioo half: Account Officers. No timeout — let the pagination finish.
+async function fetchOfficersHalf() {
+  const rows = await fetchAllBookingTransactions()
+  return rows.map(mapBookingTransaction)
 }
 
 function isSameLocalDay(dateStr, anchor) {
@@ -73,10 +60,37 @@ function recordId(r) {
     : `${r.source}:${r.sales_agent}:${r.date}:${r.sales_amount}`
 }
 
+const tag = (recs, source) =>
+  (recs || [])
+    .filter(r => r && r.date && Number(r.sales_amount) >= 0)
+    .map(r => ({ ...r, source }))
+
 export default function useTvData() {
-  const fetcher = useCallback(fetchAll, [])
-  const { data, loading, error, lastFetched } = usePolling(fetcher, POLL_INTERVAL_MS)
-  const records = data ?? []
+  // ── LakbayHub poll (Acquisition + AACIO) ──────────────────────────────────
+  const salesFetcher = useCallback(fetchSalesHalf, [])
+  const { data: salesData, loading, error, lastFetched } = usePolling(salesFetcher, SALES_POLL_MS)
+
+  // ── Fusioo poll (Account Officers) — independent, no cutoff ────────────────
+  const [officers, setOfficers] = useState([])
+  const [officersLoading, setOfficersLoading] = useState(true)
+  useEffect(() => {
+    let alive = true
+    const load = () => fetchOfficersHalf()
+      .then(rows => { if (alive) { setOfficers(rows); setOfficersLoading(false) } })
+      .catch(err => { console.warn('[tv] officers failed:', err.message); if (alive) setOfficersLoading(false) })
+    load()
+    const id = setInterval(() => { if (!document.hidden) load() }, OFFICERS_POLL_MS)
+    const onVis = () => { if (!document.hidden) load() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { alive = false; clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
+  }, [])
+
+  // Combined, tagged record set.
+  const records = useMemo(() => [
+    ...tag(salesData?.potb, 'acquisition'),
+    ...tag(officers, 'officers'),
+    ...tag(salesData?.aacio, 'aacio'),
+  ], [salesData, officers])
 
   // ── Agent photos (polled slowly; new uploads appear within ~1 min) ────────
   const [photoMap, setPhotoMap] = useState({})
@@ -88,11 +102,11 @@ export default function useTvData() {
     return () => { alive = false; clearInterval(id) }
   }, [])
 
-  // ── New-sale detection → celebration queue ────────────────────────────────
+  // ── New-sale detection → celebration ──────────────────────────────────────
   const seenRef = useRef(null)        // Set of record ids from a prior poll
   const [celebration, setCelebration] = useState(null)
   useEffect(() => {
-    if (!data) return
+    if (!salesData && officers.length === 0) return
     const today = new Date()
     const todays = records.filter(r => isSameLocalDay(r.date, today) && Number(r.sales_amount) > 0)
     const ids = new Set(todays.map(recordId))
@@ -104,7 +118,6 @@ export default function useTvData() {
     seenRef.current = ids
     if (fresh.length === 0) return
 
-    // Celebrate the biggest new sale in this batch.
     const top = fresh.reduce((a, b) => (b.sales_amount > a.sales_amount ? b : a))
     setCelebration({
       key: recordId(top) + ':' + Date.now(),
@@ -115,7 +128,7 @@ export default function useTvData() {
       moreCount: fresh.length - 1,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data])
+  }, [salesData, officers])
 
   const clearCelebration = useCallback(() => setCelebration(null), [])
 
@@ -130,7 +143,6 @@ export default function useTvData() {
 
     const sum = (recs, key = 'sales_amount') => recs.reduce((a, r) => a + (Number(r[key]) || 0), 0)
 
-    // Per-source totals for today + MTD.
     const bySource = {}
     for (const s of SOURCE_ORDER) {
       const t = todayRecs.filter(r => r.source === s)
@@ -141,7 +153,6 @@ export default function useTvData() {
       }
     }
 
-    // Unified MTD leaderboard (agent across their own source).
     const agentMap = new Map()
     for (const r of mtdRecs) {
       const name = r.sales_agent || 'Unassigned'
@@ -189,9 +200,18 @@ export default function useTvData() {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [records])
 
+  // Per-source loading (so the Officers column shows "loading" not "no sales"
+  // while its slower fetch is still in flight).
+  const sourceLoading = {
+    acquisition: loading,
+    aacio:       loading,
+    officers:    officersLoading,
+  }
+
   return {
     loading, error, lastFetched,
     ...view,
+    sourceLoading,
     knownAgents,
     photoMap,
     celebration, clearCelebration,
