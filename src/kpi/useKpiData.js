@@ -189,8 +189,8 @@ export default function useKpiData(month) {
 
 // KPI weights (sum to 100). Matches MJ's spreadsheet.
 export const WEIGHTS = {
-  showUp:      25,
-  closing:     40,
+  showUp:      15,
+  closing:     50,
   adventurer:  20,
   qa:          10,
   memo:         5,
