@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
 
   const fusiooToken = env.FUSIOO_ACCESS_TOKEN || ''
 
+  // AACIO (HighLevel white-label) Private Integration Token — surveys/leads.
+  const hlToken = env.AACIO_HL_TOKEN || ''
+
   // LakbayHub now requires an x-app-key (401 without it). If we have the key
   // locally, hit LakbayHub directly. If NOT, borrow the live Vercel deployment's
   // proxy (which has the key set server-side) so local dev still shows real,
@@ -182,6 +185,23 @@ export default defineConfig(({ mode }) => {
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
               if (fusiooToken) proxyReq.setHeader('Authorization', `Bearer ${fusiooToken}`)
+              proxyReq.setHeader('Accept', 'application/json')
+            })
+          },
+        },
+        // AACIO — HighLevel (GoHighLevel white-label) API. Injects the Private
+        // Integration Token as a Bearer header + the required Version header,
+        // server-side, so the browser never sees the token. Path
+        // /api/hl/<rest> → https://services.leadconnectorhq.com/<rest>.
+        '/api/hl': {
+          target: 'https://services.leadconnectorhq.com',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => path.replace(/^\/api\/hl/, ''),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              if (hlToken) proxyReq.setHeader('Authorization', `Bearer ${hlToken}`)
+              proxyReq.setHeader('Version', '2021-07-28')
               proxyReq.setHeader('Accept', 'application/json')
             })
           },

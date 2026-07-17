@@ -23,6 +23,7 @@ const aacioBasic     = aacioApiKey
 const metaAdAccount  = process.env.META_AD_ACCOUNT_ID    || ''
 const metaToken      = process.env.META_ACCESS_TOKEN     || ''
 const fusiooToken = process.env.FUSIOO_ACCESS_TOKEN || ''
+const hlToken     = process.env.AACIO_HL_TOKEN      || ''
 
 // NOTE: app.use('/prefix', middleware) strips the prefix before the proxy sees
 // it. So pathRewrite must match the stripped path (e.g. '/bookings'), not the
@@ -78,6 +79,20 @@ app.use('/api/fusioo', createProxyMiddleware({
   on: {
     proxyReq(proxyReq) {
       if (fusiooToken) proxyReq.setHeader('Authorization', `Bearer ${fusiooToken}`)
+      proxyReq.setHeader('Accept', 'application/json')
+    },
+  },
+}))
+
+// ── /api/hl → AACIO (HighLevel white-label) API ────────────────────────────
+app.use('/api/hl', createProxyMiddleware({
+  target: 'https://services.leadconnectorhq.com',
+  changeOrigin: true,
+  pathRewrite: (path) => path, // prefix already stripped by app.use
+  on: {
+    proxyReq(proxyReq) {
+      if (hlToken) proxyReq.setHeader('Authorization', `Bearer ${hlToken}`)
+      proxyReq.setHeader('Version', '2021-07-28')
       proxyReq.setHeader('Accept', 'application/json')
     },
   },

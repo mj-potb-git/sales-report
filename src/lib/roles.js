@@ -9,11 +9,11 @@ import { getSupabase } from '../api/supabase'
 // NOTE: only 'owner' has the 'users' tab — owners are the ONLY ones who can
 // manage users / grant access. Admins get everything else.
 export const ROLE_TABS = {
-  owner:     ['insights', 'bookings', 'orientation', 'dashboard', 'sales', 'officers', 'aacio', 'ads', 'users', 'settings'],
-  admin:     ['insights', 'bookings', 'orientation', 'dashboard', 'sales', 'officers', 'aacio', 'ads', 'settings'],
+  owner:     ['insights', 'bookings', 'orientation', 'dashboard', 'leadquality', 'sales', 'officers', 'aacio', 'ads', 'users', 'settings'],
+  admin:     ['insights', 'bookings', 'orientation', 'dashboard', 'leadquality', 'sales', 'officers', 'aacio', 'ads', 'settings'],
   sales:     ['officers'],
   signup:    ['bookings', 'sales', 'aacio'],   // Sign-up Team: Bookings, Acquisition (id=sales), AACIO
-  marketing: ['dashboard', 'ads'],
+  marketing: ['dashboard', 'leadquality', 'ads'],
   aacio:     ['aacio'],
 }
 

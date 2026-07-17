@@ -6,6 +6,7 @@ import LiveIndicator from './components/LiveIndicator'
 const InsightsTab       = lazy(() => import('./components/InsightsTab'))
 const BookingsTab       = lazy(() => import('./components/BookingsTab'))
 const SalesDashboard    = lazy(() => import('./components/SalesDashboard'))
+const LeadQualityTab    = lazy(() => import('./components/LeadQualityTab'))
 const SalesAgentsTab    = lazy(() => import('./components/SalesAgentsTab'))
 const AccountOfficersTab = lazy(() => import('./components/AccountOfficersTab'))
 const AacioReportTab    = lazy(() => import('./components/AacioReportTab'))
@@ -248,6 +249,8 @@ export default function App() {
             <AacioReportTab />
           ) : currentTab === 'ads' ? (
             <AdsTab />
+          ) : currentTab === 'leadquality' ? (
+            <LeadQualityTab />
           ) : currentTab === 'insights' ? (
             <InsightsTab userName={displayName} onJumpTab={setActiveTab} />
           ) : loading ? (

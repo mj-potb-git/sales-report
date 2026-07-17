@@ -61,6 +61,17 @@ function resolveTarget(service) {
         headers: { Accept: 'application/json' },
         appendToken: env.META_ACCESS_TOKEN || '',
       }
+    case 'hl':
+      // AACIO — HighLevel (GoHighLevel white-label). Private Integration Token
+      // as Bearer + required Version header, injected server-side.
+      return {
+        base: 'https://services.leadconnectorhq.com',
+        headers: {
+          ...(env.AACIO_HL_TOKEN ? { Authorization: `Bearer ${env.AACIO_HL_TOKEN}` } : {}),
+          Version: '2021-07-28',
+          Accept: 'application/json',
+        },
+      }
     default:
       return null
   }

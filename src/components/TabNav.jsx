@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarDays, BarChart2, Users, Briefcase, Settings, Globe, UserCog, GraduationCap, Megaphone } from 'lucide-react'
+import { LayoutDashboard, CalendarDays, BarChart2, Users, Briefcase, Settings, Globe, UserCog, GraduationCap, Megaphone, Target } from 'lucide-react'
 import { PRIMARY } from '../lib/theme'
 
 // Tabs are grouped so the nav reads as sections instead of one long flat row.
@@ -8,6 +8,7 @@ import { PRIMARY } from '../lib/theme'
 const tabs = [
   { id: 'insights',  label: 'Insights',  Icon: LayoutDashboard, group: 'Live' },
   { id: 'dashboard', label: 'Operations',Icon: BarChart2,       group: 'Live' },
+  { id: 'leadquality', label: 'Lead Quality', Icon: Target,     group: 'Live' },
   { id: 'bookings',  label: 'Bookings',  Icon: CalendarDays,    group: 'Live' },
   { id: 'orientation', label: 'Orientation', Icon: GraduationCap, group: 'Live' },
   { id: 'sales',     label: 'Acquisition',Icon: Users,          group: 'Analytics' },
