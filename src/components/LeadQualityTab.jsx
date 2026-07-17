@@ -25,16 +25,16 @@ const adManagerUrl = adId =>
 
 // Quality verdict from the no-job share (only meaningful with enough volume).
 function qualityOf(a) {
-  if (a.total < 10) return { key: 'low_vol', label: 'Kulang data', color: '#9ca3af', bg: '#f3f4f6' }
-  if (a.noJobPct >= 25) return { key: 'poor', label: 'Mababang kalidad', color: '#b91c1c', bg: '#fee2e2' }
-  if (a.noJobPct <= 12 && a.hasJobPct >= 55) return { key: 'great', label: 'Mataas na kalidad', color: '#15803d', bg: '#dcfce7' }
-  return { key: 'ok', label: 'Katamtaman', color: '#a16207', bg: '#fef3c7' }
+  if (a.total < 10) return { key: 'low_vol', label: 'Low volume', color: '#9ca3af', bg: '#f3f4f6' }
+  if (a.noJobPct >= 25) return { key: 'poor', label: 'Low quality', color: '#b91c1c', bg: '#fee2e2' }
+  if (a.noJobPct <= 12 && a.hasJobPct >= 55) return { key: 'great', label: 'High quality', color: '#15803d', bg: '#dcfce7' }
+  return { key: 'ok', label: 'Medium', color: '#a16207', bg: '#fef3c7' }
 }
 const SORTS = {
-  nojob: { label: 'Pinakamaraming Walang-trabaho', fn: (a, b) => b.noJob - a.noJob || b.total - a.total },
-  hasjob: { label: 'Pinakamaraming May-trabaho', fn: (a, b) => b.hasJob - a.hasJob || b.total - a.total },
-  volume: { label: 'Pinakamaraming Leads', fn: (a, b) => b.total - a.total },
-  worst: { label: 'Pinakamataas na No-Job %', fn: (a, b) => b.noJobPct - a.noJobPct || b.total - a.total },
+  nojob: { label: 'Most no-job', fn: (a, b) => b.noJob - a.noJob || b.total - a.total },
+  hasjob: { label: 'Most employed', fn: (a, b) => b.hasJob - a.hasJob || b.total - a.total },
+  volume: { label: 'Most leads', fn: (a, b) => b.total - a.total },
+  worst: { label: 'Highest no-job %', fn: (a, b) => b.noJobPct - a.noJobPct || b.total - a.total },
 }
 
 // Quick periods + Monthly + Custom (survey sub-tabs handle the survey split).
@@ -118,7 +118,7 @@ export default function LeadQualityTab() {
   }, [adsRaw])
 
   const periodLabel = period === 'custom'
-    ? (cStart && cEnd ? `${cStart} → ${cEnd}` : 'Pumili ng dates')
+    ? (cStart && cEnd ? `${cStart} → ${cEnd}` : 'Pick dates')
     : period === 'month' ? (months.find(m => m.key === monthKey)?.label || monthKey)
     : (QUICK.find(q => q.id === period)?.label || '')
 
@@ -136,12 +136,12 @@ export default function LeadQualityTab() {
     URL.revokeObjectURL(url)
   }
 
-  if (loading) return <div className="p-8 text-center text-gray-400">Kinukuha ang survey leads…</div>
+  if (loading) return <div className="p-8 text-center text-gray-400">Loading survey leads…</div>
   if (err) return (
     <div className="m-4 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-      <p className="font-semibold flex items-center gap-2"><AlertTriangle size={16} /> Hindi makuha ang AACIO survey data</p>
+      <p className="font-semibold flex items-center gap-2"><AlertTriangle size={16} /> Couldn't load AACIO survey data</p>
       <p className="mt-1">{err}</p>
-      <button onClick={() => load(true)} className="mt-2 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold">Subukan ulit</button>
+      <button onClick={() => load(true)} className="mt-2 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold">Retry</button>
     </div>
   )
 
@@ -154,7 +154,7 @@ export default function LeadQualityTab() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold" style={{ color: PRIMARY }}>Lead Quality Report</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Sino ang leads na dala ng bawat ad — <b>may trabaho vs walang trabaho</b> + professions · Source: AACIO surveys</p>
+          <p className="text-sm text-gray-500 mt-0.5">Which leads each ad brings in — <b>employed vs unemployed</b> + professions · Source: AACIO surveys</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => load(true)} disabled={refreshing}
@@ -209,8 +209,8 @@ export default function LeadQualityTab() {
       {!inRange.length ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-gray-400 text-sm">
           {period === 'custom' && (!cStart || !cEnd)
-            ? 'Pumili ng start at end date sa taas.'
-            : `Walang leads sa "${SURVEYS[surveyId]}" para sa ${periodLabel}.`}
+            ? 'Pick a start and end date above.'
+            : `No leads for "${SURVEYS[surveyId]}" in ${periodLabel}.`}
         </div>
       ) : (
         <>
@@ -226,12 +226,12 @@ export default function LeadQualityTab() {
           {/* Auto-insights — instant read for CEO/GM/marketing */}
           {insights && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <InsightCard tone="good" icon={ThumbsUp} title="Scale ito — pinakamataas na kalidad"
-                ad={insights.best} note={`${insights.best.hasJobPct}% may trabaho · ${insights.best.noJobPct}% wala`} />
-              <InsightCard tone="bad" icon={ThumbsDown} title="I-off / i-review — pinakababa ang kalidad"
-                ad={insights.worst} note={`${insights.worst.noJobPct}% walang trabaho · ${insights.worst.noJob} leads`} />
-              <InsightCard tone="neutral" icon={Megaphone} title="Pinakamalaking volume"
-                ad={insights.biggest} note={`${insights.biggest.total} leads · ${insights.biggest.noJobPct}% wala`} />
+              <InsightCard tone="good" icon={ThumbsUp} title="Scale this — highest quality"
+                ad={insights.best} note={`${insights.best.hasJobPct}% employed · ${insights.best.noJobPct}% no job`} />
+              <InsightCard tone="bad" icon={ThumbsDown} title="Turn off / review — lowest quality"
+                ad={insights.worst} note={`${insights.worst.noJobPct}% no job · ${insights.worst.noJob} leads`} />
+              <InsightCard tone="neutral" icon={Megaphone} title="Biggest volume"
+                ad={insights.biggest} note={`${insights.biggest.total} leads · ${insights.biggest.noJobPct}% no job`} />
             </div>
           )}
 
@@ -262,7 +262,7 @@ export default function LeadQualityTab() {
             <div className="px-4 py-3 border-b border-gray-100 flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <p className="font-bold text-gray-800">Ads → Lead Quality</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">Pindutin ang <b>Ad ID</b> para buksan sa Meta Ads Manager (para ma-off). Kulay-berde = maraming <b>may trabaho</b>; kulay-pula = maraming <b>walang trabaho</b>.</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Click an <b>Ad ID</b> to open it in Meta Ads Manager (to turn it off). Green = more <b>employed</b>; red = more <b>unemployed</b>.</p>
               </div>
               <label className="flex items-center gap-1.5 text-xs text-gray-500">
                 <ArrowUpDown size={13} /> Sort:
@@ -278,8 +278,8 @@ export default function LeadQualityTab() {
                   <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-100">
                     <th className="px-4 py-2 font-semibold">Ad</th>
                     <th className="px-3 py-2 font-semibold text-right">Leads</th>
-                    <th className="px-3 py-2 font-semibold">Quality (may vs walang trabaho)</th>
-                    <th className="px-3 py-2 font-semibold">Walang trabaho — anong klase</th>
+                    <th className="px-3 py-2 font-semibold">Quality (employed vs unemployed)</th>
+                    <th className="px-3 py-2 font-semibold">No-job — breakdown</th>
                     <th className="px-4 py-2 font-semibold">Top Professions</th>
                   </tr>
                 </thead>
@@ -301,7 +301,7 @@ export default function LeadQualityTab() {
                             {noAd
                               ? <span className="font-mono text-xs text-gray-400 italic">No ad ID (organic/direct)</span>
                               : <a href={adManagerUrl(a.adId)} target="_blank" rel="noopener noreferrer"
-                                  className="font-mono text-xs text-blue-600 hover:underline inline-flex items-center gap-1" title="Buksan sa Meta Ads Manager">
+                                  className="font-mono text-xs text-blue-600 hover:underline inline-flex items-center gap-1" title="Open in Meta Ads Manager">
                                   {a.adId} <ExternalLink size={11} />
                                 </a>}
                           </div>
@@ -345,7 +345,7 @@ export default function LeadQualityTab() {
           </div>
 
           <p className="text-[11px] text-gray-400 leading-relaxed">
-            <b>Paano tinutukoy ang trabaho:</b> galing sa free-text na "profession" na sagot, kaya heuristic. Has Job = Employed, Self-employed/Business, OFW. No Job = Unemployed, Housewife, Student, Retired. <b>Unclear</b> = walang malinaw na sagot (blangko/typo/"n/a"), hiwalay na binibilang. "No ad ID" = walang Meta ad attribution (organic/direct o kulang ang utm).
+            <b>How employment is determined:</b> from the free-text "profession" answer, so it's heuristic. Has Job = Employed, Self-employed/Business, OFW. No Job = Unemployed, Housewife, Student, Retired. <b>Unclear</b> = no clear answer (blank/typo/"n/a"), counted separately so it never inflates either side. "No ad ID" = no Meta ad attribution (organic/direct or missing utm).
           </p>
         </>
       )}
@@ -363,7 +363,7 @@ function InsightCard({ tone, icon: Icon, title, ad, note }) {
         <Icon size={13} /> {title}
       </div>
       <a href={adManagerUrl(ad.adId)} target="_blank" rel="noopener noreferrer"
-        className="mt-1.5 block font-mono text-sm text-blue-600 hover:underline truncate" title="Buksan sa Meta Ads Manager">
+        className="mt-1.5 block font-mono text-sm text-blue-600 hover:underline truncate" title="Open in Meta Ads Manager">
         {ad.adId} ↗
       </a>
       <div className="text-xs text-gray-600 mt-0.5">{note}</div>
