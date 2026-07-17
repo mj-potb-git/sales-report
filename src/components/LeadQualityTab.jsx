@@ -4,7 +4,7 @@
 // (POTB Survey vs Aacio POTB Survey), with Today/Yesterday/Week/Monthly (pick
 // any month)/All Time/Custom period filters.
 import { useState, useEffect, useMemo } from 'react'
-import { Users, Briefcase, UserX, HelpCircle, Megaphone, RefreshCw, Download, AlertTriangle } from 'lucide-react'
+import { Users, Briefcase, UserX, HelpCircle, Megaphone, RefreshCw, Download, AlertTriangle, ExternalLink, ThumbsUp, ThumbsDown, ArrowUpDown } from 'lucide-react'
 import {
   fetchLeadQualitySubmissions, invalidateLeadQualityCache,
   groupByAd, summarize, JOB_BUCKETS, SURVEYS,
@@ -16,6 +16,26 @@ const PLATFORM_LABEL = { fb: 'Facebook', ig: 'Instagram', an: 'Audience Net', ms
 const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0)
 const startOfDay = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
 const endOfDay = d => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x }
+
+// Meta Ads Manager deep link — opens the specific ad so it can be paused/off.
+// If the AACIO team runs these ads under a different ad account, change this id.
+const META_ADS_ACCOUNT = '1179475260260170' // [Internal] PINOY ONLINE TRAVEL BIZ
+const adManagerUrl = adId =>
+  `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${META_ADS_ACCOUNT}&selected_ad_ids=${adId}`
+
+// Quality verdict from the no-job share (only meaningful with enough volume).
+function qualityOf(a) {
+  if (a.total < 10) return { key: 'low_vol', label: 'Kulang data', color: '#9ca3af', bg: '#f3f4f6' }
+  if (a.noJobPct >= 25) return { key: 'poor', label: 'Mababang kalidad', color: '#b91c1c', bg: '#fee2e2' }
+  if (a.noJobPct <= 12 && a.hasJobPct >= 55) return { key: 'great', label: 'Mataas na kalidad', color: '#15803d', bg: '#dcfce7' }
+  return { key: 'ok', label: 'Katamtaman', color: '#a16207', bg: '#fef3c7' }
+}
+const SORTS = {
+  nojob: { label: 'Pinakamaraming Walang-trabaho', fn: (a, b) => b.noJob - a.noJob || b.total - a.total },
+  hasjob: { label: 'Pinakamaraming May-trabaho', fn: (a, b) => b.hasJob - a.hasJob || b.total - a.total },
+  volume: { label: 'Pinakamaraming Leads', fn: (a, b) => b.total - a.total },
+  worst: { label: 'Pinakamataas na No-Job %', fn: (a, b) => b.noJobPct - a.noJobPct || b.total - a.total },
+}
 
 // Quick periods + Monthly + Custom (survey sub-tabs handle the survey split).
 const QUICK = [
@@ -40,6 +60,7 @@ export default function LeadQualityTab() {
   const [monthKey, setMonthKey] = useState(currentMonthKey())
   const [cStart, setCStart] = useState('')
   const [cEnd, setCEnd] = useState('')
+  const [sortKey, setSortKey] = useState('nojob')
 
   const load = async (force = false) => {
     try {
@@ -83,7 +104,18 @@ export default function LeadQualityTab() {
   }, [subs, surveyId, range])
 
   const sum = useMemo(() => summarize(inRange), [inRange])
-  const ads = useMemo(() => groupByAd(inRange), [inRange])
+  const adsRaw = useMemo(() => groupByAd(inRange), [inRange])
+  const ads = useMemo(() => [...adsRaw].sort(SORTS[sortKey].fn), [adsRaw, sortKey])
+
+  // Auto-insights: best / worst quality ad (needs volume + a real ad id).
+  const insights = useMemo(() => {
+    const eligible = adsRaw.filter(a => a.adId && a.total >= 20)
+    if (!eligible.length) return null
+    const best = [...eligible].sort((a, b) => a.noJobPct - b.noJobPct || b.total - a.total)[0]
+    const worst = [...eligible].sort((a, b) => b.noJobPct - a.noJobPct || b.total - a.total)[0]
+    const biggest = [...eligible].sort((a, b) => b.total - a.total)[0]
+    return { best, worst, biggest }
+  }, [adsRaw])
 
   const periodLabel = period === 'custom'
     ? (cStart && cEnd ? `${cStart} → ${cEnd}` : 'Pumili ng dates')
@@ -191,6 +223,18 @@ export default function LeadQualityTab() {
             <Kpi icon={Megaphone} label="Distinct Ads" value={sum.adCount} accent="#fef3c7" tint="#a16207" />
           </div>
 
+          {/* Auto-insights — instant read for CEO/GM/marketing */}
+          {insights && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <InsightCard tone="good" icon={ThumbsUp} title="Scale ito — pinakamataas na kalidad"
+                ad={insights.best} note={`${insights.best.hasJobPct}% may trabaho · ${insights.best.noJobPct}% wala`} />
+              <InsightCard tone="bad" icon={ThumbsDown} title="I-off / i-review — pinakababa ang kalidad"
+                ad={insights.worst} note={`${insights.worst.noJobPct}% walang trabaho · ${insights.worst.noJob} leads`} />
+              <InsightCard tone="neutral" icon={Megaphone} title="Pinakamalaking volume"
+                ad={insights.biggest} note={`${insights.biggest.total} leads · ${insights.biggest.noJobPct}% wala`} />
+            </div>
+          )}
+
           {/* Employment breakdown */}
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Employment Breakdown</p>
@@ -215,9 +259,18 @@ export default function LeadQualityTab() {
 
           {/* Ads → lead quality table */}
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <p className="font-bold text-gray-800">Ads → Lead Quality</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">Bawat Meta ad (utm_content), naka-sort ayon sa dami ng <b>walang-trabaho</b> na leads. Mataas na No-Job % = mababang kalidad na lead source.</p>
+            <div className="px-4 py-3 border-b border-gray-100 flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <p className="font-bold text-gray-800">Ads → Lead Quality</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Pindutin ang <b>Ad ID</b> para buksan sa Meta Ads Manager (para ma-off). Kulay-berde = maraming <b>may trabaho</b>; kulay-pula = maraming <b>walang trabaho</b>.</p>
+              </div>
+              <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                <ArrowUpDown size={13} /> Sort:
+                <select value={sortKey} onChange={e => setSortKey(e.target.value)}
+                  className="px-2 py-1 rounded-lg text-xs font-semibold border border-gray-200 text-gray-700 bg-white">
+                  {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </label>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -225,28 +278,57 @@ export default function LeadQualityTab() {
                   <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-100">
                     <th className="px-4 py-2 font-semibold">Ad</th>
                     <th className="px-3 py-2 font-semibold text-right">Leads</th>
-                    <th className="px-3 py-2 font-semibold text-right">No Job</th>
-                    <th className="px-3 py-2 font-semibold text-right">Has Job</th>
-                    <th className="px-3 py-2 font-semibold text-right">Unclear</th>
+                    <th className="px-3 py-2 font-semibold">Quality (may vs walang trabaho)</th>
+                    <th className="px-3 py-2 font-semibold">Walang trabaho — anong klase</th>
                     <th className="px-4 py-2 font-semibold">Top Professions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ads.map((a, i) => {
-                    const noAd = !a.adId, hot = a.noJobPct >= 25 && a.total >= 10
+                    const noAd = !a.adId, q = qualityOf(a)
+                    const b = a.buckets || {}
+                    const noJobKinds = [
+                      ['🏠 Housewife', b.housewife || 0],
+                      ['❌ Unemployed', b.unemployed || 0],
+                      ['🎓 Student', b.student || 0],
+                      ['👴 Retired', b.retired || 0],
+                    ].filter(([, n]) => n > 0)
                     return (
-                      <tr key={a.adId || `none-${i}`} className={`border-b border-gray-50 ${hot ? 'bg-red-50/40' : ''}`}>
-                        <td className="px-4 py-2.5">
-                          <div className="flex items-center gap-2">
+                      <tr key={a.adId || `none-${i}`} className="border-b border-gray-50 hover:bg-gray-50/60">
+                        <td className="px-4 py-3 align-top">
+                          <div className="flex items-center gap-2 mb-1">
                             {a.platform && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-600">{PLATFORM_LABEL[a.platform] || a.platform}</span>}
-                            <span className={`font-mono text-xs ${noAd ? 'text-gray-400 italic' : 'text-gray-800'}`}>{noAd ? 'No ad ID (organic/direct)' : a.adId}</span>
+                            {noAd
+                              ? <span className="font-mono text-xs text-gray-400 italic">No ad ID (organic/direct)</span>
+                              : <a href={adManagerUrl(a.adId)} target="_blank" rel="noopener noreferrer"
+                                  className="font-mono text-xs text-blue-600 hover:underline inline-flex items-center gap-1" title="Buksan sa Meta Ads Manager">
+                                  {a.adId} <ExternalLink size={11} />
+                                </a>}
+                          </div>
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ color: q.color, backgroundColor: q.bg }}>{q.label}</span>
+                        </td>
+                        <td className="px-3 py-3 text-right font-bold text-gray-900 align-top">{a.total}</td>
+                        <td className="px-3 py-3 align-top" style={{ minWidth: 180 }}>
+                          {/* stacked bar: green has-job, red no-job, gray unclear */}
+                          <div className="flex h-3 rounded-full overflow-hidden bg-gray-100">
+                            <div style={{ width: `${a.hasJobPct}%`, backgroundColor: '#22c55e' }} title={`Has job ${a.hasJob}`} />
+                            <div style={{ width: `${a.noJobPct}%`, backgroundColor: '#ef4444' }} title={`No job ${a.noJob}`} />
+                            <div style={{ width: `${pct(a.unclear, a.total)}%`, backgroundColor: '#d1d5db' }} title={`Unclear ${a.unclear}`} />
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[11px]">
+                            <span className="text-green-700 font-semibold">✔ {a.hasJob} <span className="text-gray-400">({a.hasJobPct}%)</span></span>
+                            <span className="text-red-700 font-semibold">✘ {a.noJob} <span className="text-gray-400">({a.noJobPct}%)</span></span>
+                            {a.unclear > 0 && <span className="text-gray-400">? {a.unclear}</span>}
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-gray-900">{a.total}</td>
-                        <td className="px-3 py-2.5 text-right"><span className="font-semibold text-red-700">{a.noJob}</span><span className="text-gray-400 text-xs"> · {a.noJobPct}%</span></td>
-                        <td className="px-3 py-2.5 text-right"><span className="font-semibold text-green-700">{a.hasJob}</span><span className="text-gray-400 text-xs"> · {a.hasJobPct}%</span></td>
-                        <td className="px-3 py-2.5 text-right text-gray-400">{a.unclear}</td>
-                        <td className="px-4 py-2.5">
+                        <td className="px-3 py-3 align-top">
+                          <div className="flex flex-wrap gap-1">
+                            {noJobKinds.length ? noJobKinds.map(([label, n]) => (
+                              <span key={label} className="px-1.5 py-0.5 rounded text-[10px] bg-red-50 text-red-700 border border-red-100">{label} <b>{n}</b></span>
+                            )) : <span className="text-gray-300 text-xs">—</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 align-top">
                           <div className="flex flex-wrap gap-1">
                             {a.topProfessions.map(([p, n]) => (
                               <span key={p} className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-600">{p} <b className="text-gray-800">{n}</b></span>
@@ -267,6 +349,24 @@ export default function LeadQualityTab() {
           </p>
         </>
       )}
+    </div>
+  )
+}
+
+function InsightCard({ tone, icon: Icon, title, ad, note }) {
+  const c = tone === 'good' ? { bg: '#f0fdf4', bd: '#bbf7d0', tint: '#15803d' }
+    : tone === 'bad' ? { bg: '#fef2f2', bd: '#fecaca', tint: '#b91c1c' }
+    : { bg: '#f8fafc', bd: '#e2e8f0', tint: '#475569' }
+  return (
+    <div className="rounded-2xl p-3.5 border" style={{ backgroundColor: c.bg, borderColor: c.bd }}>
+      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide" style={{ color: c.tint }}>
+        <Icon size={13} /> {title}
+      </div>
+      <a href={adManagerUrl(ad.adId)} target="_blank" rel="noopener noreferrer"
+        className="mt-1.5 block font-mono text-sm text-blue-600 hover:underline truncate" title="Buksan sa Meta Ads Manager">
+        {ad.adId} ↗
+      </a>
+      <div className="text-xs text-gray-600 mt-0.5">{note}</div>
     </div>
   )
 }
