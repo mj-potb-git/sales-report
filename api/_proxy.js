@@ -75,6 +75,15 @@ export async function proxyRequest(service, subPath, req, res) {
     const qIndex = req.url.indexOf('?')
     let query = qIndex === -1 ? '' : req.url.slice(qIndex + 1)
 
+    // Vercel's rewrite (/api/<svc>/:path*) appends the captured segment as a
+    // stray ?path=... param. Most upstreams ignore it, but strict ones (e.g.
+    // HighLevel) 422 on unknown params — drop it before forwarding.
+    if (query) {
+      const sp = new URLSearchParams(query)
+      sp.delete('path')
+      query = sp.toString()
+    }
+
     if (t.appendToken && !/(^|&)access_token=/.test(query)) {
       query += (query ? '&' : '') + 'access_token=' + encodeURIComponent(t.appendToken)
     }

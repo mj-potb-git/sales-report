@@ -94,6 +94,14 @@ export default async function handler(req, res) {
     const qIndex = req.url.indexOf('?')
     let query = qIndex === -1 ? '' : req.url.slice(qIndex + 1)
 
+    // Vercel appends the rewrite capture as a stray ?path=... param; strict
+    // upstreams (HighLevel) 422 on it, so strip before forwarding.
+    if (query) {
+      const sp = new URLSearchParams(query)
+      sp.delete('path')
+      query = sp.toString()
+    }
+
     // Meta auth: append access_token as a query param (not a header).
     if (t.appendToken && !/(^|&)access_token=/.test(query)) {
       query += (query ? '&' : '') + 'access_token=' + encodeURIComponent(t.appendToken)
