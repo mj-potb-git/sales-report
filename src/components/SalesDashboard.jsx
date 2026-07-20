@@ -111,7 +111,7 @@ function MetricRow({ label, values, formatter = String, accent = false, bold = f
         {label}{tip && <InfoTip term={tip} className="ml-1" />}
       </th>
       {values.map((v, i) => (
-        <td key={i} className={`px-3 py-2 text-sm whitespace-nowrap text-center ${
+        <td key={i} className={`px-3 py-2 text-sm whitespace-nowrap text-center min-w-[104px] ${
           bold ? 'font-bold text-gray-900' : 'text-gray-700'
         }`}>
           {formatter(v)}
@@ -560,13 +560,13 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
             <span className="inline-block w-2 h-2 rounded-full bg-red-400 mx-1.5"></span> &lt;40%
           </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
+        <div className="overflow-x-auto overflow-y-hidden">
+          <table className="min-w-full text-sm border-collapse">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
                 <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase tracking-wide whitespace-nowrap sticky left-0 bg-gray-50 z-10">Metric</th>
                 {days.map((d, i) => (
-                  <th key={i} className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600 whitespace-nowrap">
+                  <th key={i} className="px-3 py-2 text-center text-[11px] font-semibold text-gray-600 whitespace-nowrap min-w-[104px]">
                     {formatDayLabel(d)}
                   </th>
                 ))}
