@@ -107,25 +107,36 @@ export default function useTvData() {
   const seenRef = useRef(null)        // Set of ALL paid record ids seen so far
   const [celebration, setCelebration] = useState(null)
   useEffect(() => {
-    if (!salesData && officers.length === 0) return
     const paid = records.filter(r => Number(r.sales_amount) > 0)
+    if (paid.length === 0) return   // no meaningful data yet — don't seed a baseline
+
     const ids = new Set(paid.map(recordId))
 
-    // First successful load only seeds the baseline — never celebrate history.
+    // First MEANINGFUL load seeds the baseline — never celebrate what's already
+    // there. (Guarding on paid.length avoids seeding an empty baseline from a
+    // partial/first poll and then mass-celebrating the full set next tick.)
     if (seenRef.current === null) { seenRef.current = ids; return }
 
     const fresh = paid.filter(r => !seenRef.current.has(recordId(r)))
     for (const id of ids) seenRef.current.add(id)  // remember everything we've seen
     if (fresh.length === 0) return
 
-    const top = fresh.reduce((a, b) => (b.sales_amount > a.sales_amount ? b : a))
+    // A big batch = a backfill / reconnect / data reload, NOT live sales.
+    // Absorb it silently so the board never mass-celebrates history.
+    if (fresh.length > 8) return
+
+    // Only celebrate a real, named closer — skip "Unassigned" rows.
+    const named = fresh.filter(r => r.sales_agent && r.sales_agent !== 'Unassigned')
+    if (named.length === 0) return
+
+    const top = named.reduce((a, b) => (b.sales_amount > a.sales_amount ? b : a))
     setCelebration({
       key: recordId(top) + ':' + Date.now(),
-      agent: top.sales_agent || 'Team POTB',
+      agent: top.sales_agent,
       amount: Number(top.sales_amount) || 0,
       source: top.source,
       photo: photoMap[nameKey(top.sales_agent)]?.photo_url || null,
-      moreCount: fresh.length - 1,
+      moreCount: named.length - 1,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [salesData, officers])
