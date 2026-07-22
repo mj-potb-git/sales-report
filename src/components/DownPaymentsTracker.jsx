@@ -23,6 +23,8 @@ function ageStyle(days) {
 export default function DownPaymentsTracker({ customers = [], title = 'Down Payments', subtitle = 'Sign-up sa LakbayHub' }) {
   const [nowMs] = useState(() => Date.now())
   const [month, setMonth] = useState('all')   // 'all' or 'YYYY-MM'
+  const [expanded, setExpanded] = useState(false)   // show 10, then "See all"
+  const PREVIEW_COUNT = 10
 
   const allDps = useMemo(() => {
     const out = []
@@ -43,7 +45,7 @@ export default function DownPaymentsTracker({ customers = [], title = 'Down Paym
         date: dpDate, monthKey: String(dpDate).slice(0, 7), days,
       })
     }
-    return out.sort((a, b) => b.days - a.days)   // longest-pending first
+    return out.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())   // latest DP first
   }, [customers, nowMs])
 
   const months = useMemo(() => {
@@ -128,7 +130,7 @@ export default function DownPaymentsTracker({ customers = [], title = 'Down Paym
               </tr>
             </thead>
             <tbody>
-              {dps.map(d => {
+              {(expanded ? dps : dps.slice(0, PREVIEW_COUNT)).map(d => {
                 const a = ageStyle(d.days)
                 return (
                   <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50/50">
@@ -148,8 +150,16 @@ export default function DownPaymentsTracker({ customers = [], title = 'Down Paym
               })}
             </tbody>
           </table>
+          {dps.length > PREVIEW_COUNT && (
+            <div className="border-t border-gray-100 text-center">
+              <button onClick={() => setExpanded(v => !v)}
+                className="w-full py-2.5 text-xs font-semibold hover:bg-gray-50" style={{ color: TEAL }}>
+                {expanded ? 'Show less' : `See all ${dps.length} down payments`}
+              </button>
+            </div>
+          )}
           <p className="text-[11px] text-gray-400 px-4 py-2.5">
-            Naka-sort by pinakamatagal na naka-pending. Kulay: <span className="text-emerald-600">≤7d</span> · <span className="text-amber-600">8–30d</span> · <span className="text-red-600">30d+</span> (dapat na i-follow up).
+            Sorted latest DP first{!expanded && dps.length > PREVIEW_COUNT ? ` · showing ${PREVIEW_COUNT} of ${dps.length}` : ''}. Color: <span className="text-emerald-600">≤7d</span> · <span className="text-amber-600">8–30d</span> · <span className="text-red-600">30d+</span> (needs follow-up).
           </p>
         </div>
       )}
