@@ -9,11 +9,10 @@
 // Data + new-sale detection live in useTvData; photos in agentPhotos.
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Volume2 } from 'lucide-react'
 import useTvData, { SOURCE_LABELS, SOURCE_ORDER } from './useTvData'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
 import { getSettings } from '../lib/settings'
-import { enableSound, celebrate, isSoundEnabled } from './sound'
+import { enableSound, celebrate } from './sound'
 import { nameKey } from './agentPhotos'
 
 // Category colors aligned to the dashboard palette (cyan / gold / teal-violet).
@@ -278,9 +277,32 @@ export default function TvApp() {
   // The celebration currently on screen — a manual/replay one takes priority.
   const activeCeleb = manualCeleb || celebration
 
+  // Unlock audio automatically — no button. Try immediately on load (works on
+  // TV/kiosk browsers that allow autoplay), and also unlock on the very first
+  // interaction of any kind (pointer/key/touch) as a silent fallback.
+  useEffect(() => {
+    let done = false
+    const unlock = () => {
+      if (done) return
+      done = true
+      enableSound()
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+      window.removeEventListener('touchstart', unlock)
+    }
+    enableSound() // best-effort immediate
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    window.addEventListener('touchstart', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+      window.removeEventListener('touchstart', unlock)
+    }
+  }, [])
+
   // Sound + voice: fanfare AND a spoken congratulations whenever one appears.
   // Also remember the latest celebration so it can be replayed on demand.
-  const [soundOn, setSoundOn] = useState(isSoundEnabled())
   const replayRef = useRef(null)
   useEffect(() => {
     if (!activeCeleb) return
@@ -364,13 +386,6 @@ export default function TvApp() {
           <DeptColumn key={s} source={s} stats={bySource[s] || {}} agents={deptAgents(s)} loading={sourceLoading[s]} />
         ))}
       </section>
-
-      {/* One-time sound enable (browsers block audio until a gesture) */}
-      {!soundOn && (
-        <button className="tv-sound-btn" onClick={async () => { const ok = await enableSound(); setSoundOn(ok) }}>
-          <Volume2 style={{ width: '1.4vw', height: '1.4vw' }} /> Enable sound
-        </button>
-      )}
 
       {/* Replay the last celebration on demand (handy for filming) */}
       {replayRef.current && (
