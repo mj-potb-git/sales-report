@@ -214,7 +214,7 @@ export default function TvApp() {
     loading, error, lastFetched,
     todaySales, todayCount, mtdSales, mtdCount,
     bySource, leaderboard, sourceLoading,
-    celebration, clearCelebration, photoMap,
+    celebration, clearCelebration, photoMap, latestSale,
   } = useTvData()
   const now = useClock()
   const { monthlyTarget, organizationName } = getSettings()
@@ -243,6 +243,7 @@ export default function TvApp() {
   // Fires once, after photos load so the face shows.
   const [manualCeleb, setManualCeleb] = useState(null)
   const firedRef = useRef(false)
+  const paramCelebRef = useRef(null)   // set when a ?celebrate= URL is present → auto-loops
   useEffect(() => {
     if (firedRef.current) return
     const p = new URLSearchParams(window.location.search)
@@ -250,16 +251,29 @@ export default function TvApp() {
     if (!name) return
     if (Object.keys(photoMap).length === 0) return // wait for photos
     firedRef.current = true
-    setManualCeleb({
-      key: 'manual:' + name,
+    paramCelebRef.current = {
       agent: name,
       amount: Number(p.get('amount')) || 0,
       source: p.get('source') || 'acquisition',
       photo: photoMap[nameKey(name)]?.photo_url
         || photoMap[nameKey(name.split(' ')[0])]?.photo_url || null,
       moreCount: 0,
-    })
+    }
+    setManualCeleb({ ...paramCelebRef.current, key: 'manual:' + Date.now() })
   }, [photoMap])
+
+  // On open/refresh (plain /tv, no ?celebrate=), auto-replay the LATEST sale
+  // once — so refreshing the TV re-shows whatever came in last.
+  const welcomeRef = useRef(false)
+  useEffect(() => {
+    if (welcomeRef.current) return
+    if (paramCelebRef.current) return           // a ?celebrate= URL takes priority
+    if (new URLSearchParams(window.location.search).get('celebrate')) return
+    if (!latestSale) return
+    if (Object.keys(photoMap).length === 0) return   // wait for photos
+    welcomeRef.current = true
+    setManualCeleb({ ...latestSale, moreCount: 0, key: 'welcome:' + Date.now() })
+  }, [latestSale, photoMap])
 
   // The celebration currently on screen — a manual/replay one takes priority.
   const activeCeleb = manualCeleb || celebration

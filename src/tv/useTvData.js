@@ -277,6 +277,23 @@ export default function useTvData() {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [records])
 
+  // The most recent sale (latest by date, then biggest) — so the board can
+  // replay it automatically whenever it's opened/refreshed.
+  const latestSale = useMemo(() => {
+    let best = null
+    for (const r of records) {
+      if (!(Number(r.sales_amount) > 0)) continue
+      const id = agentIdentity(r)
+      if (!id) continue
+      const t = new Date(r.date).getTime()
+      const amount = Number(r.sales_amount) || 0
+      if (!best || t > best.t || (t === best.t && amount > best.amount)) {
+        best = { t, agent: id.name, amount, source: r.source, photo: photoFor(photoMap, id.name) }
+      }
+    }
+    return best ? { agent: best.agent, amount: best.amount, source: best.source, photo: best.photo } : null
+  }, [records, photoMap])
+
   // Per-source loading (so the Officers column shows "loading" not "no sales"
   // while its slower fetch is still in flight).
   const sourceLoading = {
@@ -291,6 +308,7 @@ export default function useTvData() {
     sourceLoading,
     knownAgents,
     photoMap,
+    latestSale,
     celebration, clearCelebration,
   }
 }
