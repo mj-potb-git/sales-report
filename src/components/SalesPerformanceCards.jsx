@@ -11,6 +11,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Award } from 'lucide-react'
 import { formatPHP } from '../api/lakbay'
+import { packageFullPrice } from '../api/lakbayhub'
 import { getStatus, subscribeAttendance } from '../lib/attendance'
 
 const PRIMARY = '#1B4F4F'
@@ -67,7 +68,15 @@ export default function SalesPerformanceCards({
       const coach = coachFromCluster(r.team); if (!coach) continue
       const { key, name } = resolve(coach)
       const c = get(key, name || titleCase(coach)); if (name) c.name = name
-      c.availed += 1; c.srp += r.sales_amount || 0
+      // Count each customer's package ONCE — at the down-payment/close
+      // (signup_count=1). The balance payment (signup_count=0) is collection,
+      // NOT a new sale, so it isn't re-counted (a DP+balance member = 1 availed).
+      // SRP = the package's full price at close (not the partial payment amount).
+      const closes = r.signup_count == null ? 1 : r.signup_count
+      if (closes > 0) {
+        c.availed += closes
+        c.srp += (packageFullPrice(r.meta?.package) || r.sales_amount || 0) * closes
+      }
     }
     for (const bk of bookings) {
       if (!bk.coach) continue

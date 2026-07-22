@@ -292,7 +292,11 @@ export default function SalesDashboard({ bookings: liveBookings = [] }) {
     const attendance = ycbmAttendanceStats(dayBookings, nowMs)
     const daySales = salesByDate.get(key) || []
     const salesAmount = daySales.reduce((a, r) => a + (r.sales_amount || 0), 0)
-    const salesCount = daySales.length
+    // A sale = a CLOSE, counted once at the down-payment/close (signup_count=1).
+    // A balance payment (signup_count=0) is collection, not a new sale — so it
+    // adds to revenue (salesAmount above) but NOT to the sale count. Revenue is
+    // cash-by-payment-date; sale count is closes-by-close-date.
+    const salesCount = daySales.reduce((n, r) => n + (r.signup_count == null ? 1 : r.signup_count), 0)
     const meta = metaByDate.get(key) || null
     // Conversion = sales / show-ups (or sales / bookings if no attendance tracked)
     const denom = attendance.tracked > 0 ? attendance.showed : dayBookings.length
