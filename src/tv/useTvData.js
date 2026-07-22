@@ -75,6 +75,52 @@ const srpValue = r => {
   return (packageFullPrice(r.meta?.package) || Number(r.sales_amount) || 0) * closes
 }
 
+// ── Coach attribution — IDENTICAL to the dashboard's Sales Performance cards ──
+// Acquisition/AACIO: the real closer lives in the CLUSTER name, not sales_agent
+// (which is often blank → "Unassigned"). We derive the coach from the cluster
+// and merge spelling variants via aliases, exactly like the cards, so the TV
+// totals match them. Officers (Fusioo) already carry a real agent_name.
+const titleCase = s => (s || '').split(/\s+/).map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w)).join(' ')
+const coachKey = name => (name || '').trim().split(/\s+/)[0].toUpperCase()
+
+function coachFromCluster(team) {
+  const t = (team || '').trim()
+  let m
+  if ((m = t.match(/external\s+coach\s*-\s*(.+)$/i))) return m[1].trim()
+  if ((m = t.match(/^acquisition\s*-\s*(.+)$/i)))     return m[1].trim()
+  if ((m = t.match(/^aacio\s+(.+)$/i)))               return m[1].trim()
+  return null
+}
+
+const COACH_ALIASES = {
+  acquisition: { ANGEL: 'JAS', ANGELYN: 'JAS' },
+  aacio:       { ANGEL: 'JAS', ANGELYN: 'JAS', PRINCESS: 'Princess Romelyn', ROMELYN: 'Princess Romelyn', SHEILA: 'Sheila', SHIELA: 'Sheila' },
+  officers:    {},
+}
+
+// Resolve a record to a stable agent identity { key, name } — or null to skip
+// (matches the cards, which drop rows with no cluster-derived coach).
+function agentIdentity(r) {
+  if (r.source === 'officers') {
+    const name = r.sales_agent
+    if (!name || name === 'Unassigned') return null
+    return { key: `officers::${coachKey(name)}`, name }
+  }
+  const coach = coachFromCluster(r.team)
+  if (!coach) return null
+  const k = coachKey(coach)
+  const canon = COACH_ALIASES[r.source]?.[k]
+  const name = canon || titleCase(coach)
+  return { key: `${r.source}::${canon ? coachKey(canon) : k}`, name }
+}
+
+// Photo lookup that also tries the first name, so a photo uploaded as "Princess"
+// still resolves for a canonical "Princess Romelyn".
+const photoFor = (photoMap, name) =>
+  photoMap[nameKey(name)]?.photo_url
+  || photoMap[nameKey((name || '').split(' ')[0])]?.photo_url
+  || null
+
 export default function useTvData() {
   // ── LakbayHub poll (Acquisition + AACIO) ──────────────────────────────────
   const salesFetcher = useCallback(fetchSalesHalf, [])
@@ -138,17 +184,20 @@ export default function useTvData() {
     // Absorb it silently so the board never mass-celebrates history.
     if (fresh.length > 8) return
 
-    // Only celebrate a real, named closer — skip "Unassigned" rows.
-    const named = fresh.filter(r => r.sales_agent && r.sales_agent !== 'Unassigned')
+    // Only celebrate an attributable closer (same identity as the board) —
+    // skip rows we can't attribute.
+    const named = fresh
+      .map(r => ({ r, id: agentIdentity(r) }))
+      .filter(x => x.id)
     if (named.length === 0) return
 
-    const top = named.reduce((a, b) => (b.sales_amount > a.sales_amount ? b : a))
+    const top = named.reduce((a, b) => (b.r.sales_amount > a.r.sales_amount ? b : a))
     setCelebration({
-      key: recordId(top) + ':' + Date.now(),
-      agent: top.sales_agent,
-      amount: Number(top.sales_amount) || 0,
-      source: top.source,
-      photo: photoMap[nameKey(top.sales_agent)]?.photo_url || null,
+      key: recordId(top.r) + ':' + Date.now(),
+      agent: top.id.name,
+      amount: Number(top.r.sales_amount) || 0,
+      source: top.r.source,
+      photo: photoFor(photoMap, top.id.name),
       moreCount: named.length - 1,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,16 +211,22 @@ export default function useTvData() {
   const monthRange = rangeFor('monthly', today)
 
   const view = useMemo(() => {
-    const todayRecs = filterByRange(records, dayRange.start, dayRange.end)
-    const mtdRecs   = filterByRange(records, monthRange.start, monthRange.end)
+    // Attach each record's coach identity; drop rows we can't attribute — this
+    // matches the Sales Performance cards exactly (same coach + aliases + skip).
+    const withId = recs => recs
+      .map(r => ({ r, id: agentIdentity(r) }))
+      .filter(x => x.id)
 
-    const sumSrp    = recs => recs.reduce((a, r) => a + srpValue(r), 0)
-    const sumCloses = recs => recs.reduce((a, r) => a + closesOf(r), 0)
+    const todayIded = withId(filterByRange(records, dayRange.start, dayRange.end))
+    const mtdIded   = withId(filterByRange(records, monthRange.start, monthRange.end))
+
+    const sumSrp    = list => list.reduce((a, x) => a + srpValue(x.r), 0)
+    const sumCloses = list => list.reduce((a, x) => a + closesOf(x.r), 0)
 
     const bySource = {}
     for (const s of SOURCE_ORDER) {
-      const t = todayRecs.filter(r => r.source === s)
-      const m = mtdRecs.filter(r => r.source === s)
+      const t = todayIded.filter(x => x.r.source === s)
+      const m = mtdIded.filter(x => x.r.source === s)
       bySource[s] = {
         todaySales: sumSrp(t), todayCount: sumCloses(t),
         mtdSales: sumSrp(m), mtdCount: sumCloses(m),
@@ -179,48 +234,45 @@ export default function useTvData() {
     }
 
     const agentMap = new Map()
-    for (const r of mtdRecs) {
-      const name = r.sales_agent || 'Unassigned'
-      const k = `${r.source}::${nameKey(name)}`
-      if (!agentMap.has(k)) {
-        agentMap.set(k, {
-          key: k, name, source: r.source, team: r.team || '',
+    for (const { r, id } of mtdIded) {
+      if (!agentMap.has(id.key)) {
+        agentMap.set(id.key, {
+          key: id.key, name: id.name, source: r.source, team: r.team || '',
           mtdSales: 0, mtdCount: 0, todaySales: 0, todayCount: 0,
-          photo: photoMap[nameKey(name)]?.photo_url || null,
+          photo: photoFor(photoMap, id.name),
         })
       }
-      const e = agentMap.get(k)
+      const e = agentMap.get(id.key)
       e.mtdSales += srpValue(r)
       e.mtdCount += closesOf(r)
     }
-    for (const r of todayRecs) {
-      const k = `${r.source}::${nameKey(r.sales_agent || 'Unassigned')}`
-      const e = agentMap.get(k)
+    for (const { r, id } of todayIded) {
+      const e = agentMap.get(id.key)
       if (e) { e.todaySales += srpValue(r); e.todayCount += closesOf(r) }
     }
 
     const leaderboard = [...agentMap.values()]
-      .filter(a => a.name && a.name !== 'Unassigned' && a.mtdSales > 0)
+      .filter(a => a.mtdSales > 0)
       .sort((a, b) => b.mtdSales - a.mtdSales)
 
     return {
-      todaySales: sumSrp(todayRecs),
-      todayCount: sumCloses(todayRecs),
-      mtdSales:   sumSrp(mtdRecs),
-      mtdCount:   sumCloses(mtdRecs),
+      todaySales: sumSrp(todayIded),
+      todayCount: sumCloses(todayIded),
+      mtdSales:   sumSrp(mtdIded),
+      mtdCount:   sumCloses(mtdIded),
       bySource,
       leaderboard,
     }
   }, [records, photoMap, dayRange.start, dayRange.end, monthRange.start, monthRange.end])
 
-  // Distinct agent names across all sources — for the admin uploader.
+  // Distinct agents (same identity as the board) — for the admin uploader, so
+  // uploaded photos are keyed to the exact names shown on the board.
   const knownAgents = useMemo(() => {
     const map = new Map()
     for (const r of records) {
-      const name = r.sales_agent
-      if (!name || name === 'Unassigned') continue
-      const k = nameKey(name)
-      if (!map.has(k)) map.set(k, { name, source: r.source })
+      const id = agentIdentity(r)
+      if (!id) continue
+      if (!map.has(id.key)) map.set(id.key, { name: id.name, source: r.source })
     }
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [records])
