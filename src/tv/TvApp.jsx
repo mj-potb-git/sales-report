@@ -82,7 +82,7 @@ function TargetRing({ pct, size = 220 }) {
 
 function Celebration({ data, onDone }) {
   useEffect(() => {
-    const id = setTimeout(onDone, 9000)
+    const id = setTimeout(onDone, 5000)
     return () => clearTimeout(id)
   }, [data.key, onDone])
 
@@ -276,16 +276,25 @@ export default function TvApp() {
 
   // The celebration currently on screen — a manual/replay one takes priority.
   const activeCeleb = manualCeleb || celebration
+  const activeCelebRef = useRef(null)
+  activeCelebRef.current = activeCeleb
 
   // Unlock audio automatically — no button. Try immediately on load (works on
   // TV/kiosk browsers that allow autoplay), and also unlock on the very first
-  // interaction of any kind (pointer/key/touch) as a silent fallback.
+  // interaction of any kind (pointer/key/touch) as a silent fallback. If a
+  // celebration is on screen when the first interaction unlocks audio, play its
+  // sound right away so it isn't missed.
   useEffect(() => {
     let done = false
     const unlock = () => {
       if (done) return
       done = true
       enableSound()
+      const c = activeCelebRef.current
+      if (c) {
+        const pesos = Math.round(c.amount).toLocaleString('en-US')
+        celebrate(`Congratulations ${c.agent}! New sale, ${pesos} pesos!`)
+      }
       window.removeEventListener('pointerdown', unlock)
       window.removeEventListener('keydown', unlock)
       window.removeEventListener('touchstart', unlock)

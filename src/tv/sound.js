@@ -32,14 +32,16 @@ function ensureGraph() {
   }
 }
 
-/** Resume/create audio + warm the voice engine on a user gesture. */
-export async function enableSound() {
+/** Enable audio. Safe to call on load (best-effort) or on a user gesture.
+ *  Never blocks: marks enabled and resumes in the background so a celebration
+ *  right after this still fires. On a gesture, resume() succeeds and it's
+ *  audible; on autoplay-allowed TV/kiosk browsers it's audible from load. */
+export function enableSound() {
   try {
     ensureGraph()
-    if (ctx.state === 'suspended') await ctx.resume()
     enabled = true
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {})
     try { window.speechSynthesis?.getVoices() } catch { /* ignore */ }
-    playFanfare(0.3, true)   // gentle confirmation
     return true
   } catch (err) {
     console.warn('[tv] enableSound failed:', err.message)
@@ -49,11 +51,13 @@ export async function enableSound() {
 
 /** Full celebration: loud fanfare + applause, then a spoken congratulations. */
 export function celebrate(text) {
-  if (!ctx || !enabled) return
+  if (!ctx) return
+  enabled = true
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {}) // last-ditch resume
   playFanfare(1.0, false)
   playApplause(0.9, 3.6)
-  // Let the fanfare peak pass, then announce over the applause tail.
-  setTimeout(() => speak(text), 1300)
+  // Announce shortly after the fanfare hit (kept snappy so it fits a short show).
+  setTimeout(() => speak(text), 700)
 }
 
 /** Loud fanfare only (kept for compatibility). */
