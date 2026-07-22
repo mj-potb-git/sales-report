@@ -68,6 +68,16 @@ const tag = (recs, source) =>
 //   • the value = the package's full SRP at close (packageFullPrice), falling
 //     back to the paid amount when the package is unknown. For Fusioo (Officers)
 //     the amount already IS the full package price, so the fallback applies.
+// Best available "when did this enter" timestamp (ms). Fusioo carries a full
+// `created` timestamp; LakbayHub invoices carry createdDate/paidDate. Falls back
+// to the plain date. Used to find the truly most-recent sale for replay.
+function soldAtMs(r) {
+  const cand = r.meta?.created || r.meta?.processed_date
+    || r.meta?.createdDate || r.meta?.paidDate || r.date
+  const t = new Date(cand).getTime()
+  return Number.isNaN(t) ? new Date(r.date).getTime() : t
+}
+
 const closesOf = r => (r.signup_count == null ? 1 : r.signup_count)
 const srpValue = r => {
   const closes = closesOf(r)
@@ -277,18 +287,18 @@ export default function useTvData() {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
   }, [records])
 
-  // The most recent sale (latest by date, then biggest) — so the board can
-  // replay it automatically whenever it's opened/refreshed.
+  // The single MOST RECENT sale — by when it was actually recorded (timestamp),
+  // NOT by amount. So a replay shows whoever came in last (e.g. Martin), even if
+  // someone else has a bigger sale the same day.
   const latestSale = useMemo(() => {
     let best = null
     for (const r of records) {
       if (!(Number(r.sales_amount) > 0)) continue
       const id = agentIdentity(r)
       if (!id) continue
-      const t = new Date(r.date).getTime()
-      const amount = Number(r.sales_amount) || 0
-      if (!best || t > best.t || (t === best.t && amount > best.amount)) {
-        best = { t, agent: id.name, amount, source: r.source, photo: photoFor(photoMap, id.name) }
+      const t = soldAtMs(r)
+      if (!best || t > best.t) {
+        best = { t, agent: id.name, amount: Number(r.sales_amount) || 0, source: r.source, photo: photoFor(photoMap, id.name) }
       }
     }
     return best ? { agent: best.agent, amount: best.amount, source: best.source, photo: best.photo } : null
