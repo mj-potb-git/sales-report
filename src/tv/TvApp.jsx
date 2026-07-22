@@ -14,6 +14,7 @@ import useTvData, { SOURCE_LABELS, SOURCE_ORDER } from './useTvData'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
 import { getSettings } from '../lib/settings'
 import { enableSound, celebrate, isSoundEnabled } from './sound'
+import { nameKey } from './agentPhotos'
 
 // Category colors aligned to the dashboard palette (cyan / gold / teal-violet).
 // SOURCE_COLORS = the vivid fill (dots, bars, avatars, ring).
@@ -213,7 +214,7 @@ export default function TvApp() {
     loading, error, lastFetched,
     todaySales, todayCount, mtdSales, mtdCount,
     bySource, leaderboard, sourceLoading,
-    celebration, clearCelebration,
+    celebration, clearCelebration, photoMap,
   } = useTvData()
   const now = useClock()
   const { monthlyTarget, organizationName } = getSettings()
@@ -237,13 +238,50 @@ export default function TvApp() {
   const champSource = SOURCE_ORDER[champIdx]
   const champion = leaderboard.filter(a => a.source === champSource)[0] || null
 
-  // Sound + voice: fanfare AND a spoken congratulations on each new sale.
-  const [soundOn, setSoundOn] = useState(isSoundEnabled())
+  // Manual/replay celebration via URL, e.g. for filming:
+  //   /tv?celebrate=Charls%20Patrick%20Canudas&amount=1400000&source=officers
+  // Fires once, after photos load so the face shows.
+  const [manualCeleb, setManualCeleb] = useState(null)
+  const firedRef = useRef(false)
   useEffect(() => {
-    if (!celebration) return
-    const pesos = Math.round(celebration.amount).toLocaleString('en-US')
-    celebrate(`Congratulations ${celebration.agent}! New sale, ${pesos} pesos!`)
-  }, [celebration])
+    if (firedRef.current) return
+    const p = new URLSearchParams(window.location.search)
+    const name = p.get('celebrate')
+    if (!name) return
+    if (Object.keys(photoMap).length === 0) return // wait for photos
+    firedRef.current = true
+    setManualCeleb({
+      key: 'manual:' + name,
+      agent: name,
+      amount: Number(p.get('amount')) || 0,
+      source: p.get('source') || 'acquisition',
+      photo: photoMap[nameKey(name)]?.photo_url
+        || photoMap[nameKey(name.split(' ')[0])]?.photo_url || null,
+      moreCount: 0,
+    })
+  }, [photoMap])
+
+  // The celebration currently on screen — a manual/replay one takes priority.
+  const activeCeleb = manualCeleb || celebration
+
+  // Sound + voice: fanfare AND a spoken congratulations whenever one appears.
+  // Also remember the latest celebration so it can be replayed on demand.
+  const [soundOn, setSoundOn] = useState(isSoundEnabled())
+  const replayRef = useRef(null)
+  useEffect(() => {
+    if (!activeCeleb) return
+    replayRef.current = {
+      agent: activeCeleb.agent, amount: activeCeleb.amount,
+      source: activeCeleb.source, photo: activeCeleb.photo, moreCount: activeCeleb.moreCount || 0,
+    }
+    const pesos = Math.round(activeCeleb.amount).toLocaleString('en-US')
+    celebrate(`Congratulations ${activeCeleb.agent}! New sale, ${pesos} pesos!`)
+  }, [activeCeleb])
+
+  const replayLast = () => {
+    const d = replayRef.current
+    if (d) setManualCeleb({ ...d, key: 'replay:' + Date.now() })
+  }
 
   return (
     <div className="tv-root">
@@ -320,7 +358,12 @@ export default function TvApp() {
         </button>
       )}
 
-      {celebration && <Celebration data={celebration} onDone={clearCelebration} />}
+      {/* Replay the last celebration on demand (handy for filming) */}
+      {replayRef.current && (
+        <button className="tv-replay-btn" onClick={replayLast}>▶ Replay</button>
+      )}
+
+      {activeCeleb && <Celebration data={activeCeleb} onDone={() => { setManualCeleb(null); clearCelebration() }} />}
     </div>
   )
 }
@@ -395,6 +438,9 @@ function TvStyles() {
     .tv-sound-btn { position: fixed; bottom: 2vh; right: 2vw; z-index: 40; display: inline-flex; align-items: center; gap: 0.6vw;
       padding: 1vh 1.4vw; border-radius: 999px; border: 1px solid rgba(28,169,214,0.35); background: #FFFFFF; color: #0E6E93;
       font-size: 1vw; font-weight: 800; cursor: pointer; box-shadow: 0 6px 20px rgba(27,79,79,0.12); animation: tvpulse 2.4s infinite; }
+    .tv-replay-btn { position: fixed; bottom: 2vh; left: 2vw; z-index: 40; padding: 1vh 1.4vw; border-radius: 999px;
+      border: 1px solid rgba(27,79,79,0.20); background: #FFFFFF; color: #1B4F4F; font-size: 1vw; font-weight: 800;
+      cursor: pointer; box-shadow: 0 6px 20px rgba(27,79,79,0.12); }
     .tv-row { display: flex; align-items: center; gap: 1.2vw; padding: 0.9vh 1vw; border-radius: 1vw;
       background: #FBFDFD; border: 1px solid rgba(27,79,79,0.05); }
     .tv-row-top { background: #F0F9FC; border-color: rgba(28,169,214,0.18); }
