@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import usePolling from '../hooks/usePolling'
 import {
   fetchSalesRecords, getExternalSalesRecords,
-  filterByRange, rangeFor, parseDate, startOfMonth,
+  filterByRange, rangeFor, startOfMonth,
 } from '../api/lakbay'
 import { fetchRecentBookingTransactions, mapBookingTransaction } from '../api/fusioo'
 import { fetchPhotoMap, nameKey } from './agentPhotos'
@@ -48,13 +48,6 @@ async function fetchSalesHalf() {
 async function fetchOfficersHalf() {
   const rows = await fetchRecentBookingTransactions({ sinceDate: startOfMonth(new Date()) })
   return rows.map(mapBookingTransaction)
-}
-
-function isSameLocalDay(dateStr, anchor) {
-  const d = parseDate(dateStr)
-  return d.getFullYear() === anchor.getFullYear()
-    && d.getMonth() === anchor.getMonth()
-    && d.getDate() === anchor.getDate()
 }
 
 // A stable id per record across polls (used for new-sale detection).
@@ -106,20 +99,23 @@ export default function useTvData() {
     return () => { alive = false; clearInterval(id) }
   }, [])
 
-  // ── New-sale detection → celebration ──────────────────────────────────────
-  const seenRef = useRef(null)        // Set of record ids from a prior poll
+  // ── New-money detection → celebration ─────────────────────────────────────
+  // Celebrate ANY new paid record that enters the feed since the last poll —
+  // regardless of its sale/payment date. If a LakbayHub payment is dated
+  // yesterday but only shows up in the API now, it still "entered" today, so we
+  // announce it. Baseline is seeded on first load so history is never replayed.
+  const seenRef = useRef(null)        // Set of ALL paid record ids seen so far
   const [celebration, setCelebration] = useState(null)
   useEffect(() => {
     if (!salesData && officers.length === 0) return
-    const today = new Date()
-    const todays = records.filter(r => isSameLocalDay(r.date, today) && Number(r.sales_amount) > 0)
-    const ids = new Set(todays.map(recordId))
+    const paid = records.filter(r => Number(r.sales_amount) > 0)
+    const ids = new Set(paid.map(recordId))
 
     // First successful load only seeds the baseline — never celebrate history.
     if (seenRef.current === null) { seenRef.current = ids; return }
 
-    const fresh = todays.filter(r => !seenRef.current.has(recordId(r)))
-    seenRef.current = ids
+    const fresh = paid.filter(r => !seenRef.current.has(recordId(r)))
+    for (const id of ids) seenRef.current.add(id)  // remember everything we've seen
     if (fresh.length === 0) return
 
     const top = fresh.reduce((a, b) => (b.sales_amount > a.sales_amount ? b : a))
