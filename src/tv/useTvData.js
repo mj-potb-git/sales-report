@@ -19,6 +19,7 @@ import {
   filterByRange, rangeFor, startOfMonth,
 } from '../api/lakbay'
 import { fetchRecentBookingTransactions, mapBookingTransaction } from '../api/fusioo'
+import { packageFullPrice } from '../api/lakbayhub'
 import { fetchPhotoMap, nameKey } from './agentPhotos'
 
 const SALES_POLL_MS    = 30_000   // LakbayHub (Acquisition + AACIO)
@@ -61,6 +62,18 @@ const tag = (recs, source) =>
   (recs || [])
     .filter(r => r && r.date && Number(r.sales_amount) >= 0)
     .map(r => ({ ...r, source }))
+
+// Match the dashboard's "Sales Performance" cards exactly:
+//   • a SALE = one close (signup_count; DP=1, balance=0) — not each payment
+//   • the value = the package's full SRP at close (packageFullPrice), falling
+//     back to the paid amount when the package is unknown. For Fusioo (Officers)
+//     the amount already IS the full package price, so the fallback applies.
+const closesOf = r => (r.signup_count == null ? 1 : r.signup_count)
+const srpValue = r => {
+  const closes = closesOf(r)
+  if (closes <= 0) return 0
+  return (packageFullPrice(r.meta?.package) || Number(r.sales_amount) || 0) * closes
+}
 
 export default function useTvData() {
   // ── LakbayHub poll (Acquisition + AACIO) ──────────────────────────────────
@@ -152,15 +165,16 @@ export default function useTvData() {
     const todayRecs = filterByRange(records, dayRange.start, dayRange.end)
     const mtdRecs   = filterByRange(records, monthRange.start, monthRange.end)
 
-    const sum = (recs, key = 'sales_amount') => recs.reduce((a, r) => a + (Number(r[key]) || 0), 0)
+    const sumSrp    = recs => recs.reduce((a, r) => a + srpValue(r), 0)
+    const sumCloses = recs => recs.reduce((a, r) => a + closesOf(r), 0)
 
     const bySource = {}
     for (const s of SOURCE_ORDER) {
       const t = todayRecs.filter(r => r.source === s)
       const m = mtdRecs.filter(r => r.source === s)
       bySource[s] = {
-        todaySales: sum(t), todayCount: t.length,
-        mtdSales: sum(m), mtdCount: m.length,
+        todaySales: sumSrp(t), todayCount: sumCloses(t),
+        mtdSales: sumSrp(m), mtdCount: sumCloses(m),
       }
     }
 
@@ -176,13 +190,13 @@ export default function useTvData() {
         })
       }
       const e = agentMap.get(k)
-      e.mtdSales += Number(r.sales_amount) || 0
-      e.mtdCount += 1
+      e.mtdSales += srpValue(r)
+      e.mtdCount += closesOf(r)
     }
     for (const r of todayRecs) {
       const k = `${r.source}::${nameKey(r.sales_agent || 'Unassigned')}`
       const e = agentMap.get(k)
-      if (e) { e.todaySales += Number(r.sales_amount) || 0; e.todayCount += 1 }
+      if (e) { e.todaySales += srpValue(r); e.todayCount += closesOf(r) }
     }
 
     const leaderboard = [...agentMap.values()]
@@ -190,10 +204,10 @@ export default function useTvData() {
       .sort((a, b) => b.mtdSales - a.mtdSales)
 
     return {
-      todaySales: sum(todayRecs),
-      todayCount: todayRecs.length,
-      mtdSales:   sum(mtdRecs),
-      mtdCount:   mtdRecs.length,
+      todaySales: sumSrp(todayRecs),
+      todayCount: sumCloses(todayRecs),
+      mtdSales:   sumSrp(mtdRecs),
+      mtdCount:   sumCloses(mtdRecs),
       bySource,
       leaderboard,
     }
