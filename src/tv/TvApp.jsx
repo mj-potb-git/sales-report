@@ -81,10 +81,16 @@ function TargetRing({ pct, size = 220 }) {
 }
 
 function Celebration({ data, onDone }) {
+  // Hold onDone in a ref so the auto-dismiss timer resets ONLY when a new
+  // celebration appears (data.key) — not on every parent re-render (the clock
+  // ticks each second and would otherwise keep restarting the timer, so the
+  // celebration never cleared).
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
   useEffect(() => {
-    const id = setTimeout(onDone, 5000)
+    const id = setTimeout(() => onDoneRef.current(), 5000)
     return () => clearTimeout(id)
-  }, [data.key, onDone])
+  }, [data.key])
 
   const color = SOURCE_COLORS[data.source] || '#1CA9D6'
   const textColor = SOURCE_TEXT[data.source] || color
