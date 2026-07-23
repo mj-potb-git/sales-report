@@ -23,9 +23,9 @@ import { packageFullPrice } from '../api/lakbayhub'
 import { fetchPhotoMap, nameKey } from './agentPhotos'
 
 const SALES_POLL_MS    = 30_000   // LakbayHub (Acquisition + AACIO)
-const OFFICERS_POLL_MS = 300_000  // Fusioo (Account Officers) — 5 min; Fusioo has a
-                                  // strict HOURLY rate limit, so poll gently and only
-                                  // fetch this month's rows (see fetchOfficersHalf).
+const OFFICERS_POLL_MS = 120_000  // Fusioo (Account Officers) — 2 min. Fusioo has a
+                                  // strict HOURLY rate limit, but we only pull this
+                                  // month's rows (~1-2 pages), so 2 min stays safe.
 
 export const SOURCE_LABELS = {
   acquisition: 'Acquisition',
@@ -37,8 +37,12 @@ export const SOURCE_ORDER = ['acquisition', 'officers', 'aacio']
 
 // LakbayHub half: Acquisition (POTB) + AACIO (external split). fetchSalesRecords()
 // warms the external split, so we read getExternalSalesRecords() right after.
+// Every few polls we FORCE a fresh pull so new sales always show even if a
+// shared cache (invoices 2-min TTL) would otherwise serve stale data.
+let salesTick = 0
 async function fetchSalesHalf() {
-  const potb = await fetchSalesRecords()
+  salesTick += 1
+  const potb = await fetchSalesRecords({ force: salesTick % 3 === 0 }) // force ~every 90s
   const aacio = getExternalSalesRecords()
   return { potb, aacio }
 }

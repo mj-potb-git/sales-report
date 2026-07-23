@@ -87,7 +87,7 @@ export async function fetchAllBookingTransactions({
 let _recentCache = null
 let _recentAt = 0
 let _recentInFlight = null
-const RECENT_TTL_MS = 240_000 // 4 min
+const RECENT_TTL_MS = 90_000 // 90s — short enough that the TV picks up new officer sales quickly
 
 export async function fetchRecentBookingTransactions({
   sinceDate,

@@ -350,6 +350,9 @@ export default function TvApp() {
           <div className={`tv-live ${lastFetched ? 'on' : ''}`}>
             <span className="tv-dot" /> {loading ? 'connecting…' : error ? 'reconnecting…' : 'LIVE'}
           </div>
+          {lastFetched && (
+            <div className="tv-updated">updated {Math.max(0, Math.round((now - lastFetched) / 1000))}s ago</div>
+          )}
         </div>
       </header>
 
@@ -434,6 +437,7 @@ function TvStyles() {
     .tv-live { display: inline-flex; align-items: center; gap: 0.5vw; margin-top: 0.4vh;
       font-size: 1vw; font-weight: 800; letter-spacing: 0.12em; color: #94A3B8; }
     .tv-live.on { color: #10b981; }
+    .tv-updated { font-size: 0.75vw; color: #94A3B8; font-weight: 600; margin-top: 0.2vh; }
     .tv-dot { width: 0.7vw; height: 0.7vw; border-radius: 50%; background: currentColor; animation: tvpulse 1.6s infinite; }
     @keyframes tvpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
 
