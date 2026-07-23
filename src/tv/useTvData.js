@@ -19,7 +19,6 @@ import {
   filterByRange, rangeFor, startOfMonth,
 } from '../api/lakbay'
 import { fetchRecentBookingTransactions, mapBookingTransaction } from '../api/fusioo'
-import { packageFullPrice } from '../api/lakbayhub'
 import { fetchPhotoMap, nameKey } from './agentPhotos'
 
 const SALES_POLL_MS    = 30_000   // LakbayHub (Acquisition + AACIO)
@@ -67,11 +66,9 @@ const tag = (recs, source) =>
     .filter(r => r && r.date && Number(r.sales_amount) >= 0)
     .map(r => ({ ...r, source }))
 
-// Match the dashboard's "Sales Performance" cards exactly:
-//   • a SALE = one close (signup_count; DP=1, balance=0) — not each payment
-//   • the value = the package's full SRP at close (packageFullPrice), falling
-//     back to the paid amount when the package is unknown. For Fusioo (Officers)
-//     the amount already IS the full package price, so the fallback applies.
+// CASH model (per MJ): count ALL money that comes in — every payment, incl.
+// balance/collection — matching the "By Closer / Cluster" breakdown. Amount =
+// sales_amount; a "sale" = one payment record.
 // Best available "when did this enter" timestamp (ms). Fusioo carries a full
 // `created` timestamp; LakbayHub invoices carry createdDate/paidDate. Falls back
 // to the plain date. Used to find the truly most-recent sale for replay.
@@ -82,12 +79,7 @@ function soldAtMs(r) {
   return Number.isNaN(t) ? new Date(r.date).getTime() : t
 }
 
-const closesOf = r => (r.signup_count == null ? 1 : r.signup_count)
-const srpValue = r => {
-  const closes = closesOf(r)
-  if (closes <= 0) return 0
-  return (packageFullPrice(r.meta?.package) || Number(r.sales_amount) || 0) * closes
-}
+const cashOf = r => Number(r.sales_amount) || 0
 
 // ── Coach attribution — IDENTICAL to the dashboard's Sales Performance cards ──
 // Acquisition/AACIO: the real closer lives in the CLUSTER name, not sales_agent
@@ -225,30 +217,27 @@ export default function useTvData() {
   const monthRange = rangeFor('monthly', today)
 
   const view = useMemo(() => {
-    // Attach each record's coach identity; drop rows we can't attribute — this
-    // matches the Sales Performance cards exactly (same coach + aliases + skip).
-    const withId = recs => recs
-      .map(r => ({ r, id: agentIdentity(r) }))
-      .filter(x => x.id)
+    const todayRecs = filterByRange(records, dayRange.start, dayRange.end)
+    const mtdRecs   = filterByRange(records, monthRange.start, monthRange.end)
 
-    const todayIded = withId(filterByRange(records, dayRange.start, dayRange.end))
-    const mtdIded   = withId(filterByRange(records, monthRange.start, monthRange.end))
+    const cashSum = list => list.reduce((a, r) => a + cashOf(r), 0)
 
-    const sumSrp    = list => list.reduce((a, x) => a + srpValue(x.r), 0)
-    const sumCloses = list => list.reduce((a, x) => a + closesOf(x.r), 0)
-
+    // Per-source totals — ALL money in (every payment), matching the breakdown.
     const bySource = {}
     for (const s of SOURCE_ORDER) {
-      const t = todayIded.filter(x => x.r.source === s)
-      const m = mtdIded.filter(x => x.r.source === s)
+      const t = todayRecs.filter(r => r.source === s)
+      const m = mtdRecs.filter(r => r.source === s)
       bySource[s] = {
-        todaySales: sumSrp(t), todayCount: sumCloses(t),
-        mtdSales: sumSrp(m), mtdCount: sumCloses(m),
+        todaySales: cashSum(t), todayCount: t.length,
+        mtdSales: cashSum(m), mtdCount: m.length,
       }
     }
 
+    // Leaderboard — cash per attributable coach (name from cluster + aliases).
     const agentMap = new Map()
-    for (const { r, id } of mtdIded) {
+    for (const r of mtdRecs) {
+      const id = agentIdentity(r)
+      if (!id) continue
       if (!agentMap.has(id.key)) {
         agentMap.set(id.key, {
           key: id.key, name: id.name, source: r.source, team: r.team || '',
@@ -257,12 +246,14 @@ export default function useTvData() {
         })
       }
       const e = agentMap.get(id.key)
-      e.mtdSales += srpValue(r)
-      e.mtdCount += closesOf(r)
+      e.mtdSales += cashOf(r)
+      e.mtdCount += 1
     }
-    for (const { r, id } of todayIded) {
+    for (const r of todayRecs) {
+      const id = agentIdentity(r)
+      if (!id) continue
       const e = agentMap.get(id.key)
-      if (e) { e.todaySales += srpValue(r); e.todayCount += closesOf(r) }
+      if (e) { e.todaySales += cashOf(r); e.todayCount += 1 }
     }
 
     const leaderboard = [...agentMap.values()]
@@ -270,10 +261,10 @@ export default function useTvData() {
       .sort((a, b) => b.mtdSales - a.mtdSales)
 
     return {
-      todaySales: sumSrp(todayIded),
-      todayCount: sumCloses(todayIded),
-      mtdSales:   sumSrp(mtdIded),
-      mtdCount:   sumCloses(mtdIded),
+      todaySales: cashSum(todayRecs),
+      todayCount: todayRecs.length,
+      mtdSales:   cashSum(mtdRecs),
+      mtdCount:   mtdRecs.length,
       bySource,
       leaderboard,
     }
