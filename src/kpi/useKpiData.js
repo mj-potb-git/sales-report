@@ -225,6 +225,11 @@ export const WEIGHTS = {
 // caps at full. Per MJ.
 export const ADV_TARGET_PCT = 10
 
+// Closing-rate target: hitting a 30% closing rate (Sign Ups ÷ Show Ups) earns
+// the FULL closing weight. Below 30% scales proportionally; 30%+ caps at full.
+// Per MJ.
+export const CLOSING_TARGET_PCT = 30
+
 // Turn a raw scorecard + manual inputs into rates and weighted points.
 // Each rate is the formula from the sheet's Description column; the weighted
 // point is rate% × weight (capped at the weight). Memo is all-or-nothing.
@@ -241,7 +246,8 @@ export function scoreCard(card, manual) {
 
   const pts = {
     showUp:     (clamp(showUpRate)  / 100) * WEIGHTS.showUp,
-    closing:    (clamp(closingRate) / 100) * WEIGHTS.closing,
+    // Scored against the 30% target: full weight at 30%+, proportional below.
+    closing:    (Math.min(closingRate, CLOSING_TARGET_PCT) / CLOSING_TARGET_PCT) * WEIGHTS.closing,
     // Scored against the 10% target: full weight at 10%+, proportional below.
     adventurer: (Math.min(advRate, ADV_TARGET_PCT) / ADV_TARGET_PCT) * WEIGHTS.adventurer,
     qa:         qaScore != null ? (clamp(qaScore) / 100) * WEIGHTS.qa : 0,
@@ -252,6 +258,7 @@ export function scoreCard(card, manual) {
   return {
     qaScore, hasMemo,
     showUpRate, closingRate, advRate, totalSignups,
+    closingTargetPct: CLOSING_TARGET_PCT,
     advTargetPct: ADV_TARGET_PCT,
     points: pts,
     total,

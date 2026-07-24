@@ -153,7 +153,7 @@ export default function KpiApp() {
               <td className="kpi-name">Closing Rate</td>
               <td className="kpi-desc">Total Sign Ups / # Show Ups x 100</td>
               <td className="c kpi-actual">{card ? card.signUps : 0}</td>
-              <td className="c kpi-target">{card ? card.showUps : 0} show-ups</td>
+              <td className="c kpi-target">{score ? score.closingTargetPct : 30}% of {card ? card.showUps : 0} show-ups</td>
               <td className="c kpi-weight">{WEIGHTS.closing}%</td>
             </tr>
             {/* Adventurers sign up */}
@@ -234,7 +234,7 @@ export default function KpiApp() {
           <div className="kpi-calc">
             <CalcRow label="Show up rate" formula={`${card.showUps} / ${card.totalBookings} = ${pct(score.showUpRate, 1)}`}
                      weight={WEIGHTS.showUp} points={score.points.showUp} />
-            <CalcRow label="Closing Rate" formula={`${card.signUps} / ${card.showUps} = ${pct(score.closingRate, 1)}`}
+            <CalcRow label="Closing Rate" formula={`${card.signUps}/${card.showUps} = ${pct(score.closingRate, 1)} vs ${score.closingTargetPct}% target`}
                      weight={WEIGHTS.closing} points={score.points.closing} />
             <CalcRow label="Adventurers sign up" formula={`${card.adventurer}/${score.totalSignups} = ${pct(score.advRate, 1)} vs ${score.advTargetPct}% target`}
                      weight={WEIGHTS.adventurer} points={score.points.adventurer} />
