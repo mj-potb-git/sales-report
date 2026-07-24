@@ -19,6 +19,9 @@ import { COACH_DISPLAY_ALIAS } from '../api/lakbayhub'
 import {
   getAllAttendance, startAttendancePoller, subscribeAttendance,
 } from '../lib/attendance'
+import {
+  mergeWithReport, subscribeReport, startReportSync, isOrientation,
+} from '../lib/ycbmReport'
 import { nameKey } from './kpiManual'
 
 const SALES_POLL_MS = 30_000
@@ -99,6 +102,25 @@ export default function useKpiData(month) {
     return unsub
   }, [])
 
+  // Uploaded YCBM report (shared via Supabase) → re-render when it syncs. The
+  // live API only covers ~14 days back, so past-month bookings + show-ups come
+  // from the report — exactly like the Sales/Operations dashboard.
+  const [repTick, setRepTick] = useState(0)
+  useEffect(() => {
+    startReportSync()
+    return subscribeReport(() => setRepTick(t => t + 1))
+  }, [])
+
+  // Merge live bookings with the uploaded report (POTB 'acquisition' account)
+  // and drop non-coaching bookings (Welcome Orientation, walk-ins) so Total
+  // Bookings / Show-ups match the dashboard's "YCBM Scheduled".
+  const mergedBookings = useMemo(() => {
+    const notCoachingLead = (b) =>
+      isOrientation(b) || /walk\s*-?\s*in/i.test(b.raw?.title || b.title || b.appointmentType || '')
+    return mergeWithReport(bookings || [], 'acquisition').filter(b => !notCoachingLead(b))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings, repTick])
+
   const range = useMemo(() => monthRange(month), [month])
 
   const agents = useMemo(() => {
@@ -106,8 +128,10 @@ export default function useKpiData(month) {
     const salesRecs = Array.isArray(sales) ? sales : []
 
     // Bookings scheduled this month, not cancelled, with an assigned coach.
-    const monthBookings = (bookings || []).filter(b =>
-      b.coach && !b.raw?.cancelled && inMonth(new Date(b.startsAt).getTime(), range))
+    // (report bookings carry top-level `cancelled`; live carry `raw.cancelled`)
+    const monthBookings = mergedBookings.filter(b =>
+      b.coach && !(b.raw?.cancelled || b.cancelled || b.status === 'Cancelled')
+      && inMonth(new Date(b.startsAt).getTime(), range))
 
     // POTB acquisition sign-ups paid this month (fetchSalesRecords is already
     // POTB-only — external/AACIO is split out upstream).
@@ -175,7 +199,7 @@ export default function useKpiData(month) {
     return cards.sort((a, b) =>
       b.totalBookings - a.totalBookings || b.signUps - a.signUps || a.name.localeCompare(b.name))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookings, sales, range, attTick])
+  }, [mergedBookings, sales, range, attTick])
 
   return {
     agents,

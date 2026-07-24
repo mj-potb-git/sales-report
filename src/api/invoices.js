@@ -117,6 +117,30 @@ let lastReal = null
 // current month to 0. A month is only ever replaced by a newer SUCCESS.
 let monthCache = new Map()
 
+// Fetch a set of months with BOUNDED concurrency. LakbayHub rate-limits at
+// ~10 RPM, so firing all ~11 months at once makes several (often the freshest,
+// which the live views need most) queue past their 25s timeout and come back
+// empty. A small pool keeps us under the limit; callers pass months newest-first
+// so the current month resolves in the first wave.
+async function fetchMonthsBounded(months, limit) {
+  const results = []
+  let idx = 0
+  const worker = async () => {
+    while (idx < months.length) {
+      const m = months[idx++]
+      try {
+        results.push({ m, arr: await getMonth(m) })
+      } catch (err) {
+        if (/429|too many|rate limit/i.test(err.message)) rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
+        console.warn(`[invoices] month ${m} failed:`, err.message)
+        results.push({ m, arr: null })
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, months.length) }, worker))
+  return results
+}
+
 /**
  * Fetch and merge invoices across the FULL business history (START_MONTH →
  * current). Covers members who pay a DP in one month and the balance many
@@ -130,16 +154,23 @@ export async function fetchInvoices({ force = false } = {}) {
   if (now < rateLimitedUntil && lastReal) return lastReal
 
   inFlight = (async () => {
-    const wanted = monthsFromStart()
-    const results = await Promise.all(wanted.map(async (m) => {
-      try {
-        return { m, arr: await getMonth(m) }
-      } catch (err) {
-        if (/429|too many|rate limit/i.test(err.message)) rateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS
-        console.warn(`[invoices] month ${m} failed:`, err.message)
-        return { m, arr: null }
+    // Newest month first so the current/recent months (what Sales + KPI show)
+    // land in the first wave and are least likely to be starved by the limit.
+    const wanted = monthsFromStart().reverse()
+    let results = await fetchMonthsBounded(wanted, 4)
+
+    // One retry pass for months that failed (transient timeout / rate blip),
+    // after a short breather so we're not still hammering the limit.
+    const failed = results.filter(r => !Array.isArray(r.arr)).map(r => r.m)
+    if (failed.length) {
+      await new Promise(r => setTimeout(r, 1500))
+      const retried = await fetchMonthsBounded(failed, 3)
+      const recovered = new Map(retried.filter(r => Array.isArray(r.arr)).map(r => [r.m, r.arr]))
+      if (recovered.size) {
+        console.info(`[invoices] retry recovered ${recovered.size}/${failed.length} month(s)`)
+        results = results.map(r => recovered.has(r.m) ? { m: r.m, arr: recovered.get(r.m) } : r)
       }
-    }))
+    }
 
     // Fold successes into the per-month cache; failed months keep their prior
     // payload (heal) so a transient miss never drops that month to 0.
