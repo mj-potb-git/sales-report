@@ -41,12 +41,12 @@ export default function OfficerReceivables({ records = [], periodLabel = '' }) {
   const pkgOf = (r) => (r.meta?.type_of_package || '').replace(/\s*package\s*/i, '').trim() || '—'
 
   function exportCSV() {
-    const rows = [['Agent', 'Team', 'Date', 'Package', 'Paid (DP)', 'Balance (AR)', 'Total (SRP)', 'Ref']]
+    const rows = [['POTB No.', 'Agent', 'Team', 'Date', 'Package', 'Paid (DP)', 'Balance (AR)', 'Total (SRP)']]
     for (const a of byAgent) for (const r of a.txns) {
-      rows.push([a.agent, a.team, r.date, pkgOf(r), r.sales_amount, r.receivable, r.srp, r.meta?.gdx || r.transaction_id])
+      rows.push([r.meta?.gdx ?? '', a.agent, a.team, r.date, pkgOf(r), r.sales_amount, r.receivable, r.srp])
     }
     rows.push([])
-    rows.push([`TOTAL · ${totalCount} accounts`, '', '', '', totalPaid, totalAR, '', ''])
+    rows.push([`TOTAL · ${totalCount} accounts`, '', '', '', '', totalPaid, totalAR, ''])
     const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
     const a = document.createElement('a'); a.href = url; a.download = `officer-receivables-${periodLabel || 'all'}.csv`.replace(/\s+/g, '-'); a.click()
@@ -102,7 +102,8 @@ export default function OfficerReceivables({ records = [], periodLabel = '' }) {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-[10px] uppercase tracking-wide text-gray-400">
-                          <th className="px-4 py-1.5 font-semibold">Date</th>
+                          <th className="px-4 py-1.5 font-semibold">POTB No.</th>
+                          <th className="px-3 py-1.5 font-semibold">Date</th>
                           <th className="px-3 py-1.5 font-semibold">Package</th>
                           <th className="px-3 py-1.5 font-semibold text-right">Paid (DP)</th>
                           <th className="px-3 py-1.5 font-semibold text-right">Balance (AR)</th>
@@ -112,7 +113,8 @@ export default function OfficerReceivables({ records = [], periodLabel = '' }) {
                       <tbody>
                         {a.txns.map(r => (
                           <tr key={r.transaction_id} className="border-t border-gray-100">
-                            <td className="px-4 py-1.5 text-gray-600 whitespace-nowrap">{fmtDate(r.date)}</td>
+                            <td className="px-4 py-1.5 font-mono text-xs font-semibold text-[#1B4F4F] whitespace-nowrap">{r.meta?.gdx ?? '—'}</td>
+                            <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{fmtDate(r.date)}</td>
                             <td className="px-3 py-1.5 text-gray-500">{pkgOf(r)}</td>
                             <td className="px-3 py-1.5 text-right text-gray-700">{formatPHP(r.sales_amount)}</td>
                             <td className="px-3 py-1.5 text-right font-semibold" style={{ color: TEAL }}>{formatPHP(r.receivable)}</td>

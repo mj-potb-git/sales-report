@@ -176,10 +176,11 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
 
   function exportAgentCSV() {
     const today = new Date().toISOString().slice(0, 10)
-    const header = ['Date', 'Status', 'Transaction Type', 'Customer', 'Package Type', 'Travel Date', 'Duration', 'Sales Amount (PHP)', 'Profit (PHP)', 'Cost (PHP)', 'Payment Type', 'Transaction ID']
+    const header = ['POTB No.', 'Date', 'Status', 'Transaction Type', 'Customer', 'Package Type', 'Travel Date', 'Duration', 'Sales Amount (PHP)', 'Profit (PHP)', 'Cost (PHP)', 'Payment Type', 'Transaction ID']
     const rows = [header, ...filteredRecs
       .sort((a, b) => parseDate(b.date) - parseDate(a.date))
       .map(r => [
+        r.meta?.gdx ?? '',
         r.date,
         r.meta?.status || '',
         r.meta?.transaction_type || '',
@@ -356,16 +357,17 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-gray-50 z-10">
               <tr>
-                {['Date', 'Status', 'Type', 'Package', 'Travel', 'Sales', 'Profit', 'Cost', 'Payment'].map(h => (
+                {['POTB No.', 'Date', 'Status', 'Type', 'Package', 'Travel', 'Sales', 'Profit', 'Cost', 'Payment'].map(h => (
                   <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {recent.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No transactions match the filters</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">No transactions match the filters</td></tr>
               ) : recent.map(r => (
                 <tr key={r.transaction_id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 font-mono text-xs font-semibold text-[#1B4F4F] whitespace-nowrap">{r.meta?.gdx ?? '—'}</td>
                   <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.date}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {r.meta?.status && (
