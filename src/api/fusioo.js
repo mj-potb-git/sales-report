@@ -162,6 +162,12 @@ export function mapBookingTransaction(raw) {
   const isFull = /full/i.test(paymentType)
   const receivable = Math.max(0, bd.balance)        // money still to collect (AR)
   const isInstallment = !isFull && (receivable > 0 || /install|dp|partial|down/i.test(paymentType))
+  // The real supplier cost is often NOT encoded yet — Fusioo leaves a ₱300
+  // placeholder (being removed at source). Treat 300 (or 0) as "cost not yet
+  // encoded": expose cost/profit as null so the dashboard shows "—" instead of
+  // a fake ₱300 cost and an inflated profit. Only a real (>0, ≠300) cost counts.
+  const rawCost = Number(raw.total_cost) || 0
+  const costEncoded = rawCost > 0 && rawCost !== 300
   return {
     transaction_id: raw.id,
     sales_agent:    agent,
@@ -177,8 +183,10 @@ export function mapBookingTransaction(raw) {
     isFull,
     isInstallment,
     paymentLabel:   isFull ? 'Full Payment' : (isInstallment ? 'DP / Installment' : (paymentType || '—')),
-    profit:         Number(raw.total_profit) || 0,
-    cost:           Number(raw.total_cost) || 0,
+    // null when the supplier cost hasn't been encoded yet (no fake ₱300)
+    cost:           costEncoded ? rawCost : null,
+    profit:         costEncoded ? (Number(raw.total_profit) || 0) : null,
+    costEncoded,
     signup_count:   1,
     customer_name:  '', // Fusioo customer is a separate app_link; resolution is a future enhancement
     meta: {

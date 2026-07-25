@@ -13,7 +13,7 @@ import {
 import {
   Award, Users, TrendingUp, TrendingDown, AlertCircle, Search,
   Target, Sparkles, ArrowLeft, ChevronRight, Lightbulb, GraduationCap,
-  Briefcase, BarChart3, Trophy, Flame, Download,
+  Briefcase, BarChart3, Trophy, Flame, Download, Wallet,
 } from 'lucide-react'
 
 function downloadCSV(filename, rows) {
@@ -384,8 +384,8 @@ function AgentDetail({ agent, allRecords, onBack, teamAvgRevenue }) {
                     {r.meta?.duration || '—'}
                   </td>
                   <td className="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">{formatPHP(r.sales_amount)}</td>
-                  <td className="px-3 py-2 text-emerald-700 font-medium whitespace-nowrap">{formatPHPCompact(r.profit || 0)}</td>
-                  <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{formatPHPCompact(r.cost || 0)}</td>
+                  <td className="px-3 py-2 text-emerald-700 font-medium whitespace-nowrap">{r.profit == null ? <span className="text-gray-300" title="Walang encoded cost pa sa Fusioo">—</span> : formatPHPCompact(r.profit)}</td>
+                  <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.cost == null ? <span className="text-gray-300" title="Walang encoded cost pa sa Fusioo">—</span> : formatPHPCompact(r.cost)}</td>
                   <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">{r.meta?.payment_type || '—'}</td>
                 </tr>
               ))}
@@ -530,7 +530,11 @@ export default function AccountOfficersTab() {
     : 0
 
   // Company snapshot
-  const companyRevenue = sum(ranged, 'sales_amount')
+  const companyRevenue = sum(ranged, 'sales_amount')            // actual CASH collected (Amount Paid)
+  const companySRP     = sum(ranged, 'srp')                     // total package value (revenue)
+  const companyProfit  = ranged.reduce((s, r) => s + (r.profit || 0), 0)  // encoded-cost only (null skipped)
+  const companyAR      = ranged.reduce((s, r) => s + (r.receivable || 0), 0)
+  const profitEncodedCount = ranged.filter(r => r.costEncoded).length
   const companyDeals = ranged.length
   const companyAvgDeal = companyDeals > 0 ? companyRevenue / companyDeals : 0
   const priorRevenue = sum(priorRanged, 'sales_amount')
@@ -634,15 +638,15 @@ export default function AccountOfficersTab() {
 
       {/* Hero band — instant read on officer/company performance */}
       <HeroBand
-        label={`Company Revenue · ${periodLabel}`}
+        label={`Cash Collected · ${periodLabel}`}
         value={formatPHP(companyRevenue)}
         delta={revenueDelta}
-        sub={`${companyDeals} deals${topAgent && topAgent.name !== 'Unassigned' ? ` · top officer: ${topAgent.name}` : ''}`}
+        sub={`actual na natanggap na pera · ${companyDeals} deals${companyAR > 0 ? ` · AR ${formatPHPCompact(companyAR)} to collect` : ''}`}
         stats={[
+          { label: 'Revenue (SRP)', value: formatPHPCompact(companySRP) },
+          { label: 'Profit', value: profitEncodedCount > 0 ? formatPHPCompact(companyProfit) : '—' },
+          { label: 'AR (sisingilin)', value: formatPHPCompact(companyAR) },
           { label: 'Deals', value: String(companyDeals) },
-          { label: 'Avg Deal', value: formatPHPCompact(companyAvgDeal) },
-          { label: 'Top Officer', value: topAgent && topAgent.name !== 'Unassigned' ? topAgent.name.split(' ').slice(-1)[0] : '—' },
-          { label: 'Active', value: String(realAgents.length) },
         ]}
       />
 
@@ -652,9 +656,15 @@ export default function AccountOfficersTab() {
           <Sparkles size={14} className="text-amber-500" /> Company Overview · {periodLabel}
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-          <StatCard icon={TrendingUp} label="Company Revenue"
+          <StatCard icon={TrendingUp} label="Cash Collected"
                     value={formatPHPCompact(companyRevenue)}
-                    sub={revenueDelta === null ? `${companyDeals} deals` : `${revenueDelta >= 0 ? '+' : ''}${revenueDelta}% vs prior · ${companyDeals} deals`} />
+                    sub={revenueDelta === null ? `actual na pera · ${companyDeals} deals` : `${revenueDelta >= 0 ? '+' : ''}${revenueDelta}% vs prior · actual na pera`} />
+          <StatCard icon={Target}     label="Revenue (SRP)" value={formatPHPCompact(companySRP)} sub="total package value" />
+          <StatCard icon={Award}      label="Profit"
+                    value={profitEncodedCount > 0 ? formatPHPCompact(companyProfit) : '—'}
+                    sub={profitEncodedCount < companyDeals ? `${profitEncodedCount}/${companyDeals} may cost pa lang` : 'revenue − cost'}
+                    accent="#E8F4F4" />
+          <StatCard icon={Wallet}     label="Accounts Receivable" value={formatPHPCompact(companyAR)} sub="balance na sisingilin" accent="#FFF4E0" />
           <StatCard icon={Briefcase}  label="Total Deals" value={String(companyDeals)} sub={`${realAgents.length} agents active`} />
           <StatCard icon={Target}     label="Avg Deal Size" value={formatPHPCompact(companyAvgDeal)} sub="per closed sale" accent="#FFF4E0" />
           <button type="button"
