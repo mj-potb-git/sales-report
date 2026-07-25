@@ -58,10 +58,22 @@ export default function ExecutiveSummary({ totals, prior, totalROAS, perDay = []
     notes.push({ good: profit >= 0, text: `Profit ${formatPHPCompact(profit)} on ${formatPHPCompact(revenue)} revenue · ROAS ${totalROAS === null ? '—' : totalROAS.toFixed(2) + 'x'}.` })
   }
 
+  // Revenue with zero NEW closes = the money is a balance/collection of a sale
+  // already counted on its down-payment date. Say so, so "0 sales · ₱X revenue"
+  // never reads as a bug (a sale counts once, at close/DP — not again on the
+  // balance payment).
+  if (revenue > 0 && totals.salesCount === 0) {
+    notes.push({ good: true, text: `Revenue ${formatPHPCompact(revenue)} is from balance collections — no NEW close in this period (a sale is counted on its down-payment date).` })
+  }
+
   // --- Funnel + biggest-leak detection ---
+  // Only flag a "leak" when there's enough concluded activity — otherwise a
+  // slow day (e.g. 2 show-ups) misleadingly screams "close 0% biggest leak".
+  const concluded = totals.showed + totals.noShow
+  const MIN_BASE = 5
   const leaks = []
-  if (showUpRate !== null) leaks.push({ key: 'show-up', rate: showUpRate, tip: 'Maraming naka-book pero hindi sumipot. Tignan ang reminders / confirmation flow.' })
-  if (closeRate !== null) leaks.push({ key: 'close', rate: closeRate, tip: 'Sumisipot pero hindi bumibili. Coaching sa closing / offer.' })
+  if (showUpRate !== null && concluded >= MIN_BASE) leaks.push({ key: 'show-up', rate: showUpRate, tip: 'Maraming naka-book pero hindi sumipot. Tignan ang reminders / confirmation flow.' })
+  if (closeRate !== null && totals.showed >= MIN_BASE) leaks.push({ key: 'close', rate: closeRate, tip: 'Sumisipot pero hindi bumibili. Coaching sa closing / offer.' })
   const worstLeak = leaks.length ? leaks.reduce((a, b) => (b.rate < a.rate ? b : a)) : null
 
   const funnel = [
