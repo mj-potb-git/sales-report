@@ -824,7 +824,7 @@ export default function AccountOfficersTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {['#', 'Officer', 'Cluster', 'Revenue', 'Deals', 'Avg Deal', 'Sign-ups', 'Tier', 'vs Prior', ''].map(h => (
+                  {['#', 'Officer', 'Cluster', 'Revenue', 'Deals', 'Avg Deal', 'Profit', 'Tier', 'vs Prior', ''].map(h => (
                     <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -866,7 +866,7 @@ export default function AccountOfficersTab() {
                       <td className="px-3 py-2.5 font-semibold text-gray-900">{formatPHP(a.sales)}</td>
                       <td className="px-3 py-2.5 text-gray-700">{a.txnCount}</td>
                       <td className="px-3 py-2.5 text-gray-600">{formatPHPCompact(avgDeal)}</td>
-                      <td className="px-3 py-2.5 text-gray-600">{a.signups}</td>
+                      <td className="px-3 py-2.5 text-emerald-700 font-medium">{a.profit > 0 ? formatPHPCompact(a.profit) : <span className="text-gray-300" title="Walang encoded cost pa">—</span>}</td>
                       <td className="px-3 py-2.5">
                         <button
                           onClick={(e) => { e.stopPropagation(); setFilterTier(tier.label) }}
@@ -900,7 +900,7 @@ export default function AccountOfficersTab() {
                     <td className="px-3 py-2.5 text-gray-900">{formatPHP(filteredAgents.reduce((s, a) => s + a.sales, 0))}</td>
                     <td className="px-3 py-2.5 text-gray-900">{filteredAgents.reduce((s, a) => s + a.txnCount, 0)}</td>
                     <td className="px-3 py-2.5"></td>
-                    <td className="px-3 py-2.5 text-gray-900">{filteredAgents.reduce((s, a) => s + a.signups, 0)}</td>
+                    <td className="px-3 py-2.5 text-emerald-700">{(() => { const p = filteredAgents.reduce((s, a) => s + (a.profit || 0), 0); return p > 0 ? formatPHPCompact(p) : '—' })()}</td>
                     <td className="px-3 py-2.5" colSpan={3}></td>
                   </tr>
                 </tfoot>
