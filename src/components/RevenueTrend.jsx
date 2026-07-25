@@ -6,7 +6,7 @@
 import { useMemo, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LabelList,
 } from 'recharts'
 import { formatPHP, formatPHPCompact } from '../api/lakbay'
 
@@ -77,12 +77,16 @@ export default function RevenueTrend({ records = [] }) {
           <p className="text-sm text-gray-400 py-10 text-center">Walang revenue data.</p>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={data} margin={{ top: 8, right: 8, left: 4, bottom: 0 }} barGap={2}>
+            <BarChart data={data} margin={{ top: 24, right: 8, left: 4, bottom: 0 }} barGap={2}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#999' }} interval={0} angle={data.length > 10 ? -35 : 0} textAnchor={data.length > 10 ? 'end' : 'middle'} height={data.length > 10 ? 50 : 30} />
               <YAxis tick={{ fontSize: 11, fill: '#999' }} tickFormatter={formatPHPCompact} width={64} />
               <Tooltip formatter={(v) => formatPHP(v)} />
-              <Bar dataKey="Revenue" fill={PRIMARY} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Revenue" fill={PRIMARY} radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="Revenue" position="top"
+                  formatter={(v) => (v > 0 ? formatPHPCompact(v) : '')}
+                  style={{ fontSize: data.length > 10 ? 9 : 11, fontWeight: 700, fill: PRIMARY }} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
