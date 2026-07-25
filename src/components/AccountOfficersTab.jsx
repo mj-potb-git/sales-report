@@ -35,6 +35,7 @@ import {
   dailyTrend, formatPHP, formatPHPCompact, timeAgo,
 } from '../api/lakbay'
 import { fetchAllBookingTransactions, mapBookingTransaction, totalsByAgent, totalsByTeam } from '../api/fusioo'
+import OfficerReceivables from './OfficerReceivables'
 import PeriodBar from './PeriodBar'
 import HeroBand from './ui/HeroBand'
 import RevenueTrend from './RevenueTrend'
@@ -896,6 +897,9 @@ export default function AccountOfficersTab() {
           </div>
         </div>
       </section>
+
+      {/* Down Payments & Accounts Receivable — per agent */}
+      <OfficerReceivables records={ranged} periodLabel={periodLabel} />
 
       {/* Data source note */}
       <section className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-start gap-2.5 text-sm text-emerald-900">

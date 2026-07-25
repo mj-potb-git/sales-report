@@ -136,6 +136,19 @@ function firstStr(val) {
  * matches what the AccountOfficersTab expects (similar to LakbayHub records
  * but with agent attribution).
  */
+// Fusioo stores the real money in `total_payment_breakdown`, a string like
+// "35558 - Amount Paid  / 0 - Balance / 0 - Refund". Parse the actual cash
+// collected, the outstanding balance (= Accounts Receivable), and any refund.
+function parseBreakdown(s) {
+  const str = String(s || '')
+  const num = (re) => { const m = str.match(re); return m ? Number(m[1].replace(/,/g, '')) : 0 }
+  return {
+    paid:    num(/(-?[\d.,]+)\s*-\s*Amount Paid/i),
+    balance: num(/(-?[\d.,]+)\s*-\s*Balance/i),
+    refund:  num(/(-?[\d.,]+)\s*-\s*Refund/i),
+  }
+}
+
 export function mapBookingTransaction(raw) {
   const agent = firstStr(raw.agent_name) || 'Unassigned'
   // Normalize whitespace — Fusioo has inconsistent values like "POTB  International"
@@ -143,12 +156,27 @@ export function mapBookingTransaction(raw) {
   const team  = (firstStr(raw.team_name) || 'No Team').replace(/\s+/g, ' ').trim()
   const status = firstStr(raw.status) || ''
   const txnType = firstStr(raw.transaction_type) || ''
+  const paymentType = firstStr(raw.payment_type) || ''
+  const bd = parseBreakdown(raw.total_payment_breakdown)
+  const srp = Number(raw.total_package_price) || 0
+  const isFull = /full/i.test(paymentType)
+  const receivable = Math.max(0, bd.balance)        // money still to collect (AR)
+  const isInstallment = !isFull && (receivable > 0 || /install|dp|partial|down/i.test(paymentType))
   return {
     transaction_id: raw.id,
     sales_agent:    agent,
     team:           team,
     date:           raw.transaction_date || raw.created?.slice(0, 10) || null,
-    sales_amount:   Number(raw.total_package_price) || 0,
+    // SALES = ACTUAL CASH collected (Amount Paid), NOT the SRP/package price.
+    // For a FULL PAYMENT this equals the package price; for an INSTALLMENT it's
+    // the down payment / partial paid so far. The unpaid remainder is `receivable`.
+    sales_amount:   bd.paid,
+    srp,                              // total package price (reference only)
+    receivable,                       // outstanding balance = Accounts Receivable
+    refund:         bd.refund,
+    isFull,
+    isInstallment,
+    paymentLabel:   isFull ? 'Full Payment' : (isInstallment ? 'DP / Installment' : (paymentType || '—')),
     profit:         Number(raw.total_profit) || 0,
     cost:           Number(raw.total_cost) || 0,
     signup_count:   1,
@@ -158,7 +186,11 @@ export function mapBookingTransaction(raw) {
       transaction_type:    txnType,
       processed_date:      raw.processed_date,
       created:             raw.created,
-      payment_type:        firstStr(raw.payment_type),
+      payment_type:        paymentType,
+      srp,
+      amount_paid:         bd.paid,
+      balance:             bd.balance,
+      refund:              bd.refund,
       type_of_package:     firstStr(raw.type_of_package),
       mop_used:            raw.mop_used_by_customer,
       duration:            raw.duration,
