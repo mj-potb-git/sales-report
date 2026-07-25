@@ -4,10 +4,9 @@
 //     API with any accumulated uploaded YCBM report — report wins, so when a
 //     report is uploaded these are EXACT; otherwise it's the live API).
 // Show Up Rate = Show Up ÷ (Show Up + No Show) — concluded appointments only.
-// Closing Rate = No. Availed (closed sales, LakbayHub) ÷ Appointments (YCBM) —
-//   of the appointments booked under the coach, how many became sales. Uses
-//   appointments (not show-ups) as the base because sales and show-ups are
-//   different sources/date-bases; show-ups produced absurd >100% rates.
+// Closing Rate = No. Availed ÷ Show Up × 100 (per MJ) — of those who showed up,
+//   how many the coach closed. Can exceed 100% when period closes outnumber the
+//   period's show-ups (different sources/date-bases; closes carry over).
 import { useMemo, useState, useEffect } from 'react'
 import { Award } from 'lucide-react'
 import { formatPHP } from '../api/lakbay'
@@ -96,13 +95,13 @@ export default function SalesPerformanceCards({
       // appointments are excluded, so it reads "—" until sessions conclude
       // instead of a misleading 0%.
       showUpRate: (c.showup + c.noshow) > 0 ? (c.showup / (c.showup + c.noshow)) * 100 : null,
-      // Closing Rate = closed sales ÷ APPOINTMENTS booked (booking-to-sale
-      // conversion). Denominator is appointments, NOT show-ups: sales
-      // (LakbayHub, by payment date) and show-ups (YCBM, by appointment date)
-      // are different sources/date-bases, so sales÷show-ups produced absurd
-      // >100% figures (e.g. 275%). Appointments is the stable, bounded base.
-      // Clamped to 100% so residual cross-source/date noise never shows >100%.
-      closingRate: c.appt > 0 ? Math.min(100, (c.availed / c.appt) * 100) : null,
+      // Closing Rate = No. Availed ÷ Show Up × 100 (per MJ): of those who showed
+      // up, how many the coach closed. NOTE: availed (LakbayHub closes, by close
+      // date) and show-ups (YCBM attendees, by session date) are different
+      // sources/date-bases, so this CAN exceed 100% when a coach's closes in the
+      // period outnumber that period's show-ups (closes carried over from other
+      // periods, or show-ups undercounted). Shown raw per MJ's definition.
+      closingRate: c.showup > 0 ? (c.availed / c.showup) * 100 : null,
     })).sort((x, y) => y.srp - x.srp || y.availed - x.availed)
   }, [salesRecords, bookings, from, to, attBump, aliases]) // eslint-disable-line react-hooks/exhaustive-deps
 
