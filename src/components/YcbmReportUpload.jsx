@@ -25,7 +25,7 @@ export default function YcbmReportUpload({ account, label = 'YCBM report' }) {
       if (!rows.length) throw new Error('Walang nabasang bookings sa file.')
       // Windowed update: refresh the days this upload covers (no stale, no
       // double) and keep older months from previous uploads.
-      const { total, uploaded, windowMin, windowMax } = updateReportWindow(account, rows)
+      const { total, uploaded, windowMin, windowMax } = await updateReportWindow(account, rows)
       setFlash(`✓ Na-update! ${uploaded} bookings mula ${windowMin} hanggang ${windowMax} — na-refresh ang mga araw na 'yon (walang doble, walang luma). ${total} total sa report.`)
       setTimeout(() => setFlash(null), 9000)
     } catch (e2) { setErr(e2.message) }

@@ -210,8 +210,23 @@ export function getReportBookings(account) {
  * uploads) are kept. Result: updates + adds, never doubles, never keeps stale
  * inside the uploaded window — so counts match the YCBM export for those days.
  */
-export function updateReportWindow(account, bookings) {
-  const store = { ...(_store[account] || {}) }
+export async function updateReportWindow(account, bookings) {
+  // CRITICAL: start from the freshest REMOTE snapshot (unioned with local), NOT
+  // just the local store. Otherwise an upload from a browser whose local store
+  // is stale/empty (fresh load, cleared cache, reconcile not finished) would
+  // push a shrunken report and WIPE the older months for everyone. Pulling
+  // remote first guarantees history is always preserved — we only override the
+  // days this upload covers.
+  const base = { ...(_store[account] || {}) }
+  try {
+    const { data } = await getSupabase()
+      .from('ycbm_reports').select('bookings').eq('account', account).maybeSingle()
+    if (data && Array.isArray(data.bookings)) {
+      for (const b of data.bookings) if (b && b.id) base[b.id] = b   // remote wins; local-only kept
+    }
+  } catch (e) { console.warn(`[ycbmReport] updateReportWindow remote fetch failed (${account}):`, e.message) }
+
+  const store = base
   const dates = bookings.map(b => b.createdAt).filter(Boolean).sort()
   const lo = dates.length ? dates[0].slice(0, 10) : null
   const hi = dates.length ? dates[dates.length - 1].slice(0, 10) : null
@@ -219,14 +234,14 @@ export function updateReportWindow(account, bookings) {
     for (const id of Object.keys(store)) {
       const c = store[id].createdAt
       const d = c ? String(c).slice(0, 10) : null
-      if (d && d >= lo && d <= hi) delete store[id]   // clear the window; upload replaces it
+      if (d && d >= lo && d <= hi) delete store[id]   // clear ONLY the covered window; older months kept
     }
   }
   for (const b of bookings) store[b.id] = b            // add/refresh uploaded (dedup by id)
   _store[account] = store
   writeLS(account, store)
   notify()
-  pushToSupabase(account)
+  await pushToSupabase(account)
   return { total: Object.keys(store).length, uploaded: bookings.length, windowMin: lo || '', windowMax: hi || '' }
 }
 
