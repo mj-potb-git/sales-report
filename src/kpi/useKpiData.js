@@ -225,10 +225,10 @@ export const WEIGHTS = {
 // caps at full. Per MJ.
 export const ADV_TARGET_PCT = 10
 
-// Closing-rate target: hitting a 30% closing rate (Sign Ups ÷ Show Ups) earns
-// the FULL closing weight. Below 30% scales proportionally; 30%+ caps at full.
+// Closing-rate target: hitting a 20% closing rate (Sign Ups ÷ Show Ups) earns
+// the FULL closing weight. Below 20% scales proportionally; 20%+ caps at full.
 // Per MJ.
-export const CLOSING_TARGET_PCT = 30
+export const CLOSING_TARGET_PCT = 20
 
 // Show-up-rate target: hitting a 30% show-up rate (Show Ups ÷ Total Bookings)
 // earns the FULL show-up weight. Below 30% scales proportionally; 30%+ caps at
