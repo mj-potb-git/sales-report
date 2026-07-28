@@ -145,7 +145,7 @@ export default function KpiApp() {
               <td className="kpi-name">Show up rate</td>
               <td className="kpi-desc"># of Show ups / Total Bookings x 100</td>
               <td className="c kpi-actual">{card ? card.showUps : 0}</td>
-              <td className="c kpi-target">{card ? card.totalBookings : 0} bookings</td>
+              <td className="c kpi-target">{score ? score.showUpTargetPct : 30}% of {card ? card.totalBookings : 0} bookings</td>
               <td className="c kpi-weight">{WEIGHTS.showUp}%</td>
             </tr>
             {/* Closing rate */}
@@ -232,7 +232,7 @@ export default function KpiApp() {
         <div className="kpi-calc-band">KPI CALCULATOR</div>
         {score && (
           <div className="kpi-calc">
-            <CalcRow label="Show up rate" formula={`${card.showUps} / ${card.totalBookings} = ${pct(score.showUpRate, 1)}`}
+            <CalcRow label="Show up rate" formula={`${card.showUps}/${card.totalBookings} = ${pct(score.showUpRate, 1)} vs ${score.showUpTargetPct}% target`}
                      weight={WEIGHTS.showUp} points={score.points.showUp} />
             <CalcRow label="Closing Rate" formula={`${card.signUps}/${card.showUps} = ${pct(score.closingRate, 1)} vs ${score.closingTargetPct}% target`}
                      weight={WEIGHTS.closing} points={score.points.closing} />

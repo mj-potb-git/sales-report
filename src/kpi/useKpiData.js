@@ -230,6 +230,11 @@ export const ADV_TARGET_PCT = 10
 // Per MJ.
 export const CLOSING_TARGET_PCT = 30
 
+// Show-up-rate target: hitting a 30% show-up rate (Show Ups ÷ Total Bookings)
+// earns the FULL show-up weight. Below 30% scales proportionally; 30%+ caps at
+// full. Per MJ.
+export const SHOWUP_TARGET_PCT = 30
+
 // Turn a raw scorecard + manual inputs into rates and weighted points.
 // Each rate is the formula from the sheet's Description column; the weighted
 // point is rate% × weight (capped at the weight). Memo is all-or-nothing.
@@ -245,7 +250,8 @@ export function scoreCard(card, manual) {
   const clamp = r => Math.max(0, Math.min(100, r))
 
   const pts = {
-    showUp:     (clamp(showUpRate)  / 100) * WEIGHTS.showUp,
+    // Scored against the 30% target: full weight at 30%+, proportional below.
+    showUp:     (Math.min(showUpRate, SHOWUP_TARGET_PCT) / SHOWUP_TARGET_PCT) * WEIGHTS.showUp,
     // Scored against the 30% target: full weight at 30%+, proportional below.
     closing:    (Math.min(closingRate, CLOSING_TARGET_PCT) / CLOSING_TARGET_PCT) * WEIGHTS.closing,
     // Scored against the 10% target: full weight at 10%+, proportional below.
@@ -258,6 +264,7 @@ export function scoreCard(card, manual) {
   return {
     qaScore, hasMemo,
     showUpRate, closingRate, advRate, totalSignups,
+    showUpTargetPct: SHOWUP_TARGET_PCT,
     closingTargetPct: CLOSING_TARGET_PCT,
     advTargetPct: ADV_TARGET_PCT,
     points: pts,
