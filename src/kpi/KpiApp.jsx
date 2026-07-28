@@ -66,7 +66,7 @@ export default function KpiApp() {
 
   const card = agents.find(a => a.key === selectedKey) || agents[0] || null
   const manual = card ? manualMap[card.key] : null
-  const score = useMemo(() => (card ? scoreCard(card, manual) : null), [card, manual])
+  const score = useMemo(() => (card ? scoreCard(card, manual, month) : null), [card, manual, month])
 
   async function persist(patch) {
     if (!card) return

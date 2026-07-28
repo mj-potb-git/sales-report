@@ -225,10 +225,13 @@ export const WEIGHTS = {
 // caps at full. Per MJ.
 export const ADV_TARGET_PCT = 10
 
-// Closing-rate target: hitting a 20% closing rate (Sign Ups ÷ Show Ups) earns
-// the FULL closing weight. Below 20% scales proportionally; 20%+ caps at full.
-// Per MJ.
-export const CLOSING_TARGET_PCT = 20
+// Closing-rate target changed mid-year (per MJ): 20% through June 2026, then
+// 30% from July 2026 onwards. Hitting the target earns the FULL closing weight;
+// below it scales proportionally. month = 'YYYY-MM' (string compare is safe for
+// that fixed format).
+export function closingTargetFor(month) {
+  return (month && month >= '2026-07') ? 30 : 20
+}
 
 // Show-up-rate target: hitting a 30% show-up rate (Show Ups ÷ Total Bookings)
 // earns the FULL show-up weight. Below 30% scales proportionally; 30%+ caps at
@@ -238,9 +241,10 @@ export const SHOWUP_TARGET_PCT = 30
 // Turn a raw scorecard + manual inputs into rates and weighted points.
 // Each rate is the formula from the sheet's Description column; the weighted
 // point is rate% × weight (capped at the weight). Memo is all-or-nothing.
-export function scoreCard(card, manual) {
+export function scoreCard(card, manual, month) {
   const qaScore = manual?.qa_score ?? null
   const hasMemo = !!manual?.has_memo
+  const closingTarget = closingTargetFor(month)
 
   const showUpRate  = card.totalBookings > 0 ? (card.showUps / card.totalBookings) * 100 : 0
   const closingRate = card.showUps > 0 ? (card.signUps / card.showUps) * 100 : 0
@@ -252,8 +256,8 @@ export function scoreCard(card, manual) {
   const pts = {
     // Scored against the 30% target: full weight at 30%+, proportional below.
     showUp:     (Math.min(showUpRate, SHOWUP_TARGET_PCT) / SHOWUP_TARGET_PCT) * WEIGHTS.showUp,
-    // Scored against the 30% target: full weight at 30%+, proportional below.
-    closing:    (Math.min(closingRate, CLOSING_TARGET_PCT) / CLOSING_TARGET_PCT) * WEIGHTS.closing,
+    // Scored against the month's closing target: full weight at target+, proportional below.
+    closing:    (Math.min(closingRate, closingTarget) / closingTarget) * WEIGHTS.closing,
     // Scored against the 10% target: full weight at 10%+, proportional below.
     adventurer: (Math.min(advRate, ADV_TARGET_PCT) / ADV_TARGET_PCT) * WEIGHTS.adventurer,
     qa:         qaScore != null ? (clamp(qaScore) / 100) * WEIGHTS.qa : 0,
@@ -265,7 +269,7 @@ export function scoreCard(card, manual) {
     qaScore, hasMemo,
     showUpRate, closingRate, advRate, totalSignups,
     showUpTargetPct: SHOWUP_TARGET_PCT,
-    closingTargetPct: CLOSING_TARGET_PCT,
+    closingTargetPct: closingTarget,
     advTargetPct: ADV_TARGET_PCT,
     points: pts,
     total,
