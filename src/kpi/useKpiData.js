@@ -211,13 +211,14 @@ export default function useKpiData(month) {
 
 // --- Scoring (shared with the UI + calculator) ------------------------------
 
-// KPI weights (sum to 100). Matches MJ's spreadsheet.
-export const WEIGHTS = {
-  showUp:      15,
-  closing:     50,
-  adventurer:  20,
-  qa:          10,
-  memo:         5,
+// KPI weights (each set sums to 100). Changed for July 2026 onwards per MJ:
+// Show-up 15→25%, Closing 50→40% (Adventurer/QA/Memo unchanged).
+const WEIGHTS_THRU_JUNE = { showUp: 15, closing: 50, adventurer: 20, qa: 10, memo: 5 }
+const WEIGHTS_FROM_JULY = { showUp: 25, closing: 40, adventurer: 20, qa: 10, memo: 5 }
+
+// month = 'YYYY-MM' (string compare is safe for that fixed format).
+export function weightsFor(month) {
+  return (month && month >= '2026-07') ? WEIGHTS_FROM_JULY : WEIGHTS_THRU_JUNE
 }
 
 // Adventurer sign-ups target: hitting 10% of total sign-ups earns the FULL
@@ -245,6 +246,7 @@ export function scoreCard(card, manual, month) {
   const qaScore = manual?.qa_score ?? null
   const hasMemo = !!manual?.has_memo
   const closingTarget = closingTargetFor(month)
+  const WEIGHTS = weightsFor(month)
 
   const showUpRate  = card.totalBookings > 0 ? (card.showUps / card.totalBookings) * 100 : 0
   const closingRate = card.showUps > 0 ? (card.signUps / card.showUps) * 100 : 0
@@ -271,6 +273,7 @@ export function scoreCard(card, manual, month) {
     showUpTargetPct: SHOWUP_TARGET_PCT,
     closingTargetPct: closingTarget,
     advTargetPct: ADV_TARGET_PCT,
+    weights: WEIGHTS,
     points: pts,
     total,
   }

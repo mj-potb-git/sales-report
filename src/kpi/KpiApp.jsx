@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Download } from 'lucide-react'
-import useKpiData, { scoreCard, WEIGHTS } from './useKpiData'
+import useKpiData, { scoreCard, weightsFor } from './useKpiData'
 import { fetchKpiManual, saveKpiManual } from './kpiManual'
 
 // --- Month helpers ----------------------------------------------------------
@@ -45,6 +45,8 @@ const pct = (n, digits = 0) => `${Number(n || 0).toFixed(digits)}%`
 export default function KpiApp() {
   const [month, setMonth] = useState(currentMonthKey())
   const { agents, loading, lastFetched } = useKpiData(month)
+  // Weights are month-dependent (July 2026 onwards shifts Show-up/Closing).
+  const WEIGHTS = weightsFor(month)
 
   const [selectedKey, setSelectedKey] = useState(null)
   const [manualMap, setManualMap] = useState({})
