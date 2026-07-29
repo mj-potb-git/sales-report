@@ -529,12 +529,28 @@ export default function AccountOfficersTab() {
     ? realAgents.reduce((s, a) => s + a.sales, 0) / realAgents.length
     : 0
 
+  // Realized PROFIT is attributed to the FULL-PAYMENT month (r.paidDate), NOT
+  // the booking date — so a DP-in-May / fully-paid-in-June booking's profit
+  // lands in June. Only fully-paid + cost-encoded records have a non-null profit.
+  const paidInPeriod = (r) => {
+    if (!r.paidDate) return false
+    if (isCustom) return customSet.has(recDayKey(r.paidDate))
+    const t = new Date(r.paidDate + 'T00:00:00').getTime()
+    return t >= start.getTime() && t <= end.getTime()
+  }
+  const realizedProfitRecs = records.filter(r => r.profit != null && matchesDivision(r) && paidInPeriod(r))
+  const profitByAgent = new Map()
+  for (const r of realizedProfitRecs) {
+    const k = r.sales_agent || 'Unassigned'
+    profitByAgent.set(k, (profitByAgent.get(k) || 0) + r.profit)
+  }
+
   // Company snapshot
   const companyRevenue = sum(ranged, 'sales_amount')            // actual CASH collected (Amount Paid)
   const companySRP     = sum(ranged, 'srp')                     // total package value (revenue)
-  const companyProfit  = ranged.reduce((s, r) => s + (r.profit || 0), 0)  // encoded-cost only (null skipped)
+  const companyProfit  = realizedProfitRecs.reduce((s, r) => s + r.profit, 0)  // fully-paid, by full-payment month
   const companyAR      = ranged.reduce((s, r) => s + (r.receivable || 0), 0)
-  const profitEncodedCount = ranged.filter(r => r.costEncoded).length
+  const profitEncodedCount = realizedProfitRecs.length          // deals with realized profit this period
   const companyDeals = ranged.length
   const companyAvgDeal = companyDeals > 0 ? companyRevenue / companyDeals : 0
   const priorRevenue = sum(priorRanged, 'sales_amount')
@@ -662,7 +678,7 @@ export default function AccountOfficersTab() {
           <StatCard icon={Target}     label="Revenue (SRP)" value={formatPHPCompact(companySRP)} sub="total package value" />
           <StatCard icon={Award}      label="Profit"
                     value={profitEncodedCount > 0 ? formatPHPCompact(companyProfit) : '—'}
-                    sub={profitEncodedCount < companyDeals ? `${profitEncodedCount}/${companyDeals} may cost pa lang` : 'revenue − cost'}
+                    sub={`fully-paid this period${profitEncodedCount > 0 ? ` · ${profitEncodedCount} deal${profitEncodedCount > 1 ? 's' : ''}` : ' · wala pa'}`}
                     accent="#E8F4F4" />
           <StatCard icon={Wallet}     label="Accounts Receivable" value={formatPHPCompact(companyAR)} sub="balance na sisingilin" accent="#FFF4E0" />
           <StatCard icon={Briefcase}  label="Total Deals" value={String(companyDeals)} sub={`${realAgents.length} agents active`} />
@@ -866,7 +882,7 @@ export default function AccountOfficersTab() {
                       <td className="px-3 py-2.5 font-semibold text-gray-900">{formatPHP(a.sales)}</td>
                       <td className="px-3 py-2.5 text-gray-700">{a.txnCount}</td>
                       <td className="px-3 py-2.5 text-gray-600">{formatPHPCompact(avgDeal)}</td>
-                      <td className="px-3 py-2.5 text-emerald-700 font-medium">{a.profit > 0 ? formatPHPCompact(a.profit) : <span className="text-gray-300" title="Walang encoded cost pa">—</span>}</td>
+                      <td className="px-3 py-2.5 text-emerald-700 font-medium">{(profitByAgent.get(a.name) || 0) > 0 ? formatPHPCompact(profitByAgent.get(a.name)) : <span className="text-gray-300" title="Walang fully-paid + encoded cost pa sa period na ito">—</span>}</td>
                       <td className="px-3 py-2.5">
                         <button
                           onClick={(e) => { e.stopPropagation(); setFilterTier(tier.label) }}
@@ -900,7 +916,7 @@ export default function AccountOfficersTab() {
                     <td className="px-3 py-2.5 text-gray-900">{formatPHP(filteredAgents.reduce((s, a) => s + a.sales, 0))}</td>
                     <td className="px-3 py-2.5 text-gray-900">{filteredAgents.reduce((s, a) => s + a.txnCount, 0)}</td>
                     <td className="px-3 py-2.5"></td>
-                    <td className="px-3 py-2.5 text-emerald-700">{(() => { const p = filteredAgents.reduce((s, a) => s + (a.profit || 0), 0); return p > 0 ? formatPHPCompact(p) : '—' })()}</td>
+                    <td className="px-3 py-2.5 text-emerald-700">{(() => { const p = filteredAgents.reduce((s, a) => s + (profitByAgent.get(a.name) || 0), 0); return p > 0 ? formatPHPCompact(p) : '—' })()}</td>
                     <td className="px-3 py-2.5" colSpan={3}></td>
                   </tr>
                 </tfoot>
