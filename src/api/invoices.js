@@ -190,16 +190,21 @@ export async function fetchInvoices({ force = false } = {}) {
       throw new Error('All invoice month fetches failed')
     }
 
-    // Merge every cached month (fresh + healed), dedup by invoice_id, map.
-    const seen = new Set()
-    const all = []
+    // Merge every cached month (fresh + healed), dedup by invoice_id.
+    // IMPORTANT: the SAME invoice_id can appear TWICE — once PENDING (the invoice
+    // when issued) and once PAID/SETTLED (after it's settled). Keep the PAID copy,
+    // not whichever came first: otherwise a real sale is dropped and the member
+    // wrongly reads as unpaid / missing (e.g. Venus→Sheila, Liezel→Princess).
+    const rank = (x) => PAID_STATUSES.has(String(x.status || '').toUpperCase()) ? 2 : (x.paid_at ? 1 : 0)
+    const byId = new Map()
     for (const arr of monthCache.values()) {
       for (const inv of arr) {
-        if (!inv?.invoice_id || seen.has(inv.invoice_id)) continue
-        seen.add(inv.invoice_id)
-        all.push(mapInvoice(inv))
+        if (!inv?.invoice_id) continue
+        const prev = byId.get(inv.invoice_id)
+        if (!prev || rank(inv) > rank(prev)) byId.set(inv.invoice_id, inv)
       }
     }
+    const all = [...byId.values()].map(mapInvoice)
     cache = all
     cachedAt = Date.now()
     lastReal = all
