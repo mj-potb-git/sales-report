@@ -168,17 +168,17 @@ export function mapBookingTransaction(raw) {
   // a fake ₱300 cost and an inflated profit. Only a real (>0, ≠300) cost counts.
   const rawCost = Number(raw.total_cost) || 0
   const costEncoded = rawCost > 0 && rawCost !== 300
-  // Profit is only REALIZED when the booking is FULLY PAID (per MJ). A DP /
-  // installment with an outstanding balance has no realized profit yet.
   const srInv = firstStr(raw.for_sr_inv) || ''
   const fullyPaid = /fully\s*paid/i.test(srInv) || receivable === 0
-  // Attribute realized profit to WHEN it was fully paid. Fusioo has no clean
-  // "date fully paid" field (processed_date is empty), so we use last_modified
-  // as the closest proxy (the day the record was last updated → typically when
-  // the balance was settled). CAVEAT: last_modified shifts on ANY later edit
-  // (e.g. encoding the cost), which can move the profit month — a dedicated
-  // "Date Fully Paid" field in Fusioo would make this exact.
-  const paidDate = fullyPaid ? ((raw.last_modified || raw.transaction_date || '').slice(0, 10) || null) : null
+  // Profit is REALIZED only when the record is PROCESSED (Fusioo `processed_date`
+  // is set) — per MJ, "pag nalagay ng process, payment na" (full payment
+  // confirmed). Profit is counted in the PROCESSED month, per agent. The down
+  // payment CASH still counts in its own month (transaction_date / sales_amount
+  // below) — only the profit waits for processing. Not-yet-processed records
+  // (processed_date null) show no profit yet, even if the balance is fully paid.
+  const processedDate = raw.processed_date ? String(raw.processed_date).slice(0, 10) : null
+  const processed = !!processedDate
+  const paidDate = processedDate   // month the profit is attributed to (= processed month)
   return {
     transaction_id: raw.id,
     sales_agent:    agent,
@@ -196,12 +196,14 @@ export function mapBookingTransaction(raw) {
     paymentLabel:   isFull ? 'Full Payment' : (isInstallment ? 'DP / Installment' : (paymentType || '—')),
     // null when the supplier cost hasn't been encoded yet (no fake ₱300)
     cost:           costEncoded ? rawCost : null,
-    // Realized profit ONLY when fully paid AND cost encoded — else null ("—").
-    // A DP/installment shows no profit until the balance is fully paid.
-    profit:         (fullyPaid && costEncoded) ? (Number(raw.total_profit) || 0) : null,
+    // Realized profit ONLY when PROCESSED AND cost encoded — else null ("—").
+    // Not-yet-processed (or DP/installment) records show no profit yet.
+    profit:         (processed && costEncoded) ? (Number(raw.total_profit) || 0) : null,
     costEncoded,
     fullyPaid,
-    paidDate,       // full-payment month for profit attribution (proxy: last_modified)
+    processed,
+    processedDate,
+    paidDate,       // month the profit is counted in = the PROCESSED month
     signup_count:   1,
     customer_name:  '', // Fusioo customer is a separate app_link; resolution is a future enhancement
     meta: {
