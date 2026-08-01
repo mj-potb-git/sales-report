@@ -169,7 +169,8 @@
       "Bash(curl -s https://potb-sales-report.vercel.app__TRACKED_VAR__)",
       "Bash(git commit -q -m 'Officers: profit realized on PROCESSED \\(processed_date\\) not fully-paid *)",
       "Bash(curl -s -X POST \"https://api.vercel.com/v1/integrations/deploy/prj_wUosgFe7ghJ72HaR9HUZ9BC136ty/MSXGELutQE\")",
-      "Bash(git commit -q -m 'AACIO: add per-agent leaderboard + client drill-down \\(same as Acquisition\\) *)"
+      "Bash(git commit -q -m 'AACIO: add per-agent leaderboard + client drill-down \\(same as Acquisition\\) *)",
+      "Bash(git commit -q -m 'AACIO: mirror the Acquisition tab layout *)"
     ]
   }
 }

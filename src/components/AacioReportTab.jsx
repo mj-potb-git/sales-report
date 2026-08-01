@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import {
   CalendarCheck, TrendingUp, Clock, XCircle, Download, Users, CalendarRange,
-  Wallet, Receipt, BadgeDollarSign, ExternalLink,
+  Wallet, Receipt, BadgeDollarSign, ExternalLink, ChevronUp, ChevronDown,
 } from 'lucide-react'
 import useAacioData from '../hooks/useAacioData'
 import { dateKey } from '../api/ycbmAacio'
@@ -35,6 +35,7 @@ import CoachPivot from './CoachPivot'
 import RevenueTrend from './RevenueTrend'
 import SalesPerformanceCards from './SalesPerformanceCards'
 import AgentLeaderboard from './AgentLeaderboard'
+import SalesBreakdown from './sales/SalesBreakdown'
 import DownPaymentsTracker from './DownPaymentsTracker'
 import YcbmReportUpload from './YcbmReportUpload'
 import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
@@ -188,6 +189,7 @@ export default function AacioReportTab() {
   const [repBump, setRepBump] = useState(0)
   useEffect(() => subscribeReport(() => setRepBump(n => n + 1)), [])
   const bookings = useMemo(() => mergeWithReport(apiBookings, 'aacio'), [apiBookings, repBump])
+  const [showMore, setShowMore] = useState(false)   // collapse deep analytics (mirrors Acquisition)
   const [periodId, setPeriodId] = useState('all')   // default: show ALL AACIO sales across months
   const [monthKey, setMonthKey] = useState(currentMonthKey())
   const [customDates, setCustomDates] = useState([])  // YYYY-MM-DD[] when periodId === 'custom'
@@ -245,6 +247,8 @@ export default function AacioReportTab() {
     const { start, end } = periodRange(periodId, monthKey)
     return [start, end]
   }, [isCustom, customDates, periodId, monthKey])
+
+  const periodLabel = isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)
 
   // For multi-select custom dates, also require the record's day to be one of
   // the picked days (a plain from–to range would include in-between days).
@@ -534,7 +538,7 @@ export default function AacioReportTab() {
 
       {/* Hero band — instant read on AACIO external-team activity */}
       <HeroBand
-        label={`AACIO Bookings · ${isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)}`}
+        label={`AACIO Bookings · ${periodLabel}`}
         value={String(stats.active)}
         sub={`${stats.unique} unique leads · ${salesStats.count} sales · ${formatPHPCompact(salesStats.revenue)} revenue`}
         stats={[
@@ -545,35 +549,56 @@ export default function AacioReportTab() {
         ]}
       />
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard icon={CalendarCheck} label="Total Bookings" value={stats.total}
-          sub={`${stats.active} active · ${stats.cancelled} cancelled`} />
-        <KpiCard icon={TrendingUp} label="Active Sales" value={stats.active}
-          sub="confirmed coaching sessions" accent={GOLD} />
-        <KpiCard icon={Users} label="Unique Leads" value={stats.unique}
-          sub="distinct prospects" />
-        <KpiCard icon={CalendarRange} label="Avg / Day" value={stats.perDay.toFixed(1)}
-          sub="active bookings per day" accent={GOLD} />
-      </div>
-
       {/* Sales funnel report — Booked → Presented → Showed → Closed */}
       <SalesReportPanel
         title="AACIO Sales Report"
-        periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)}
+        periodLabel={periodLabel}
         funnel={funnel}
         note="Show-up galing sa YCBM's own No-Show marks. Closed/Revenue galing sa LakbayHub external-cluster sales."
       />
 
-      {/* Expandable per-coach / per-slot pivot — automatic from AACIO YCBM teamMember */}
-      <CoachPivot bookings={bookings} from={from} to={to} />
+      {/* Revenue trend (external-cluster LakbayHub sales) — Week/Month/Year */}
+      <RevenueTrend records={extSales} />
+
+      {/* Today's live snapshot (AACIO excludes TargetProgress — it paces vs the
+          global POTB monthly target, which doesn't apply to the external team) */}
+      <TodaySnapshot records={extSales} />
+
+      {/* Period overview — headline AACIO KPIs */}
+      <div>
+        <h2 className="text-base font-semibold text-gray-800 mb-3">{periodLabel} Overview</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <KpiCard icon={CalendarCheck} label="Total Bookings" value={stats.total}
+            sub={`${stats.active} active · ${stats.cancelled} cancelled`} />
+          <KpiCard icon={Wallet} label="Total Revenue" value={formatPHPCompact(salesStats.revenue)}
+            sub={formatPHP(salesStats.revenue)} accent={GOLD} />
+          <KpiCard icon={Receipt} label="# of Sales" value={salesStats.count}
+            sub="paid records tagged external" />
+          <KpiCard icon={Users} label="Unique Leads" value={stats.unique}
+            sub="distinct prospects" />
+          <KpiCard icon={TrendingUp} label="Active Sales" value={stats.active}
+            sub="confirmed coaching sessions" accent={GOLD} />
+          <KpiCard icon={BadgeDollarSign} label="Avg Deal" value={formatPHPCompact(salesStats.avg)}
+            sub="revenue ÷ sales" />
+          <KpiCard icon={CalendarRange} label="Avg / Day" value={stats.perDay.toFixed(1)}
+            sub="active bookings per day" accent={GOLD} />
+          <KpiCard icon={Users} label="Active Closers" value={byCloser.length}
+            sub={`${byCluster.length} clusters`} />
+        </div>
+      </div>
 
       {/* Per-coach Sales Performance — external LakbayHub sales (Availed/SRP) +
           AACIO YCBM (Appointment/Show Up/No Show) for the selected period. */}
       <SalesPerformanceCards
         salesRecords={salesInRange} bookings={bookings} from={from} to={to}
         aliases={AACIO_COACH_ALIASES} loading={loading} storageKey="aacio"
-        periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)} />
+        periodLabel={periodLabel} />
+
+      {/* Detailed sales breakdown — how much each closer/cluster sold this period */}
+      <SalesBreakdown records={salesInRange} periodLabel={periodLabel} />
+
+      {/* Incomplete external records (missing date / amount / closer) */}
+      <NeedsReview records={extReview} />
 
       {/* Per-agent leaderboard + client drill-down (same as Acquisition tab) */}
       <AgentLeaderboard
@@ -583,176 +608,157 @@ export default function AacioReportTab() {
         periodId={periodId}
         monthKey={monthKey}
         customDates={customDates}
-        periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)}
+        periodLabel={periodLabel}
         title="AACIO Per-Agent Leaderboard"
         subtitle="Tap an agent to see their clients for the selected period" />
 
       {/* Down payments tracker — all outstanding partial AACIO sign-ups, aged, per coach */}
       <DownPaymentsTracker customers={getExternalInvoiceCustomers()} title="AACIO Down Payments" subtitle="External-cluster sign-ups" />
 
-      {/* Revenue trend (external-cluster LakbayHub sales) — Week/Month/Year */}
-      <RevenueTrend records={extSales} />
+      {/* Deep analytics — collapsed by default to keep the tab scannable (mirrors Acquisition) */}
+      <button
+        onClick={() => setShowMore(s => !s)}
+        className="self-center flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-[#1B4F4F] bg-white border border-gray-200 rounded-full px-4 py-2 shadow-sm transition-colors"
+        aria-expanded={showMore}
+      >
+        {showMore ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        {showMore ? 'Hide analytics & charts' : 'Show more analytics & charts'}
+      </button>
 
-      {/* External-team SALES (LakbayHub sales-report endpoint, external clusters) */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <BadgeDollarSign size={16} style={{ color: GOLD }} />
-          <h3 className="text-sm font-semibold text-gray-700">Sales from LakbayHub — External Coach clusters</h3>
-          {salesLoading && <span className="text-xs text-gray-400 ml-auto">Loading...</span>}
-          {!salesLoading && salesError && (
-            <span className="text-xs text-red-500 ml-auto">Failed to load: {salesError.message}</span>
-          )}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <KpiCard icon={Wallet} label="Total Revenue" value={formatPHPCompact(salesStats.revenue)}
-            sub={formatPHP(salesStats.revenue)} accent={GOLD} />
-          <KpiCard icon={Receipt} label="# of Sales" value={salesStats.count}
-            sub="paid records tagged external" />
-          <KpiCard icon={TrendingUp} label="Avg Deal" value={formatPHPCompact(salesStats.avg)}
-            sub="revenue ÷ sales" accent={GOLD} />
-        </div>
+      {showMore && (<>
+        {/* Expandable per-coach / per-slot pivot — automatic from AACIO YCBM teamMember */}
+        <CoachPivot bookings={bookings} from={from} to={to} />
 
-        {/* Sales revenue trend */}
-        {salesTrend.length > 0 && (
-          <div className="border-t border-gray-100 pt-4">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Revenue Trend</p>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={salesTrend} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#999' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#999' }} tickFormatter={formatPHPCompact} />
-                <Tooltip formatter={v => formatPHP(v)} />
-                <Line type="monotone" dataKey="revenue" stroke={GOLD} strokeWidth={2.5}
-                  dot={{ r: 3, fill: GOLD }} activeDot={{ r: 5 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* By Closer + By Cluster breakdowns */}
-        {salesInRange.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 border-t border-gray-100 pt-4">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">By Closer</p>
-              <div className="flex flex-col gap-2">
-                {byCloser.map((a, i) => {
-                  const max = byCloser[0]?.sales || 1
-                  return (
-                    <div key={a.name}>
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-4 h-4 rounded-full bg-gray-100 text-gray-500 text-[9px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
-                          <span className="font-medium text-gray-800 truncate">{a.name}</span>
-                        </span>
-                        <span className="text-gray-500 flex-shrink-0">
-                          <b className="text-gray-900">{formatPHPCompact(a.sales)}</b> · {a.txnCount}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${(a.sales / max) * 100}%`, backgroundColor: TEAL }} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">By Cluster</p>
-              <div className="flex flex-col gap-2">
-                {byCluster.map((t) => {
-                  const max = byCluster[0]?.sales || 1
-                  return (
-                    <div key={t.name}>
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="font-medium text-gray-800 truncate">{t.name}</span>
-                        <span className="text-gray-500 flex-shrink-0">
-                          <b className="text-gray-900">{formatPHPCompact(t.sales)}</b> · {t.records.length}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${(t.sales / max) * 100}%`, backgroundColor: GOLD }} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {salesInRange.length === 0 ? (
-          <p className="text-sm text-gray-400 py-6 text-center">
-            No external-team sales tagged in LakbayHub for this period.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-400 text-xs uppercase tracking-wide border-b border-gray-100">
-                  <th className="px-3 py-2 font-semibold">Customer</th>
-                  <th className="px-3 py-2 font-semibold">Email</th>
-                  <th className="px-3 py-2 font-semibold">Cluster</th>
-                  <th className="px-3 py-2 font-semibold">Package</th>
-                  <th className="px-3 py-2 font-semibold text-right">Amount</th>
-                  <th className="px-3 py-2 font-semibold">Date Paid</th>
-                  <th className="px-3 py-2 font-semibold">Payment</th>
-                  <th className="px-3 py-2 font-semibold">Account</th>
-                  <th className="px-3 py-2 font-semibold">FB</th>
-                </tr>
-              </thead>
-              <tbody>
-                {salesInRange.slice(0, 100).map(r => (
-                  <tr key={r.transaction_id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                    <td className="px-3 py-2.5 font-medium text-gray-800">{r.customer_name}</td>
-                    <td className="px-3 py-2.5 text-gray-500 text-xs">{r.meta?.email || '—'}</td>
-                    <td className="px-3 py-2.5 text-gray-500">{r.team}</td>
-                    <td className="px-3 py-2.5 text-gray-500">{r.meta?.package || '—'}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold" style={{ color: TEAL }}>
-                      {formatPHP(r.sales_amount)}
-                    </td>
-                    <td className="px-3 py-2.5 text-gray-600">{r.date ? fmtDate(r.date) : '—'}</td>
-                    <td className="px-3 py-2.5">
-                      <PaymentBadge status={r.meta?.payment_status} />
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <AccountBadge status={r.meta?.account_status} />
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {r.meta?.facebook
-                        ? <a href={r.meta.facebook} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-0.5 text-blue-500 hover:text-blue-700 text-xs">
-                            <ExternalLink size={11} /> FB
-                          </a>
-                        : <span className="text-gray-300">—</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {salesInRange.length > 100 && (
-              <p className="text-xs text-gray-400 text-center py-3">
-                Showing first 100 of {salesInRange.length} sales.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Acquisition-style monitoring — same blocks as the Acquisition tab,
-          scoped to external-cluster (AACIO) sales only. Hidden when the fetch
-          failed before ever loading data (zeros would read as a real slow day). */}
-      {(extSales.length > 0 || !salesError) && (
-        <>
-          <NeedsReview records={extReview} />
-          <TodaySnapshot records={extSales} />
+        {/* Acquisition-style monitoring blocks, scoped to external-cluster (AACIO) sales */}
+        {(extSales.length > 0 || !salesError) && (<>
           {extSales.length > 0 && <FunnelHealth records={extSales} />}
           <PackagePerformance records={extSales} />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             <LiveActivityFeed records={extSales} limit={8} />
             <ClusterHealth records={extSales} />
           </div>
-        </>
-      )}
+        </>)}
+
+        {/* External-team SALES detail (LakbayHub external clusters) — full table */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <BadgeDollarSign size={16} style={{ color: GOLD }} />
+            <h3 className="text-sm font-semibold text-gray-700">Sales from LakbayHub — External Coach clusters</h3>
+            {salesLoading && <span className="text-xs text-gray-400 ml-auto">Loading...</span>}
+            {!salesLoading && salesError && (
+              <span className="text-xs text-red-500 ml-auto">Failed to load: {salesError.message}</span>
+            )}
+          </div>
+
+          {/* By Closer + By Cluster breakdowns */}
+          {salesInRange.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">By Closer</p>
+                <div className="flex flex-col gap-2">
+                  {byCloser.map((a, i) => {
+                    const max = byCloser[0]?.sales || 1
+                    return (
+                      <div key={a.name}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className="w-4 h-4 rounded-full bg-gray-100 text-gray-500 text-[9px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                            <span className="font-medium text-gray-800 truncate">{a.name}</span>
+                          </span>
+                          <span className="text-gray-500 flex-shrink-0">
+                            <b className="text-gray-900">{formatPHPCompact(a.sales)}</b> · {a.txnCount}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${(a.sales / max) * 100}%`, backgroundColor: TEAL }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">By Cluster</p>
+                <div className="flex flex-col gap-2">
+                  {byCluster.map((t) => {
+                    const max = byCluster[0]?.sales || 1
+                    return (
+                      <div key={t.name}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="font-medium text-gray-800 truncate">{t.name}</span>
+                          <span className="text-gray-500 flex-shrink-0">
+                            <b className="text-gray-900">{formatPHPCompact(t.sales)}</b> · {t.records.length}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${(t.sales / max) * 100}%`, backgroundColor: GOLD }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {salesInRange.length === 0 ? (
+            <p className="text-sm text-gray-400 py-6 text-center">
+              No external-team sales tagged in LakbayHub for this period.
+            </p>
+          ) : (
+            <div className="overflow-x-auto border-t border-gray-100 pt-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-400 text-xs uppercase tracking-wide border-b border-gray-100">
+                    <th className="px-3 py-2 font-semibold">Customer</th>
+                    <th className="px-3 py-2 font-semibold">Email</th>
+                    <th className="px-3 py-2 font-semibold">Cluster</th>
+                    <th className="px-3 py-2 font-semibold">Package</th>
+                    <th className="px-3 py-2 font-semibold text-right">Amount</th>
+                    <th className="px-3 py-2 font-semibold">Date Paid</th>
+                    <th className="px-3 py-2 font-semibold">Payment</th>
+                    <th className="px-3 py-2 font-semibold">Account</th>
+                    <th className="px-3 py-2 font-semibold">FB</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesInRange.slice(0, 100).map(r => (
+                    <tr key={r.transaction_id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                      <td className="px-3 py-2.5 font-medium text-gray-800">{r.customer_name}</td>
+                      <td className="px-3 py-2.5 text-gray-500 text-xs">{r.meta?.email || '—'}</td>
+                      <td className="px-3 py-2.5 text-gray-500">{r.team}</td>
+                      <td className="px-3 py-2.5 text-gray-500">{r.meta?.package || '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold" style={{ color: TEAL }}>
+                        {formatPHP(r.sales_amount)}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600">{r.date ? fmtDate(r.date) : '—'}</td>
+                      <td className="px-3 py-2.5">
+                        <PaymentBadge status={r.meta?.payment_status} />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <AccountBadge status={r.meta?.account_status} />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {r.meta?.facebook
+                          ? <a href={r.meta.facebook} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-0.5 text-blue-500 hover:text-blue-700 text-xs">
+                              <ExternalLink size={11} /> FB
+                            </a>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {salesInRange.length > 100 && (
+                <p className="text-xs text-gray-400 text-center py-3">
+                  Showing first 100 of {salesInRange.length} sales.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </>)}
 
     </div>
   )
