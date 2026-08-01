@@ -34,6 +34,7 @@ import SalesReportPanel from './sales/SalesReportPanel'
 import CoachPivot from './CoachPivot'
 import RevenueTrend from './RevenueTrend'
 import SalesPerformanceCards from './SalesPerformanceCards'
+import AgentLeaderboard from './AgentLeaderboard'
 import DownPaymentsTracker from './DownPaymentsTracker'
 import YcbmReportUpload from './YcbmReportUpload'
 import { mergeWithReport, subscribeReport } from '../lib/ycbmReport'
@@ -573,6 +574,18 @@ export default function AacioReportTab() {
         salesRecords={salesInRange} bookings={bookings} from={from} to={to}
         aliases={AACIO_COACH_ALIASES} loading={loading} storageKey="aacio"
         periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)} />
+
+      {/* Per-agent leaderboard + client drill-down (same as Acquisition tab) */}
+      <AgentLeaderboard
+        records={extSales}
+        rangedRecords={salesInRange}
+        customers={getExternalInvoiceCustomers()}
+        periodId={periodId}
+        monthKey={monthKey}
+        customDates={customDates}
+        periodLabel={isCustom ? `${customDates.length} custom days` : periodLabelFor(periodId, monthKey)}
+        title="AACIO Per-Agent Leaderboard"
+        subtitle="Tap an agent to see their clients for the selected period" />
 
       {/* Down payments tracker — all outstanding partial AACIO sign-ups, aged, per coach */}
       <DownPaymentsTracker customers={getExternalInvoiceCustomers()} title="AACIO Down Payments" subtitle="External-cluster sign-ups" />
