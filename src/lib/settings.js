@@ -21,7 +21,7 @@ const BROWSER_FIELDS = [
 // Default monthly sales target — the OVERALL company-wide goal (combined
 // Acquisition + AACIO + Account Officers revenue), tracked in Insights.
 // Edit in Settings → Business → Monthly Target.
-const DEFAULT_MONTHLY_TARGET = 5_300_000 // ₱5.3M company-wide / month
+const DEFAULT_MONTHLY_TARGET = 8_500_000 // ₱8.5M company-wide / month
 const DEFAULT_USER_NAME      = 'MJ'
 const DEFAULT_USER_ROLE      = 'Sales Skills Development Manager'
 const DEFAULT_DASHBOARD_TITLE = 'Operations Console'
