@@ -14,7 +14,7 @@ export const ROLE_TABS = {
   sales:     ['officers'],
   signup:    ['bookings', 'sales', 'aacio'],   // Sign-up Team: Bookings, Acquisition (id=sales), AACIO
   marketing: ['dashboard', 'leadquality', 'ads'],
-  aacio:     ['aacio'],
+  aacio:     ['aacio', 'leadquality', 'ads'],   // AACIO team: their tab + Lead Quality + Ads (Meta performance)
 }
 
 export const ROLE_LABELS = {
